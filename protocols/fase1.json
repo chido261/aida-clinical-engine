@@ -1,0 +1,38 @@
+{
+    "name": "Fase 1 - Vencer los antojos",
+    "plate_ratio": {
+      "carbs_percent": 25,
+      "protein_fat_percent": 75
+    },
+    "timing_rules": {
+      "morning": {
+        "avoid_categories": ["cereales", "pan_pasta_semolas_trigo"]
+      },
+      "lunch": {
+        "allowed_starches": ["legumbres", "verduras_con_almidon (25% del plato)"]
+      },
+      "night": {
+        "avoid_categories": ["cereales", "pan_pasta_semolas_trigo"]
+      }
+    },
+    "carbs": {
+      "legumes": {
+        "allowed": true,
+        "portion": "1/2 a 3/4 taza",
+        "notes": "Únicos almidones permitidos en fase 1."
+      },
+      "fruits": {
+        "allowed_non_tropical": true,
+        "recommended_per_day": "2 a 3",
+        "timing": "2 horas después del almuerzo, máximo 5:00 PM",
+        "avoid": ["tropicales", "secas", "jugo"]
+      }
+    },
+    "avoid": {
+      "cereals_list": ["alforfón", "amaranto", "arroz", "avena", "cebada", "maíz", "mijo", "quinoa", "trigo"],
+      "starchy_vegetables_list": ["betabel", "calabaza bellota", "calabaza de invierno", "calabaza de ranúnculo", "calabaza japonesa", "calabaza moscada", "camote", "chícharo", "ñame/yuca", "papa blanca"],
+      "desserts_high_carb": ["bebidas endulzadas", "caramelos", "helado", "jugo", "nieve", "papas a la francesa", "papas fritas", "productos horneados"],
+      "sugars": ["azúcar", "dextrosa", "fructosa", "glucosa", "maltodextrina", "miel de agave", "jarabes", "sacarosa"]
+    }
+  }
+  
