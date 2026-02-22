@@ -1,6 +1,7 @@
 // app/api/chat/route.ts
 export const runtime = "nodejs";
 
+import { prisma } from "@/app/lib/prisma";
 import { getProgressMetrics, buildProgressContext } from "@/app/lib/aidaProgress";
 import { NextResponse } from "next/server";
 import OpenAI from "openai";
@@ -172,9 +173,7 @@ export async function POST(req: Request) {
     // ✅ 0) userId fijo
     const userId = "demo-user";
 
-    // 👇 NUEVO
-    const progressMetrics = await getProgressMetrics(prisma, userId);
-    const progressContext = buildProgressContext(progressMetrics);
+
 
 
     await detectAndSaveBaseline({ userId, text: lastUserMsg });
@@ -217,6 +216,10 @@ export async function POST(req: Request) {
         symptoms,
       });
     }
+
+    // 👇 NUEVO
+    const progressMetrics = await getProgressMetrics(prisma, userId);
+    const progressContext = buildProgressContext(progressMetrics);
 
     // ✅ 7) Motor de reglas por fase (intercepta primero)
     const phaseRule = applyPhaseRules(lastUserMsg, currentPhase);
@@ -269,6 +272,7 @@ export async function POST(req: Request) {
     const finalMessages: ChatMessage[] = [
       { role: "system", content: systemPrompt },
       { role: "system", content: memoryContext },
+      { role: "system", content: progressContext },
       { role: "system", content: onboardingContext },
       { role: "system", content: protocolContext },
       { role: "system", content: situationDirective },
