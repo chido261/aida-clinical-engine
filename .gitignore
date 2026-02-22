@@ -41,3 +41,9 @@ yarn-error.log*
 next-env.d.ts
 
 /app/generated/prisma
+
+# local database (no subir datos reales)
+dev.db
+
+# prisma generated client (por seguridad)
+node_modules/.prisma
