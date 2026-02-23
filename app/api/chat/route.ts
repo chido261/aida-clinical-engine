@@ -20,7 +20,6 @@ import {
 import { applyNutritionRules } from "@/app/lib/aidaNutritionRules";
 import { applyPhaseRules } from "@/app/lib/aidaPhaseRules";
 
-
 // ✅ Memoria (Prisma)
 import {
   ensureUserState,
@@ -57,7 +56,10 @@ function loadPhase1Protocol() {
   return JSON.parse(raw);
 }
 
-function buildSituationDirective(moment: Moment, confirmation: boolean) {
+/**
+ * ✅ FIX: Solo preguntar "ayuno/post/noche" si el usuario dio lectura numérica EN ESTE MENSAJE.
+ */
+function buildSituationDirective(moment: Moment, confirmation: boolean, hasGlucoseNow: boolean) {
   if (confirmation) {
     return `El usuario confirmó que hará/ya hizo una acción. Responde como coach cercano. NO hagas preguntas en este turno.
 Refuerza la acción + indica el siguiente micro-paso (cuándo medir o qué observar) y cierra con un cierre VARIADO sin pregunta.`;
@@ -81,7 +83,17 @@ Recomienda hábito de cierre y descanso.
 Si falta info, SOLO 1 pregunta.`;
   }
 
-  return `Contexto no claro. Pregunta SOLO 1 cosa: "¿Fue en ayuno, 2h postcomida o antes de dormir?"`;
+  // ✅ Si NO hubo lectura numérica, NO forzar "ayuno/post/noche"
+  if (!hasGlucoseNow) {
+    return `El usuario NO dio una lectura numérica en este mensaje.
+Responde breve, natural y útil.
+1) Saluda (si aplica) y ofrece 1 camino:
+2) Haz SOLO 1 pregunta: "Estoy a tus órdenes, ¿dime como te puedo ayuda?"`;
+  }
+
+  // ✅ Si SÍ hubo lectura pero no está claro el momento
+  return `Contexto no claro PERO hay lectura numérica.
+Pregunta SOLO 1 cosa: "¿Fue en ayuno, 2h postcomida o antes de dormir?"`;
 }
 
 function extractGlucose(text: string): number | null {
@@ -173,12 +185,6 @@ export async function POST(req: Request) {
     // ✅ 0) userId fijo
     const userId = "demo-user";
 
-
-
-
-    await detectAndSaveBaseline({ userId, text: lastUserMsg });
-    
-
     // ✅ 1) Bypass de seguridad
     const bypass = applySafetyBypass(lastUserMsg, historyPlain);
     if (bypass?.bypass) {
@@ -189,7 +195,6 @@ export async function POST(req: Request) {
     await ensureUserState(userId);
 
     // ✅ 3) Detectar + guardar baseline (A1c / promedio) si viene en el texto
-    // (ej: "glicosilada 11" o "promedio arriba de 300")
     const baselineResult = await detectAndSaveBaseline({
       userId,
       text: lastUserMsg,
@@ -203,21 +208,26 @@ export async function POST(req: Request) {
         ? detected
         : "DESCONOCIDO";
 
-    // ✅ 5) Extraer glucosa + síntomas
-    const glucose = extractGlucose(lastUserMsg) ?? onboarding?.lastGlucose ?? null;
+    // ✅ 5) Extraer glucosa SOLO del mensaje actual (NO from onboarding)
+    const glucoseNow = extractGlucose(lastUserMsg);
+    const hasGlucoseNow = glucoseNow !== null;
+
+    // (onboarding queda como contexto, pero NO debe forzar lectura del turno)
+    // const lastGlucoseKnown = onboarding?.lastGlucose ?? null;
+
     const symptoms = extractSymptoms(lastUserMsg);
 
-    // ✅ 6) Guardar lectura si hay glucosa
-    if (glucose !== null) {
+    // ✅ 6) Guardar lectura solo si el usuario dio número AHORITA
+    if (glucoseNow !== null) {
       await saveReading({
         userId,
-        glucose,
+        glucose: glucoseNow,
         moment,
         symptoms,
       });
     }
 
-    // 👇 NUEVO
+    // ✅ Progress context
     const progressMetrics = await getProgressMetrics(prisma, userId);
     const progressContext = buildProgressContext(progressMetrics);
 
@@ -227,10 +237,10 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: true, reply: phaseRule.response, bypass: false });
     }
 
-    // ✅ 8) Motor nutricional (intercepta después)
+    // ✅ 8) Motor nutricional (intercepta después) - usa SOLO lectura del turno
     const ruleResult = applyNutritionRules(lastUserMsg, {
       moment,
-      glucose,
+      glucose: glucoseNow,
       symptoms,
     } as any);
 
@@ -267,7 +277,7 @@ export async function POST(req: Request) {
       protocol
     )}`;
 
-    const situationDirective = buildSituationDirective(moment, confirmation);
+    const situationDirective = buildSituationDirective(moment, confirmation, hasGlucoseNow);
 
     const finalMessages: ChatMessage[] = [
       { role: "system", content: systemPrompt },

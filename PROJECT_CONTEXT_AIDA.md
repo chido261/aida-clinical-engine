@@ -1,78 +1,150 @@
-# AIDA – Clinical Engine (Estado Actual Real)
+PROJECT_CONTEXT_AIDA.md
+Estado Actual – 22 Feb 2026
+1️⃣ Arquitectura General
 
-## Arquitectura actual
-- Next.js (App Router)
-- API principal: /api/chat/route.ts
-- Prisma + SQLite (dev.db)
-- Cliente Prisma centralizado (app/lib/prisma.ts)
-- Prompt central: app/lib/aidaPrompt.ts
-- Motor cuantitativo: app/lib/aidaProgress.ts
-- Persistencia onboarding en localStorage
-- UserId actual: "demo-user"
+Framework: Next.js 16 (App Router, Turbopack)
 
----
+Backend API routes
 
-## Sistema conversacional actual
+Prisma + SQLite (dev.db)
+
+Cliente Prisma centralizado
+
+Prompt central: app/lib/aidaPrompt.ts
+
+Motor cuantitativo: app/lib/aidaProgress.ts
+
+Baseline clínico: app/lib/aidaBaseline.ts
+
+Onboarding persistido en localStorage
+
+UserId actual: "demo-user"
+
+2️⃣ Sistema Conversacional (AIDA)
 
 AIDA actualmente:
 
-- Detecta glucosa (regex 40–600 mg/dL)
-- Guarda lecturas en base de datos
-- Guarda baseline (HbA1c o promedio inicial)
-- Calcula:
-  - Promedio 7 días
-  - Promedio 14 días
-  - Tendencia 7 vs 7
-  - Cambio desde punto de inicio
-- Muestra tendencia con verbo en pasado:
-  - Bajó X mg/dL
-  - Subió X mg/dL
-  - Estable
-- No muestra números negativos visibles
-- No usa la palabra "baseline"
-- Usa formato obligatorio cuando existe progreso
+Detecta glucosa vía regex (40–600 mg/dL)
 
----
+Guarda lecturas en DB
 
-## Formato clínico obligatorio actual
+Guarda baseline (A1c o promedio inicial)
 
-Cuando hay datos suficientes AIDA responde con:
+Calcula:
 
-- Lectura actual
-- Promedio 7d
-- Tendencia (verbo en pasado)
-- Cambio desde que empezamos
-- Acción concreta para hoy
+Promedio 7 días
 
----
+Promedio 14 días
 
-## Lo que aún NO está implementado
+Tendencia 7 vs 7
 
-- Motor real de banderas clínicas (hiper/hipo automatizado)
-- Sistema automático por wakeTime
-- Notificaciones reales (push / cron)
-- Fases progresivas dinámicas
-- Multiusuario real
-- Panel estadístico
-- Integración con especialista humano con lógica automatizada
+Cambio desde baseline
 
----
+Muestra tendencia con verbo en pasado:
 
-## Prioridad actual
+Bajó X mg/dL
 
-Convertir AIDA en aplicación funcional en celular con:
+Subió X mg/dL
 
-1. PWA instalable
-2. Notificaciones push reales
-3. Recordatorios automáticos
-4. Seguimiento diario estructurado
+Estable
 
----
+Backend detecta contexto:
 
-## Estado estratégico
+AYUNO
 
-AIDA ya no es MVP básico.
-Es un motor conversacional cuantitativo funcional.
+POSTCOMIDA
 
-El siguiente salto es:
-👉 Convertirlo en asistente activo (no solo reactivo).
+NOCHE
+
+Modo seguimiento cuando usuario confirma acción
+
+3️⃣ Sistema Push Notifications (YA FUNCIONAL ✅)
+Implementado
+
+Service Worker (public/sw.js)
+
+Subscribe endpoint:
+
+/api/push/subscribe
+
+Send endpoint:
+
+/api/push/send
+
+Web-push con VAPID
+
+Variables .env.local configuradas:
+
+NEXT_PUBLIC_VAPID_PUBLIC_KEY
+
+VAPID_PRIVATE_KEY
+
+VAPID_SUBJECT
+
+Soporte multi-device por userId
+
+Limpieza automática de subscriptions 404 / 410
+
+Funciona en:
+
+Laptop (Chrome)
+
+Android (Chrome)
+
+Vía túnel Cloudflare HTTPS
+
+4️⃣ Estado Técnico Confirmado
+
+tsconfig corregido
+
+.next excluido correctamente
+
+Errores de validator eliminados
+
+Dev server estable
+
+Push real probado y validado
+
+5️⃣ Pendientes Estratégicos
+
+Opciones siguientes:
+
+Notificaciones automáticas programadas
+
+Push conectado a eventos clínicos (glucosa alta)
+
+Persistir subscriptions en Prisma
+
+Migrar a dominio fijo
+
+Preparar entorno producción
+
+6️⃣ Objetivo General
+
+AIDA debe convertirse en:
+
+Asistente clínico educativo
+
+Motor de acompañamiento 3 meses
+
+Sistema con:
+
+Seguimiento cuantitativo
+
+Notificaciones inteligentes
+
+Intervención contextual automática
+
+Escalable a producción
+
+7️⃣ Repositorio Oficial
+
+Repositorio público activo:
+
+https://github.com/chido261/aida-clinical-engine
+
+El código en producción local puede tener cambios no subidos.
+Confirmar al inciar un nuevo chat que se actualice
+
+Código local actual a github
+

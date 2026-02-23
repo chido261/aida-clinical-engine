@@ -11,29 +11,61 @@ function urlBase64ToUint8Array(base64String: string) {
   return outputArray;
 }
 
+type PushState = "booting" | "unavailable" | "needs_permission" | "needs_subscribe" | "ready";
+
 export default function PushInit() {
-  const [ready, setReady] = useState(false);
+  const [state, setState] = useState<PushState>("booting");
   const [busy, setBusy] = useState(false);
 
+  // Boot + detect state
   useEffect(() => {
     (async () => {
-      if (!("serviceWorker" in navigator)) return;
+      // 0) soporte
+      if (!("serviceWorker" in navigator) || !("PushManager" in window) || !("Notification" in window)) {
+        setState("unavailable");
+        return;
+      }
+
+      // 1) registrar SW (idempotente)
       const reg = await navigator.serviceWorker.register("/sw.js");
       console.log("🚀 SW registrado con scope:", reg.scope);
-      setReady(true);
-    })().catch((e) => console.error("❌ PushInit boot error:", e));
+
+      // 2) permiso
+      const perm = Notification.permission;
+      if (perm !== "granted") {
+        setState("needs_permission");
+        return;
+      }
+
+      // 3) ¿ya existe subscription?
+      const readyReg = await navigator.serviceWorker.ready;
+      const sub = await readyReg.pushManager.getSubscription();
+
+      if (sub) {
+        setState("ready");
+        return;
+      }
+
+      setState("needs_subscribe");
+    })().catch((e) => {
+      console.error("❌ PushInit boot error:", e);
+      setState("unavailable");
+    });
   }, []);
 
   async function enablePush() {
     try {
       setBusy(true);
 
-      // 1) Permiso (user gesture ✅)
+      // 1) permiso (user gesture ✅)
       const perm = await Notification.requestPermission();
       console.log("🔔 Notification permission:", perm);
-      if (perm !== "granted") return;
+      if (perm !== "granted") {
+        setState("needs_permission");
+        return;
+      }
 
-      // 2) Obtener SW registration
+      // 2) SW ready
       const reg = await navigator.serviceWorker.ready;
 
       // 3) Reusar subscription si existe
@@ -57,7 +89,7 @@ export default function PushInit() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          userId: "demo-user", // por ahora, luego lo conectas al onboarding real
+          userId: "demo-user", // luego lo conectas a onboarding real
           subscription: sub,
         }),
       });
@@ -68,31 +100,62 @@ export default function PushInit() {
       if (!res.ok) throw new Error(data?.error || "Subscribe API failed");
 
       console.log("🎉 Subscription guardada en backend");
+
+      // ✅ ya quedó
+      setState("ready");
     } catch (e) {
       console.error("❌ enablePush error:", e);
+
+      // si falló después de conceder permiso, probablemente quedó en needs_subscribe
+      if (Notification.permission === "granted") setState("needs_subscribe");
+      else setState("needs_permission");
     } finally {
       setBusy(false);
     }
   }
 
-  if (!ready) return null;
+  // ✅ si ya está listo o no aplica, no estorbes
+  if (state === "booting" || state === "unavailable" || state === "ready") return null;
+
+  const label =
+    state === "needs_permission"
+      ? "Activar notificaciones"
+      : state === "needs_subscribe"
+      ? "Activar notificaciones"
+      : "Activar notificaciones";
 
   return (
-    <button
-      onClick={enablePush}
-      disabled={busy}
+    <div
       style={{
-        position: "fixed",
-        bottom: 20,
-        right: 20,
-        padding: "8px 12px",
-        background: "black",
-        color: "white",
-        borderRadius: 6,
-        opacity: busy ? 0.7 : 1,
+        position: "sticky",
+        bottom: 0,
+        left: 0,
+        right: 0,
+        padding: 12,
+        paddingBottom: "calc(12px + env(safe-area-inset-bottom))",
+        display: "flex",
+        justifyContent: "flex-end",
+        background: "linear-gradient(transparent, rgba(0,0,0,0.35))",
+        pointerEvents: "none",
+        zIndex: 50,
       }}
     >
-      {busy ? "Activando..." : "Activar notificaciones"}
-    </button>
+      <button
+        onClick={enablePush}
+        disabled={busy}
+        style={{
+          pointerEvents: "auto",
+          padding: "10px 14px",
+          background: "black",
+          color: "white",
+          borderRadius: 12,
+          border: "1px solid rgba(255,255,255,0.15)",
+          opacity: busy ? 0.7 : 1,
+          fontWeight: 700,
+        }}
+      >
+        {busy ? "Activando..." : label}
+      </button>
+    </div>
   );
 }
