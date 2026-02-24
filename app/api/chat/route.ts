@@ -154,6 +154,14 @@ export async function POST(req: Request) {
 
     const lastUserMsg = [...messagesFromClient].reverse().find((m) => m.role === "user")?.content ?? "";
 
+    // ✅ Anti-abuso: limita tamaño del mensaje
+if (lastUserMsg.length > 1000) {
+  return NextResponse.json(
+    { ok: false, error: "Mensaje demasiado largo" },
+    { status: 400 }
+  );
+}
+
     const historyPlain = messagesFromClient
       .filter((m) => m.role !== "system")
       .slice(-12)
@@ -169,6 +177,43 @@ export async function POST(req: Request) {
     // ✅ 2) Garantiza UserState
     await ensureUserState(userId);
 
+// ✅ Rate limit: 50 mensajes / día (por deviceId)
+const LIMIT_PER_DAY = 50;
+const today = new Date().toISOString().slice(0, 10); // UTC "YYYY-MM-DD"
+
+// Lee estado
+const state = await prisma.userState.findUnique({ where: { id: userId } });
+
+// Si no existe, créalo (por si ensureUserState no lo creó)
+if (!state) {
+  await prisma.userState.create({
+    data: { id: userId, dailyMsgDate: today, dailyMsgCount: 0 },
+  });
+}
+
+// Si cambió el día, se resetea a 0
+const currentCount = state?.dailyMsgDate === today ? state.dailyMsgCount : 0;
+
+if (currentCount >= LIMIT_PER_DAY) {
+  return NextResponse.json(
+    {
+      ok: false,
+      error:
+        "Límite diario alcanzado (50 mensajes). Intenta mañana o pide acceso completo.",
+    },
+    { status: 429 }
+  );
+}
+
+// Incrementa contador + fija fecha del día
+await prisma.userState.update({
+  where: { id: userId },
+  data: {
+    dailyMsgDate: today,
+    dailyMsgCount: currentCount + 1,
+  },
+});
+    
     // ✅ 3) Detectar + guardar baseline (A1c / promedio) si viene en el texto
     const baselineResult = await detectAndSaveBaseline({
       userId,

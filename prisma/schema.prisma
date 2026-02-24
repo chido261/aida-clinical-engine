@@ -7,16 +7,17 @@ datasource db {
 }
 
 model UserState {
-  id                 String   @id @default("demo-user")
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
+  id            String   @id
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
-  baselineA1c         Float?
-  baselineAvgGlucose  Int?
-  baselineSetAt       DateTime?
+  dailyMsgDate  String   @default("") // "YYYY-MM-DD" (UTC)
+  dailyMsgCount Int      @default(0)
+
+  baselineA1c        Float?
+  baselineAvgGlucose Int?
+  baselineSetAt      DateTime?
 }
-
-
 
 model Reading {
   id        Int      @id @default(autoincrement())

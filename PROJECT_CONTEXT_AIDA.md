@@ -1,52 +1,71 @@
+PROJECT_CONTEXT_AIDA.md
 
-# PROJECT_CONTEXT_AIDA.md
-Estado Actual – 22 Feb 2026 (Actualizado Noche)
+Estado Actual – 23 Feb 2026 (Actualizado – Multiusuario + Rate Limit)
 
----
-
-# 1️⃣ VISIÓN GENERAL DEL PROYECTO
+1️⃣ VISIÓN GENERAL DEL PROYECTO
 
 AIDA (Artificial Intelligence Diabetes Assistant) es un sistema conversacional clínico enfocado en:
 
-- Educación terapéutica para diabetes tipo 2 y prediabetes
-- Seguimiento cuantitativo real
-- Acompañamiento estructurado por fases (3 meses)
-- Notificaciones inteligentes
-- Escalabilidad futura como producto SaaS con licencia anual
+Educación terapéutica para diabetes tipo 2 y prediabetes
+
+Seguimiento cuantitativo real
+
+Acompañamiento estructurado por fases (3 meses)
+
+Notificaciones inteligentes
+
+Escalabilidad futura como producto SaaS con licencia anual
 
 Objetivo estratégico:
 Convertir AIDA en un sistema clínico digital con:
-- Control de acceso
-- Prueba gratuita (trial)
-- Modelo de licencia anual
-- Infraestructura en la nube
 
----
+Control de acceso
 
-# 2️⃣ ARQUITECTURA ACTUAL
+Prueba gratuita (trial)
+
+Modelo de licencia anual
+
+Infraestructura en la nube
+
+Multiusuario real por dispositivo
+
+2️⃣ ARQUITECTURA ACTUAL
 
 Framework:
-- Next.js 16 (App Router)
-- Turbopack en desarrollo
+
+Next.js 16 (App Router)
+
+Turbopack en desarrollo
 
 Backend:
-- API Routes (Node runtime)
-- Prisma ORM
-- SQLite (dev.db local)
+
+API Routes (Node runtime)
+
+Prisma ORM 7.3
+
+SQLite (dev.db local)
+
+prisma.config.ts (Datasource configurado ahí, NO en schema)
 
 Arquitectura modular:
 
-- Prompt central → app/lib/aidaPrompt.ts
-- Motor cuantitativo → app/lib/aidaProgress.ts
-- Baseline clínico → app/lib/aidaBaseline.ts
-- Reglas contextuales → app/lib/aidaRules.ts
-- Motor nutricional → app/lib/aidaNutritionRules.ts
-- Motor por fase → app/lib/aidaPhaseRules.ts
-- Memoria persistente → app/lib/aidaMemory.ts
+Prompt central → app/lib/aidaPrompt.ts
 
----
+Motor cuantitativo → app/lib/aidaProgress.ts
 
-# 3️⃣ SISTEMA CONVERSACIONAL (ESTADO ACTUAL)
+Baseline clínico → app/lib/aidaBaseline.ts
+
+Reglas contextuales → app/lib/aidaRules.ts
+
+Motor nutricional → app/lib/aidaNutritionRules.ts
+
+Motor por fase → app/lib/aidaPhaseRules.ts
+
+Memoria persistente → app/lib/aidaMemory.ts
+
+Identidad por dispositivo → app/lib/deviceId.ts
+
+3️⃣ SISTEMA CONVERSACIONAL (ESTADO ACTUAL)
 
 AIDA actualmente:
 
@@ -55,222 +74,219 @@ AIDA actualmente:
 ✅ Guarda baseline (A1c o promedio inicial)
 ✅ Calcula:
 
-- Promedio 7 días
-- Promedio 14 días
-- Tendencia 7 vs 7
-- Cambio desde baseline
+Promedio 7 días
+
+Promedio 14 días
+
+Tendencia 7 vs 7
+
+Cambio desde baseline
 
 ✅ Genera contexto de progreso cuantitativo
 ✅ Detecta momento:
-   - AYUNO
-   - POSTCOMIDA
-   - NOCHE
-   - DESCONOCIDO
+
+AYUNO
+
+POSTCOMIDA
+
+NOCHE
+
+DESCONOCIDO
 
 ✅ Detecta confirmaciones (modo seguimiento)
 ✅ Integra memoria histórica en el prompt
 ✅ Aplica reglas clínicas antes de llamar al modelo
+✅ Limita tamaño de mensaje (anti-spam > 1000 caracteres)
 
----
-
-# 4️⃣ MEJORAS REALIZADAS HOY
-
-## 🔹 Corrección crítica conversacional
+4️⃣ MULTIUSUARIO REAL (IMPLEMENTADO)
 
 ANTES:
-- AIDA forzaba preguntas tipo “¿fue en ayuno o post?” aunque el usuario no hubiera dado lectura.
-- Se usaba onboarding.lastGlucose como si fuera lectura actual.
+
+userId = "demo-user"
+
+Todos compartían identidad
 
 AHORA:
-- Se separó lectura del turno (glucoseNow) de datos históricos.
-- Solo se guarda lectura si el usuario dio número en ese mensaje.
-- Si no hay lectura numérica:
-  - Respuesta breve
-  - Natural
-  - Sin forzar contexto clínico
-  - Una sola pregunta abierta
+
+🔐 Identidad por dispositivo implementada
+
+Se genera deviceId (UUID) en frontend
+
+Se guarda en localStorage (aida_device_id_v1)
+
+Se envía al backend en cada request
+
+deviceId ahora es el userId real
 
 Resultado:
-Conversación más humana, estilo WhatsApp real.
 
----
+Separación total entre dispositivos
 
-# 5️⃣ SISTEMA PWA (YA FUNCIONAL)
+Listo para compartir link público
 
-Implementado:
+Base sólida para trial/licencias
 
-- manifest.ts
-- icon-192.png
-- Service Worker (public/sw.js)
-- Push subscribe endpoint
-- Push send endpoint
-- VAPID configurado
-- Variables .env.local:
-  - NEXT_PUBLIC_VAPID_PUBLIC_KEY
-  - VAPID_PRIVATE_KEY
-  - VAPID_SUBJECT
+5️⃣ RATE LIMIT IMPLEMENTADO (PROTECCIÓN BÁSICA ANTI-SPAM)
 
-Dev Indicator eliminado (next.config.ts → devIndicators: false)
+Implementado en /api/chat:
 
-La PWA:
-- Se instala correctamente
-- Inicia desde raíz
-- No salta onboarding
-- Push probado en Android y Chrome
+50 mensajes por día
 
----
+Por deviceId
 
-# 6️⃣ IDENTIDAD ACTUAL DEL SISTEMA
+Basado en fecha UTC
 
-Estado actual:
+Se guarda en UserState:
 
-❗ userId = "demo-user"
-
-Esto implica:
-- Sistema funcional pero no multiusuario real
-- Todas las lecturas y notificaciones comparten identidad
-- No listo aún para distribución pública
-
----
-
-# 7️⃣ PLAN INMEDIATO (SPRINT 1)
-
-OBJETIVO: Multiusuario por dispositivo
-
-Diseño decidido:
-
-Identidad por dispositivo:
-- Generar deviceId único (UUID)
-- Guardar en localStorage
-- Usar como userId real
-
-Ventajas:
-- Separación completa entre usuarios
-- Listo para compartir link
-- Base para trial y licencias
-
-Pendiente implementar:
-
-- app/lib/deviceId.ts
-- Enviar deviceId al backend
-- Eliminar "demo-user"
-- Asociar push subscriptions a deviceId
-
----
-
-# 8️⃣ SPRINT 2 (AUTENTICACIÓN + TRIAL)
-
-Objetivo:
-- Acceso por teléfono (OTP)
-- Prueba gratuita 48 horas
-- Luego cambiar a 7 días / 30 días
-- Bloqueo posterior con paywall
+dailyMsgDate
+dailyMsgCount
 
 Flujo:
 
-1. Usuario ingresa teléfono
-2. Backend genera OTP
-3. Envío SMS (Twilio o similar)
-4. Verificación
-5. Se activa trial:
+ensureUserState(userId)
 
-   trialStartedAt
-   trialEndsAt
+Lee estado actual
 
-6. En backend:
-   - Si no verificado → bloquear chat
-   - Si trial expirado → bloquear chat
+Si cambió el día → reinicia contador
 
----
+Si ≥ 50 → responde 429
 
-# 9️⃣ SPRINT 3 (LICENCIA ANUAL)
+Si no → incrementa contador
 
-Futuro:
+Resultado:
+Sistema protegido contra abuso básico.
 
-- licenseActiveUntil
-- Revocación de dispositivo
-- Código de transferencia
-- Cambio controlado a nuevo teléfono
+6️⃣ AJUSTE PRISMA 7 (IMPORTANTE)
 
-Modelo:
-Licencia vinculada a deviceId
-Revocable manualmente o vía código temporal
+Error corregido:
 
----
+Prisma 7 ya NO permite:
+url = "file:./dev.db" en schema.prisma
 
-# 🔟 MIGRACIÓN A NUBE (POST-IMPLEMENTACIÓN MULTIUSUARIO)
+Solución aplicada:
 
-Objetivo:
-Eliminar dependencia de laptop local.
+schema.prisma SIN url
 
-Arquitectura recomendada:
+URL configurada en prisma.config.ts
+
+Migración ejecutada correctamente
+
+Prisma Client regenerado
+
+Sistema ahora compatible con Prisma 7.3
+
+7️⃣ PWA (YA FUNCIONAL)
+
+Implementado:
+
+manifest.ts
+
+icon-192.png
+
+Service Worker (public/sw.js)
+
+Push subscribe endpoint
+
+Push send endpoint
+
+VAPID configurado
+
+Probado:
+
+Android
+
+Chrome
+
+Instalación correcta
+
+Push funcional
+
+8️⃣ ESTADO ACTUAL DEL SISTEMA
+
+🟢 Multiusuario por dispositivo
+🟢 Motor clínico estable
+🟢 Progreso cuantitativo sólido
+🟢 Baseline persistente
+🟢 Push funcionando
+🟢 Rate limit activo
+🟢 PWA estable
+
+🟡 Sin autenticación telefónica aún
+🟡 Sin sistema de trial activo
+🔴 No desplegado en nube aún
+
+9️⃣ SIGUIENTE PASO LÓGICO (SPRINT ACTUAL)
+
+Ya que:
+
+Tenemos multiusuario
+
+Tenemos control básico
+
+Tenemos separación real
+
+El siguiente paso estructural es:
+
+🎯 Implementar TRIAL por dispositivo (48 horas)
+
+Diseño:
+
+Agregar a UserState:
+
+trialStartedAt DateTime?
+
+trialEndsAt DateTime?
+
+licenseStatus String ("trial" | "active" | "expired")
+
+Lógica en backend:
+
+Si no tiene trialStartedAt → iniciar automáticamente
+Si Date.now() > trialEndsAt → bloquear chat
+Si activo → permitir
+
+Esto prepara el sistema para:
+
+OTP por teléfono
+
+Licencia anual
+
+Paywall
+
+🔟 MIGRACIÓN FUTURA A NUBE
+
+Cuando el trial funcione:
 
 Frontend + API:
-- Vercel
+
+Vercel
 
 Base de datos:
-- Postgres (Neon / Supabase / Railway)
 
-Dominio:
-- Cloudflare DNS
+Postgres (Neon / Supabase / Railway)
 
-Cambios necesarios:
-- Migrar Prisma de SQLite a Postgres
-- Ajustar DATABASE_URL
-- Migraciones formales
+Cambios:
 
-Beneficios:
-- URL estable
-- HTTPS real
-- Push más confiable
-- Escalabilidad
-- Sistema listo para usuarios reales
+Migrar SQLite → Postgres
 
----
+Ajustar DATABASE_URL
 
-# 1️⃣1️⃣ ESTADO GENERAL DEL PROYECTO
+Ejecutar migraciones formales
 
-Nivel actual:
-
-🟢 Prototipo clínico avanzado funcional
-🟢 Motor cuantitativo sólido
-🟢 Push funcional
-🟢 PWA estable
-🟡 No multiusuario aún
-🟡 No autenticación
-🔴 No producción en nube
-
----
-
-# 1️⃣2️⃣ OBJETIVO ESTRATÉGICO FINAL
+1️⃣1️⃣ OBJETIVO ESTRATÉGICO
 
 Convertir AIDA en:
 
-- Asistente clínico educativo digital
-- Sistema de acompañamiento 3 meses
-- Plataforma con control de acceso
-- Modelo de licencia anual
-- Infraestructura SaaS escalable
+Sistema clínico digital
 
----
+Producto SaaS
 
-# 1️⃣3️⃣ REPOSITORIO
+Plataforma con licencia anual
 
-https://github.com/chido261/aida-clinical-engine
+Motor educativo estructurado 3 meses
 
-IMPORTANTE:
-Antes de continuar en otro chat:
-Confirmar que el código local esté sincronizado con GitHub.
+Infraestructura escalable
 
----
+1️⃣2️⃣ INSTRUCCIÓN PARA CONTINUAR EN EL SIGUIENTE CHAT
 
-# 1️⃣4️⃣ PRIORIDAD PARA MAÑANA
-
-1️⃣ Implementar multiusuario por dispositivo (Sprint 1)
-2️⃣ Probar con 2–3 dispositivos reales
-3️⃣ Verificar separación de lecturas y push
-4️⃣ Preparar base de datos para futura migración
-
----
-
-FIN DE CONTEXTO ACTUALIZADO
+Cuando abras el siguiente chat, copia y pega esto:
