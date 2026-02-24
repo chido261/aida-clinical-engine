@@ -1,7 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { getDeviceId } from "@/app/lib/deviceId";
 
 type OnboardingData = {
   name: string;
@@ -20,6 +21,26 @@ const STORAGE_KEY = "glucosa_onboarding_v1";
 export default function OnboardingPage() {
   const router = useRouter();
 
+  // ✅ evita “flash”: primero revisa storage, luego decide si renderizar
+  const [checking, setChecking] = useState(true);
+
+  useEffect(() => {
+    // ✅ Garantiza que exista deviceId desde el onboarding
+    getDeviceId();
+
+    try {
+      const existing = localStorage.getItem(STORAGE_KEY);
+      if (existing) {
+        router.replace("/chat");
+        return;
+      }
+    } catch {
+      // ignore
+    } finally {
+      setChecking(false);
+    }
+  }, [router]);
+
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [data, setData] = useState<OnboardingData>({
     name: "",
@@ -30,17 +51,14 @@ export default function OnboardingPage() {
     meds: "",
     fastingPeakMgDl: "",
     postMealPeakMgDl: "",
-    wakeTime: "06:00", // formato HH:MM
+    wakeTime: "06:00",
   });
 
   const canNext = useMemo(() => {
-    if (step === 1) return data.name.trim() !== "" && data.age.trim() !== "" && data.wakeTime.trim() !== "";
+    if (step === 1)
+      return data.name.trim() !== "" && data.age.trim() !== "" && data.wakeTime.trim() !== "";
     if (step === 2) return data.heightCm.trim() !== "" && data.weightKg.trim() !== "" && data.diagnosis !== "";
-    if (step === 3)
-        return (
-          data.fastingPeakMgDl.trim() !== "" &&
-          data.postMealPeakMgDl.trim() !== ""
-        );     
+    if (step === 3) return data.fastingPeakMgDl.trim() !== "" && data.postMealPeakMgDl.trim() !== "";
     return false;
   }, [step, data]);
 
@@ -59,15 +77,22 @@ export default function OnboardingPage() {
     router.push("/chat");
   }
 
+  // ✅ Loader: NO mostramos el onboarding hasta decidir
+  if (checking) {
+    return (
+      <main className="min-h-screen flex items-center justify-center p-6 bg-zinc-950 text-zinc-50">
+        <div className="text-sm text-zinc-300">Cargando AIDA…</div>
+      </main>
+    );
+  }
+
   return (
     <main className="min-h-screen flex items-center justify-center p-6 bg-zinc-950 text-zinc-50">
       <div className="w-full max-w-xl rounded-2xl border border-zinc-800 bg-zinc-900/40 p-6 shadow-lg">
         <div className="flex items-center justify-between gap-4">
           <div>
             <h1 className="text-xl font-semibold">Configuración inicial</h1>
-            <p className="text-sm text-zinc-300 mt-1">
-              Esto nos ayuda a personalizar tu acompañamiento (toma 1 minuto).
-            </p>
+            <p className="text-sm text-zinc-300 mt-1">Esto nos ayuda a personalizar tu acompañamiento (toma 1 minuto).</p>
           </div>
           <div className="text-sm text-zinc-300">
             Paso <span className="font-semibold text-zinc-100">{step}</span>/3
@@ -97,22 +122,17 @@ export default function OnboardingPage() {
               </Field>
 
               <Field label="¿A qué hora te despiertas normalmente?">
-  <input
-    type="time"
-    className="w-full rounded-xl bg-zinc-950 border border-zinc-800 px-3 py-2 outline-none focus:border-zinc-600"
-    value={data.wakeTime}
-    onChange={(e) => setData({ ...data, wakeTime: e.target.value })}
-  />
-</Field>
+                <input
+                  type="time"
+                  className="w-full rounded-xl bg-zinc-950 border border-zinc-800 px-3 py-2 outline-none focus:border-zinc-600"
+                  value={data.wakeTime}
+                  onChange={(e) => setData({ ...data, wakeTime: e.target.value })}
+                />
+              </Field>
 
-<p className="text-xs text-zinc-400 -mt-2">
-  Con esto te enviaré el recordatorio de tu glucosa en ayunas.
-</p>
+              <p className="text-xs text-zinc-400 -mt-2">Con esto te enviaré el recordatorio de tu glucosa en ayunas.</p>
 
-
-              <p className="text-xs text-zinc-400">
-                * Esta información se guarda en tu dispositivo por ahora (modo MVP).
-              </p>
+              <p className="text-xs text-zinc-400">* Esta información se guarda en tu dispositivo por ahora (modo MVP).</p>
             </>
           )}
 
@@ -164,38 +184,37 @@ export default function OnboardingPage() {
             </>
           )}
 
-{step === 3 && (
-  <>
-    <Field label="En promedio, ¿cuál ha sido tu medición MÁS ALTA en AYUNO en los últimos 15 días? (mg/dL)">
-      <input
-        className="w-full rounded-xl bg-zinc-950 border border-zinc-800 px-3 py-2 outline-none focus:border-zinc-600"
-        value={data.fastingPeakMgDl}
-        onChange={(e) => setData({ ...data, fastingPeakMgDl: e.target.value })}
-        placeholder="Ej. 160"
-        inputMode="numeric"
-      />
-    </Field>
+          {step === 3 && (
+            <>
+              <Field label="En promedio, ¿cuál ha sido tu medición MÁS ALTA en AYUNO en los últimos 15 días? (mg/dL)">
+                <input
+                  className="w-full rounded-xl bg-zinc-950 border border-zinc-800 px-3 py-2 outline-none focus:border-zinc-600"
+                  value={data.fastingPeakMgDl}
+                  onChange={(e) => setData({ ...data, fastingPeakMgDl: e.target.value })}
+                  placeholder="Ej. 160"
+                  inputMode="numeric"
+                />
+              </Field>
 
-    <Field label="En promedio, ¿cuál ha sido tu medición MÁS ALTA 2 horas DESPUÉS tus comidas en los últimos 15 días? (mg/dL)">
-      <input
-        className="w-full rounded-xl bg-zinc-950 border border-zinc-800 px-3 py-2 outline-none focus:border-zinc-600"
-        value={data.postMealPeakMgDl}
-        onChange={(e) => setData({ ...data, postMealPeakMgDl: e.target.value })}
-        placeholder="Ej. 220"
-        inputMode="numeric"
-      />
-    </Field>
+              <Field label="En promedio, ¿cuál ha sido tu medición MÁS ALTA 2 horas DESPUÉS tus comidas en los últimos 15 días? (mg/dL)">
+                <input
+                  className="w-full rounded-xl bg-zinc-950 border border-zinc-800 px-3 py-2 outline-none focus:border-zinc-600"
+                  value={data.postMealPeakMgDl}
+                  onChange={(e) => setData({ ...data, postMealPeakMgDl: e.target.value })}
+                  placeholder="Ej. 220"
+                  inputMode="numeric"
+                />
+              </Field>
 
-    <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-3 text-sm text-zinc-300">
-      <p className="font-semibold text-zinc-100">¿Por qué preguntamos esto?</p>
-      <p className="mt-1">
-        Estas dos mediciones nos ayudan a entender cómo responde tu cuerpo en ayuno
-        y frente a los alimentos, para guiarte mejor desde el inicio.
-      </p>
-    </div>
-  </>
-)}
-
+              <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-3 text-sm text-zinc-300">
+                <p className="font-semibold text-zinc-100">¿Por qué preguntamos esto?</p>
+                <p className="mt-1">
+                  Estas dos mediciones nos ayudan a entender cómo responde tu cuerpo en ayuno y frente a los alimentos, para
+                  guiarte mejor desde el inicio.
+                </p>
+              </div>
+            </>
+          )}
         </div>
 
         <div className="mt-6 flex items-center justify-between gap-3">

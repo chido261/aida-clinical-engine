@@ -1,5 +1,5 @@
-import { redirect } from "next/navigation";
+import HomeGate from "./home-gate";
 
 export default function Home() {
-  redirect("/onboarding");
+  return <HomeGate />;
 }

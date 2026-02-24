@@ -42,17 +42,75 @@ export async function getRecentReadings(userId: string, limit = 5) {
   });
 }
 
+const TRIAL_HOURS = 48;
+
+function addHours(date: Date, hours: number) {
+  return new Date(date.getTime() + hours * 60 * 60 * 1000);
+}
+
 /**
  * Garantiza que exista el estado del usuario
+ * - Si no existe, lo crea
+ * - Si existe pero no tiene trial, lo inicializa
+ * - Si expiró el trial y no está active, marca expired
  */
 export async function ensureUserState(userId: string) {
   const existing = await prisma.userState.findUnique({
     where: { id: userId },
   });
 
-  if (existing) return existing;
+  const now = new Date();
 
-  return prisma.userState.create({
-    data: { id: userId },
-  });
+  // 1) No existe -> crear con trial
+  if (!existing) {
+    return prisma.userState.create({
+      data: {
+        id: userId,
+        trialStartedAt: now,
+        trialEndsAt: addHours(now, TRIAL_HOURS),
+        licenseStatus: "trial",
+      },
+    });
+  }
+
+  // 2) Si está active, no tocar
+  if (existing.licenseStatus === "active") return existing;
+
+  // 3) Existe pero sin trial -> inicializar
+  if (!existing.trialStartedAt || !existing.trialEndsAt) {
+    return prisma.userState.update({
+      where: { id: userId },
+      data: {
+        trialStartedAt: now,
+        trialEndsAt: addHours(now, TRIAL_HOURS),
+        licenseStatus: "trial",
+      },
+    });
+  }
+
+  // 4) Si expiró -> marcar expired
+  const endsAt = new Date(existing.trialEndsAt);
+  if (now > endsAt && existing.licenseStatus !== "expired") {
+    return prisma.userState.update({
+      where: { id: userId },
+      data: { licenseStatus: "expired" },
+    });
+  }
+
+  return existing;
+}
+
+/**
+ * Helper para checar si el usuario está bloqueado por trial
+ */
+export function isTrialExpired(userState: {
+  licenseStatus: string;
+  trialEndsAt: Date | null;
+}) {
+  if (userState.licenseStatus === "active") return false;
+  if (userState.licenseStatus === "expired") return true;
+
+  if (!userState.trialEndsAt) return false;
+  const now = new Date();
+  return now > new Date(userState.trialEndsAt);
 }

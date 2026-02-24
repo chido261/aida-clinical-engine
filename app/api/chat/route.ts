@@ -1,36 +1,28 @@
 // app/api/chat/route.ts
 export const runtime = "nodejs";
 
+import { prisma } from "@/app/lib/prisma";
 import { getProgressMetrics, buildProgressContext } from "@/app/lib/aidaProgress";
 import { NextResponse } from "next/server";
 import OpenAI from "openai";
 import fs from "node:fs";
 import path from "node:path";
-// ✅ Baseline (A1c / promedio)
+
 import { detectAndSaveBaseline } from "@/app/lib/aidaBaseline";
-
 import { buildAidaSystemPrompt } from "@/app/lib/aidaPrompt";
-import {
-  applySafetyBypass,
-  detectMomentFromText,
-  isConfirmation,
-} from "@/app/lib/aidaRules";
-
+import { applySafetyBypass, detectMomentFromText, isConfirmation } from "@/app/lib/aidaRules";
 import { applyNutritionRules } from "@/app/lib/aidaNutritionRules";
 import { applyPhaseRules } from "@/app/lib/aidaPhaseRules";
 
-
-// ✅ Memoria (Prisma)
 import {
   ensureUserState,
+  isTrialExpired,
   saveReading,
   getLastReading,
   getRecentReadings,
 } from "@/app/lib/aidaMemory";
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 type ChatMessage = {
   role: "system" | "user" | "assistant";
@@ -38,15 +30,15 @@ type ChatMessage = {
 };
 
 type Body = {
+  deviceId?: string;
   messages: ChatMessage[];
   onboarding?: any;
 };
 
-// ✅ Momento simple
 type Moment = "AYUNO" | "POSTCOMIDA" | "NOCHE" | "DESCONOCIDO";
 
-// 🔹 Fase actual (por ahora fija)
 const currentPhase = "FASE_1";
+const MX_TZ = "America/Mexico_City";
 
 // ---------------- helpers ----------------
 
@@ -56,7 +48,25 @@ function loadPhase1Protocol() {
   return JSON.parse(raw);
 }
 
-function buildSituationDirective(moment: Moment, confirmation: boolean) {
+function getLocalDateISO(timeZone: string) {
+  // YYYY-MM-DD en zona horaria dada
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date());
+
+  const y = parts.find((p) => p.type === "year")?.value ?? "1970";
+  const m = parts.find((p) => p.type === "month")?.value ?? "01";
+  const d = parts.find((p) => p.type === "day")?.value ?? "01";
+  return `${y}-${m}-${d}`;
+}
+
+/**
+ * ✅ FIX: Solo preguntar "ayuno/post/noche" si el usuario dio lectura numérica EN ESTE MENSAJE.
+ */
+function buildSituationDirective(moment: Moment, confirmation: boolean, hasGlucoseNow: boolean) {
   if (confirmation) {
     return `El usuario confirmó que hará/ya hizo una acción. Responde como coach cercano. NO hagas preguntas en este turno.
 Refuerza la acción + indica el siguiente micro-paso (cuándo medir o qué observar) y cierra con un cierre VARIADO sin pregunta.`;
@@ -80,7 +90,15 @@ Recomienda hábito de cierre y descanso.
 Si falta info, SOLO 1 pregunta.`;
   }
 
-  return `Contexto no claro. Pregunta SOLO 1 cosa: "¿Fue en ayuno, 2h postcomida o antes de dormir?"`;
+  if (!hasGlucoseNow) {
+    return `El usuario NO dio una lectura numérica en este mensaje.
+Responde breve, natural y útil.
+1) Saluda (si aplica) y ofrece 1 camino:
+2) Haz SOLO 1 pregunta: "Estoy a tus órdenes, ¿dime como te puedo ayuda?"`;
+  }
+
+  return `Contexto no claro PERO hay lectura numérica.
+Pregunta SOLO 1 cosa: "¿Fue en ayuno, 2h postcomida o antes de dormir?"`;
 }
 
 function extractGlucose(text: string): number | null {
@@ -95,15 +113,9 @@ function extractSymptoms(text: string): string[] {
   const t = text.toLowerCase();
   const symptoms: string[] = [];
 
-  if (/(maread|mareo|temblor|sudor|debil|debilidad|confus|desmayo)/i.test(t))
-    symptoms.push("low_symptoms");
-
+  if (/(maread|mareo|temblor|sudor|debil|debilidad|confus|desmayo)/i.test(t)) symptoms.push("low_symptoms");
   if (/(vomit|v[oó]mito|nausea|n[áa]usea)/i.test(t)) symptoms.push("vomiting");
-
-  if (
-    /(dolor\s+pecho|falta\s+de\s+aire|ahogo|dificultad\s+para\s+respirar)/i.test(t)
-  )
-    symptoms.push("respiratory_or_chest");
+  if (/(dolor\s+pecho|falta\s+de\s+aire|ahogo|dificultad\s+para\s+respirar)/i.test(t)) symptoms.push("respiratory_or_chest");
 
   return symptoms;
 }
@@ -128,10 +140,7 @@ function buildMemoryContext(params: {
     recent?.length
       ? recent
           .slice(0, 6)
-          .map(
-            (r) =>
-              `- ${r.glucose} (${r.moment}) ${r.createdAt?.toString?.() ?? ""}`.trim()
-          )
+          .map((r) => `- ${r.glucose} (${r.moment}) ${r.createdAt?.toString?.() ?? ""}`.trim())
           .join("\n")
       : "- (sin lecturas recientes)";
 
@@ -149,19 +158,24 @@ Uso: si hay mejora vs histórico, menciónala breve ("hace X lecturas estabas m�
 export async function POST(req: Request) {
   try {
     const body = (await req.json()) as Body;
+
     const messagesFromClient = body.messages;
     const onboarding = body.onboarding;
 
     if (!Array.isArray(messagesFromClient) || messagesFromClient.length === 0) {
-      return NextResponse.json(
-        { ok: false, error: "Historial de mensajes inválido" },
-        { status: 400 }
-      );
+      return NextResponse.json({ ok: false, error: "Historial de mensajes inválido" }, { status: 400 });
     }
 
-    const lastUserMsg =
-      [...messagesFromClient].reverse().find((m) => m.role === "user")?.content ??
-      "";
+    const userId = (body.deviceId ?? "").trim();
+    if (!userId) {
+      return NextResponse.json({ ok: false, error: "Falta deviceId" }, { status: 400 });
+    }
+
+    const lastUserMsg = [...messagesFromClient].reverse().find((m) => m.role === "user")?.content ?? "";
+
+    if (lastUserMsg.length > 1000) {
+      return NextResponse.json({ ok: false, error: "Mensaje demasiado largo" }, { status: 400 });
+    }
 
     const historyPlain = messagesFromClient
       .filter((m) => m.role !== "system")
@@ -169,65 +183,122 @@ export async function POST(req: Request) {
       .map((m) => `${m.role.toUpperCase()}: ${m.content}`)
       .join("\n");
 
-    // ✅ 0) userId fijo
-    const userId = "demo-user";
-
-    // 👇 NUEVO
-    const progressMetrics = await getProgressMetrics(prisma, userId);
-    const progressContext = buildProgressContext(progressMetrics);
-
-
-    await detectAndSaveBaseline({ userId, text: lastUserMsg });
-    
-
-    // ✅ 1) Bypass de seguridad
+    // 1) Bypass de seguridad
     const bypass = applySafetyBypass(lastUserMsg, historyPlain);
     if (bypass?.bypass) {
       return NextResponse.json({ ok: true, reply: bypass.reply, bypass: true });
     }
 
-    // ✅ 2) Garantiza UserState
-    await ensureUserState(userId);
+    // 2) Estado + Trial 48h
+    const userState = await ensureUserState(userId);
 
-    // ✅ 3) Detectar + guardar baseline (A1c / promedio) si viene en el texto
-    // (ej: "glicosilada 11" o "promedio arriba de 300")
+    if (isTrialExpired(userState)) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "TRIAL_EXPIRED",
+          paywall: {
+            title: "Tu prueba gratuita terminó",
+            message:
+              "Gracias por usar nuestra versión de prueba de AIDA. Para continuar usando la versión completa por 1 año realiza tu pago en el siguiente botón.",
+            ctaText: "Pagar 1 año",
+            ctaUrl: process.env.AIDA_BILLING_URL ?? "/pago",
+          },
+        },
+        { status: 402 }
+      );
+    }
+
+    // 3) ✅ Rate limit SOLO en trial (Active = ilimitado)
+    const todayLocal = getLocalDateISO(MX_TZ);
+    const isTrial = userState.licenseStatus === "trial";
+
+    const LIMIT_PER_DAY_TRIAL = 50;
+    const currentCount =
+      userState.dailyMsgDate === todayLocal ? (userState.dailyMsgCount ?? 0) : 0;
+
+    if (isTrial && currentCount >= LIMIT_PER_DAY_TRIAL) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "Límite diario alcanzado (50 mensajes en prueba). Intenta mañana o activa la versión completa.",
+        },
+        { status: 429 }
+      );
+    }
+
+    // ✅ Incremento (guardamos contador diario aunque sea active, para métricas)
+    const now = new Date();
+    const nextCount = userState.dailyMsgDate === todayLocal ? currentCount + 1 : 1;
+
+    await prisma.$transaction([
+      // UserState counters
+      prisma.userState.update({
+        where: { id: userId },
+        data: {
+          dailyMsgDate: todayLocal,
+          dailyMsgCount: nextCount,
+          totalMsgCount: { increment: 1 },
+          lastMsgAt: now,
+        },
+      }),
+
+      // Métrica diaria (UsageDaily)
+      prisma.usageDaily.upsert({
+        where: { userId_dateLocal: { userId, dateLocal: todayLocal } },
+        create: {
+          userId,
+          dateLocal: todayLocal,
+          count: 1,
+          licenseStatus: isTrial ? "trial" : "active",
+        },
+        update: {
+          count: { increment: 1 },
+          licenseStatus: isTrial ? "trial" : "active",
+        },
+      }),
+    ]);
+
+    // 4) Baseline
     const baselineResult = await detectAndSaveBaseline({
       userId,
       text: lastUserMsg,
     });
 
-    // ✅ 4) Momento + confirmación
+    // 5) Momento + confirmación
     const confirmation = isConfirmation(lastUserMsg);
     const detected = (detectMomentFromText(lastUserMsg) ?? "DESCONOCIDO") as Moment;
     const moment: Moment =
-      detected === "AYUNO" || detected === "POSTCOMIDA" || detected === "NOCHE"
-        ? detected
-        : "DESCONOCIDO";
+      detected === "AYUNO" || detected === "POSTCOMIDA" || detected === "NOCHE" ? detected : "DESCONOCIDO";
 
-    // ✅ 5) Extraer glucosa + síntomas
-    const glucose = extractGlucose(lastUserMsg) ?? onboarding?.lastGlucose ?? null;
+    // 6) Lectura (solo si hay número)
+    const glucoseNow = extractGlucose(lastUserMsg);
+    const hasGlucoseNow = glucoseNow !== null;
     const symptoms = extractSymptoms(lastUserMsg);
 
-    // ✅ 6) Guardar lectura si hay glucosa
-    if (glucose !== null) {
+    if (glucoseNow !== null) {
       await saveReading({
         userId,
-        glucose,
+        glucose: glucoseNow,
         moment,
         symptoms,
       });
     }
 
-    // ✅ 7) Motor de reglas por fase (intercepta primero)
+    // Progress context
+    const progressMetrics = await getProgressMetrics(prisma, userId);
+    const progressContext = buildProgressContext(progressMetrics);
+
+    // Reglas por fase
     const phaseRule = applyPhaseRules(lastUserMsg, currentPhase);
     if (phaseRule?.handled && phaseRule?.response) {
       return NextResponse.json({ ok: true, reply: phaseRule.response, bypass: false });
     }
 
-    // ✅ 8) Motor nutricional (intercepta después)
+    // Reglas nutricionales
     const ruleResult = applyNutritionRules(lastUserMsg, {
       moment,
-      glucose,
+      glucose: glucoseNow,
       symptoms,
     } as any);
 
@@ -235,7 +306,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: true, reply: ruleResult.response, bypass: false });
     }
 
-    // ✅ 9) Cargar memoria reciente para que AIDA “recuerde”
+    // Memoria reciente
     const last = await getLastReading(userId);
     const recent = await getRecentReadings(userId, 6);
 
@@ -247,10 +318,8 @@ export async function POST(req: Request) {
         : null,
     });
 
-    // 🔹 Protocolo fase 1
     const protocol = loadPhase1Protocol();
 
-    // 🔹 Prompt base AIDA
     const systemPrompt = buildAidaSystemPrompt({
       phaseName: protocol.name ?? "Fase 1",
       phaseMinWeeks: 2,
@@ -264,11 +333,12 @@ export async function POST(req: Request) {
       protocol
     )}`;
 
-    const situationDirective = buildSituationDirective(moment, confirmation);
+    const situationDirective = buildSituationDirective(moment, confirmation, hasGlucoseNow);
 
     const finalMessages: ChatMessage[] = [
       { role: "system", content: systemPrompt },
       { role: "system", content: memoryContext },
+      { role: "system", content: progressContext },
       { role: "system", content: onboardingContext },
       { role: "system", content: protocolContext },
       { role: "system", content: situationDirective },
@@ -281,16 +351,11 @@ export async function POST(req: Request) {
       temperature: 0.35,
     });
 
-    const reply =
-      resp.choices?.[0]?.message?.content ??
-      "No pude generar respuesta en este momento.";
+    const reply = resp.choices?.[0]?.message?.content ?? "No pude generar respuesta en este momento.";
 
     return NextResponse.json({ ok: true, reply, bypass: false });
   } catch (err: any) {
     console.error("API /api/chat ERROR:", err);
-    return NextResponse.json(
-      { ok: false, error: err?.message ?? "Error desconocido" },
-      { status: 500 }
-    );
+    return NextResponse.json({ ok: false, error: err?.message ?? "Error desconocido" }, { status: 500 });
   }
 }
