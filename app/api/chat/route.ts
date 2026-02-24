@@ -14,7 +14,13 @@ import { applySafetyBypass, detectMomentFromText, isConfirmation } from "@/app/l
 import { applyNutritionRules } from "@/app/lib/aidaNutritionRules";
 import { applyPhaseRules } from "@/app/lib/aidaPhaseRules";
 
-import { ensureUserState, saveReading, getLastReading, getRecentReadings } from "@/app/lib/aidaMemory";
+import {
+  ensureUserState,
+  isTrialExpired,
+  saveReading,
+  getLastReading,
+  getRecentReadings,
+} from "@/app/lib/aidaMemory";
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
@@ -32,6 +38,7 @@ type Body = {
 type Moment = "AYUNO" | "POSTCOMIDA" | "NOCHE" | "DESCONOCIDO";
 
 const currentPhase = "FASE_1";
+const MX_TZ = "America/Mexico_City";
 
 // ---------------- helpers ----------------
 
@@ -39,6 +46,21 @@ function loadPhase1Protocol() {
   const p = path.join(process.cwd(), "protocols", "fase1.json");
   const raw = fs.readFileSync(p, "utf-8");
   return JSON.parse(raw);
+}
+
+function getLocalDateISO(timeZone: string) {
+  // YYYY-MM-DD en zona horaria dada
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date());
+
+  const y = parts.find((p) => p.type === "year")?.value ?? "1970";
+  const m = parts.find((p) => p.type === "month")?.value ?? "01";
+  const d = parts.find((p) => p.type === "day")?.value ?? "01";
+  return `${y}-${m}-${d}`;
 }
 
 /**
@@ -68,7 +90,6 @@ Recomienda hábito de cierre y descanso.
 Si falta info, SOLO 1 pregunta.`;
   }
 
-  // ✅ Si NO hubo lectura numérica, NO forzar "ayuno/post/noche"
   if (!hasGlucoseNow) {
     return `El usuario NO dio una lectura numérica en este mensaje.
 Responde breve, natural y útil.
@@ -76,7 +97,6 @@ Responde breve, natural y útil.
 2) Haz SOLO 1 pregunta: "Estoy a tus órdenes, ¿dime como te puedo ayuda?"`;
   }
 
-  // ✅ Si SÍ hubo lectura pero no está claro el momento
   return `Contexto no claro PERO hay lectura numérica.
 Pregunta SOLO 1 cosa: "¿Fue en ayuno, 2h postcomida o antes de dormir?"`;
 }
@@ -146,7 +166,6 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, error: "Historial de mensajes inválido" }, { status: 400 });
     }
 
-    // ✅ userId real por dispositivo
     const userId = (body.deviceId ?? "").trim();
     if (!userId) {
       return NextResponse.json({ ok: false, error: "Falta deviceId" }, { status: 400 });
@@ -154,13 +173,9 @@ export async function POST(req: Request) {
 
     const lastUserMsg = [...messagesFromClient].reverse().find((m) => m.role === "user")?.content ?? "";
 
-    // ✅ Anti-abuso: limita tamaño del mensaje
-if (lastUserMsg.length > 1000) {
-  return NextResponse.json(
-    { ok: false, error: "Mensaje demasiado largo" },
-    { status: 400 }
-  );
-}
+    if (lastUserMsg.length > 1000) {
+      return NextResponse.json({ ok: false, error: "Mensaje demasiado largo" }, { status: 400 });
+    }
 
     const historyPlain = messagesFromClient
       .filter((m) => m.role !== "system")
@@ -168,71 +183,99 @@ if (lastUserMsg.length > 1000) {
       .map((m) => `${m.role.toUpperCase()}: ${m.content}`)
       .join("\n");
 
-    // ✅ 1) Bypass de seguridad
+    // 1) Bypass de seguridad
     const bypass = applySafetyBypass(lastUserMsg, historyPlain);
     if (bypass?.bypass) {
       return NextResponse.json({ ok: true, reply: bypass.reply, bypass: true });
     }
 
-    // ✅ 2) Garantiza UserState
-    await ensureUserState(userId);
+    // 2) Estado + Trial 48h
+    const userState = await ensureUserState(userId);
 
-// ✅ Rate limit: 50 mensajes / día (por deviceId)
-const LIMIT_PER_DAY = 50;
-const today = new Date().toISOString().slice(0, 10); // UTC "YYYY-MM-DD"
+    if (isTrialExpired(userState)) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "TRIAL_EXPIRED",
+          paywall: {
+            title: "Tu prueba gratuita terminó",
+            message:
+              "Gracias por usar nuestra versión de prueba de AIDA. Para continuar usando la versión completa por 1 año realiza tu pago en el siguiente botón.",
+            ctaText: "Pagar 1 año",
+            ctaUrl: process.env.AIDA_BILLING_URL ?? "/pago",
+          },
+        },
+        { status: 402 }
+      );
+    }
 
-// Lee estado
-const state = await prisma.userState.findUnique({ where: { id: userId } });
+    // 3) ✅ Rate limit SOLO en trial (Active = ilimitado)
+    const todayLocal = getLocalDateISO(MX_TZ);
+    const isTrial = userState.licenseStatus === "trial";
 
-// Si no existe, créalo (por si ensureUserState no lo creó)
-if (!state) {
-  await prisma.userState.create({
-    data: { id: userId, dailyMsgDate: today, dailyMsgCount: 0 },
-  });
-}
+    const LIMIT_PER_DAY_TRIAL = 50;
+    const currentCount =
+      userState.dailyMsgDate === todayLocal ? (userState.dailyMsgCount ?? 0) : 0;
 
-// Si cambió el día, se resetea a 0
-const currentCount = state?.dailyMsgDate === today ? state.dailyMsgCount : 0;
+    if (isTrial && currentCount >= LIMIT_PER_DAY_TRIAL) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "Límite diario alcanzado (50 mensajes en prueba). Intenta mañana o activa la versión completa.",
+        },
+        { status: 429 }
+      );
+    }
 
-if (currentCount >= LIMIT_PER_DAY) {
-  return NextResponse.json(
-    {
-      ok: false,
-      error:
-        "Límite diario alcanzado (50 mensajes). Intenta mañana o pide acceso completo.",
-    },
-    { status: 429 }
-  );
-}
+    // ✅ Incremento (guardamos contador diario aunque sea active, para métricas)
+    const now = new Date();
+    const nextCount = userState.dailyMsgDate === todayLocal ? currentCount + 1 : 1;
 
-// Incrementa contador + fija fecha del día
-await prisma.userState.update({
-  where: { id: userId },
-  data: {
-    dailyMsgDate: today,
-    dailyMsgCount: currentCount + 1,
-  },
-});
-    
-    // ✅ 3) Detectar + guardar baseline (A1c / promedio) si viene en el texto
+    await prisma.$transaction([
+      // UserState counters
+      prisma.userState.update({
+        where: { id: userId },
+        data: {
+          dailyMsgDate: todayLocal,
+          dailyMsgCount: nextCount,
+          totalMsgCount: { increment: 1 },
+          lastMsgAt: now,
+        },
+      }),
+
+      // Métrica diaria (UsageDaily)
+      prisma.usageDaily.upsert({
+        where: { userId_dateLocal: { userId, dateLocal: todayLocal } },
+        create: {
+          userId,
+          dateLocal: todayLocal,
+          count: 1,
+          licenseStatus: isTrial ? "trial" : "active",
+        },
+        update: {
+          count: { increment: 1 },
+          licenseStatus: isTrial ? "trial" : "active",
+        },
+      }),
+    ]);
+
+    // 4) Baseline
     const baselineResult = await detectAndSaveBaseline({
       userId,
       text: lastUserMsg,
     });
 
-    // ✅ 4) Momento + confirmación
+    // 5) Momento + confirmación
     const confirmation = isConfirmation(lastUserMsg);
     const detected = (detectMomentFromText(lastUserMsg) ?? "DESCONOCIDO") as Moment;
     const moment: Moment =
       detected === "AYUNO" || detected === "POSTCOMIDA" || detected === "NOCHE" ? detected : "DESCONOCIDO";
 
-    // ✅ 5) Extraer glucosa SOLO del mensaje actual
+    // 6) Lectura (solo si hay número)
     const glucoseNow = extractGlucose(lastUserMsg);
     const hasGlucoseNow = glucoseNow !== null;
-
     const symptoms = extractSymptoms(lastUserMsg);
 
-    // ✅ 6) Guardar lectura solo si el usuario dio número AHORITA
     if (glucoseNow !== null) {
       await saveReading({
         userId,
@@ -242,17 +285,17 @@ await prisma.userState.update({
       });
     }
 
-    // ✅ Progress context
+    // Progress context
     const progressMetrics = await getProgressMetrics(prisma, userId);
     const progressContext = buildProgressContext(progressMetrics);
 
-    // ✅ 7) Motor de reglas por fase (intercepta primero)
+    // Reglas por fase
     const phaseRule = applyPhaseRules(lastUserMsg, currentPhase);
     if (phaseRule?.handled && phaseRule?.response) {
       return NextResponse.json({ ok: true, reply: phaseRule.response, bypass: false });
     }
 
-    // ✅ 8) Motor nutricional (intercepta después)
+    // Reglas nutricionales
     const ruleResult = applyNutritionRules(lastUserMsg, {
       moment,
       glucose: glucoseNow,
@@ -263,7 +306,7 @@ await prisma.userState.update({
       return NextResponse.json({ ok: true, reply: ruleResult.response, bypass: false });
     }
 
-    // ✅ 9) Cargar memoria reciente
+    // Memoria reciente
     const last = await getLastReading(userId);
     const recent = await getRecentReadings(userId, 6);
 
