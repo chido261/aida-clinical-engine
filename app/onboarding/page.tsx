@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { getDeviceId } from "@/app/lib/deviceId";
 
 type OnboardingData = {
   name: string;
@@ -24,6 +25,9 @@ export default function OnboardingPage() {
   const [checking, setChecking] = useState(true);
 
   useEffect(() => {
+    // ✅ Garantiza que exista deviceId desde el onboarding
+    getDeviceId();
+
     try {
       const existing = localStorage.getItem(STORAGE_KEY);
       if (existing) {
@@ -51,7 +55,8 @@ export default function OnboardingPage() {
   });
 
   const canNext = useMemo(() => {
-    if (step === 1) return data.name.trim() !== "" && data.age.trim() !== "" && data.wakeTime.trim() !== "";
+    if (step === 1)
+      return data.name.trim() !== "" && data.age.trim() !== "" && data.wakeTime.trim() !== "";
     if (step === 2) return data.heightCm.trim() !== "" && data.weightKg.trim() !== "" && data.diagnosis !== "";
     if (step === 3) return data.fastingPeakMgDl.trim() !== "" && data.postMealPeakMgDl.trim() !== "";
     return false;
@@ -87,9 +92,7 @@ export default function OnboardingPage() {
         <div className="flex items-center justify-between gap-4">
           <div>
             <h1 className="text-xl font-semibold">Configuración inicial</h1>
-            <p className="text-sm text-zinc-300 mt-1">
-              Esto nos ayuda a personalizar tu acompañamiento (toma 1 minuto).
-            </p>
+            <p className="text-sm text-zinc-300 mt-1">Esto nos ayuda a personalizar tu acompañamiento (toma 1 minuto).</p>
           </div>
           <div className="text-sm text-zinc-300">
             Paso <span className="font-semibold text-zinc-100">{step}</span>/3
@@ -127,13 +130,9 @@ export default function OnboardingPage() {
                 />
               </Field>
 
-              <p className="text-xs text-zinc-400 -mt-2">
-                Con esto te enviaré el recordatorio de tu glucosa en ayunas.
-              </p>
+              <p className="text-xs text-zinc-400 -mt-2">Con esto te enviaré el recordatorio de tu glucosa en ayunas.</p>
 
-              <p className="text-xs text-zinc-400">
-                * Esta información se guarda en tu dispositivo por ahora (modo MVP).
-              </p>
+              <p className="text-xs text-zinc-400">* Esta información se guarda en tu dispositivo por ahora (modo MVP).</p>
             </>
           )}
 
@@ -165,9 +164,7 @@ export default function OnboardingPage() {
                 <select
                   className="w-full rounded-xl bg-zinc-950 border border-zinc-800 px-3 py-2 outline-none focus:border-zinc-600"
                   value={data.diagnosis}
-                  onChange={(e) =>
-                    setData({ ...data, diagnosis: e.target.value as OnboardingData["diagnosis"] })
-                  }
+                  onChange={(e) => setData({ ...data, diagnosis: e.target.value as OnboardingData["diagnosis"] })}
                 >
                   <option value="">Selecciona…</option>
                   <option value="dm2">Diabetes tipo 2</option>
@@ -212,8 +209,8 @@ export default function OnboardingPage() {
               <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-3 text-sm text-zinc-300">
                 <p className="font-semibold text-zinc-100">¿Por qué preguntamos esto?</p>
                 <p className="mt-1">
-                  Estas dos mediciones nos ayudan a entender cómo responde tu cuerpo en ayuno y frente a los alimentos,
-                  para guiarte mejor desde el inicio.
+                  Estas dos mediciones nos ayudan a entender cómo responde tu cuerpo en ayuno y frente a los alimentos, para
+                  guiarte mejor desde el inicio.
                 </p>
               </div>
             </>

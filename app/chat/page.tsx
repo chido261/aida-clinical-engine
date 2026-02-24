@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { getDeviceId } from "@/app/lib/deviceId";
 
 type OnboardingData = {
   name: string;
@@ -37,6 +38,13 @@ export default function ChatPage() {
   const [input, setInput] = useState("");
   const [isSending, setIsSending] = useState(false);
   const bottomRef = useRef<HTMLDivElement | null>(null);
+
+  // 🔥 deviceId por dispositivo (persistente)
+  const [deviceId, setDeviceId] = useState<string>("");
+
+  useEffect(() => {
+    setDeviceId(getDeviceId());
+  }, []);
 
   // 1) Cargar onboarding desde localStorage
   useEffect(() => {
@@ -84,27 +92,26 @@ Cuando quieras, dime:
   }, [messages, isSending]);
 
   const canSend = useMemo(() => {
-    return input.trim().length > 0 && !isSending;
-  }, [input, isSending]);
+    return input.trim().length > 0 && !isSending && !!deviceId;
+  }, [input, isSending, deviceId]);
 
   async function handleSend() {
     const text = input.trim();
-    if (!text || isSending) return;
+    if (!text || isSending || !deviceId) return;
 
-    // a) Agrega tu mensaje a la pantalla
     const nextMessages: ChatMessage[] = [...messages, { role: "user", content: text }];
     setMessages(nextMessages);
     setInput("");
     setIsSending(true);
 
     try {
-      // b) Llama a /api/chat enviando historial + onboarding
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          deviceId,          // 🔥 identidad por dispositivo
           messages: nextMessages,
-          onboarding, // contexto para el modelo
+          onboarding,
         }),
       });
 
@@ -114,16 +121,13 @@ Cuando quieras, dime:
       }
 
       const data = (await res.json()) as { reply: string };
-
-      // c) Agrega respuesta del asistente
       setMessages((prev) => [...prev, { role: "assistant", content: data.reply }]);
     } catch (e: any) {
       setMessages((prev) => [
         ...prev,
         {
           role: "assistant",
-          content:
-            "Tuve un problema técnico al responder 😕. Inténtalo de nuevo en unos segundos.",
+          content: "Tuve un problema técnico al responder 😕. Inténtalo de nuevo en unos segundos.",
         },
       ]);
       console.error(e);
@@ -133,7 +137,6 @@ Cuando quieras, dime:
   }
 
   function onKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
-    // Enter envía, Shift+Enter hace salto de línea
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       handleSend();
@@ -178,9 +181,7 @@ Cuando quieras, dime:
           </div>
         ))}
 
-        {isSending && (
-          <div style={{ opacity: 0.7, marginTop: 6 }}>AIDA está escribiendo…</div>
-        )}
+        {isSending && <div style={{ opacity: 0.7, marginTop: 6 }}>AIDA está escribiendo…</div>}
 
         <div ref={bottomRef} />
       </div>
@@ -199,7 +200,7 @@ Cuando quieras, dime:
             padding: 10,
             resize: "none",
           }}
-          disabled={!onboarding || isSending}
+          disabled={!onboarding || isSending || !deviceId}
         />
         <button
           onClick={handleSend}

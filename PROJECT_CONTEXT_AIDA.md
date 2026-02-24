@@ -1,150 +1,276 @@
-PROJECT_CONTEXT_AIDA.md
-Estado Actual – 22 Feb 2026
-1️⃣ Arquitectura General
 
-Framework: Next.js 16 (App Router, Turbopack)
+# PROJECT_CONTEXT_AIDA.md
+Estado Actual – 22 Feb 2026 (Actualizado Noche)
 
-Backend API routes
+---
 
-Prisma + SQLite (dev.db)
+# 1️⃣ VISIÓN GENERAL DEL PROYECTO
 
-Cliente Prisma centralizado
+AIDA (Artificial Intelligence Diabetes Assistant) es un sistema conversacional clínico enfocado en:
 
-Prompt central: app/lib/aidaPrompt.ts
+- Educación terapéutica para diabetes tipo 2 y prediabetes
+- Seguimiento cuantitativo real
+- Acompañamiento estructurado por fases (3 meses)
+- Notificaciones inteligentes
+- Escalabilidad futura como producto SaaS con licencia anual
 
-Motor cuantitativo: app/lib/aidaProgress.ts
+Objetivo estratégico:
+Convertir AIDA en un sistema clínico digital con:
+- Control de acceso
+- Prueba gratuita (trial)
+- Modelo de licencia anual
+- Infraestructura en la nube
 
-Baseline clínico: app/lib/aidaBaseline.ts
+---
 
-Onboarding persistido en localStorage
+# 2️⃣ ARQUITECTURA ACTUAL
 
-UserId actual: "demo-user"
+Framework:
+- Next.js 16 (App Router)
+- Turbopack en desarrollo
 
-2️⃣ Sistema Conversacional (AIDA)
+Backend:
+- API Routes (Node runtime)
+- Prisma ORM
+- SQLite (dev.db local)
+
+Arquitectura modular:
+
+- Prompt central → app/lib/aidaPrompt.ts
+- Motor cuantitativo → app/lib/aidaProgress.ts
+- Baseline clínico → app/lib/aidaBaseline.ts
+- Reglas contextuales → app/lib/aidaRules.ts
+- Motor nutricional → app/lib/aidaNutritionRules.ts
+- Motor por fase → app/lib/aidaPhaseRules.ts
+- Memoria persistente → app/lib/aidaMemory.ts
+
+---
+
+# 3️⃣ SISTEMA CONVERSACIONAL (ESTADO ACTUAL)
 
 AIDA actualmente:
 
-Detecta glucosa vía regex (40–600 mg/dL)
+✅ Detecta glucosa vía regex (40–600 mg/dL)
+✅ Guarda lecturas en base de datos
+✅ Guarda baseline (A1c o promedio inicial)
+✅ Calcula:
 
-Guarda lecturas en DB
+- Promedio 7 días
+- Promedio 14 días
+- Tendencia 7 vs 7
+- Cambio desde baseline
 
-Guarda baseline (A1c o promedio inicial)
+✅ Genera contexto de progreso cuantitativo
+✅ Detecta momento:
+   - AYUNO
+   - POSTCOMIDA
+   - NOCHE
+   - DESCONOCIDO
 
-Calcula:
+✅ Detecta confirmaciones (modo seguimiento)
+✅ Integra memoria histórica en el prompt
+✅ Aplica reglas clínicas antes de llamar al modelo
 
-Promedio 7 días
+---
 
-Promedio 14 días
+# 4️⃣ MEJORAS REALIZADAS HOY
 
-Tendencia 7 vs 7
+## 🔹 Corrección crítica conversacional
 
-Cambio desde baseline
+ANTES:
+- AIDA forzaba preguntas tipo “¿fue en ayuno o post?” aunque el usuario no hubiera dado lectura.
+- Se usaba onboarding.lastGlucose como si fuera lectura actual.
 
-Muestra tendencia con verbo en pasado:
+AHORA:
+- Se separó lectura del turno (glucoseNow) de datos históricos.
+- Solo se guarda lectura si el usuario dio número en ese mensaje.
+- Si no hay lectura numérica:
+  - Respuesta breve
+  - Natural
+  - Sin forzar contexto clínico
+  - Una sola pregunta abierta
 
-Bajó X mg/dL
+Resultado:
+Conversación más humana, estilo WhatsApp real.
 
-Subió X mg/dL
+---
 
-Estable
+# 5️⃣ SISTEMA PWA (YA FUNCIONAL)
 
-Backend detecta contexto:
+Implementado:
 
-AYUNO
+- manifest.ts
+- icon-192.png
+- Service Worker (public/sw.js)
+- Push subscribe endpoint
+- Push send endpoint
+- VAPID configurado
+- Variables .env.local:
+  - NEXT_PUBLIC_VAPID_PUBLIC_KEY
+  - VAPID_PRIVATE_KEY
+  - VAPID_SUBJECT
 
-POSTCOMIDA
+Dev Indicator eliminado (next.config.ts → devIndicators: false)
 
-NOCHE
+La PWA:
+- Se instala correctamente
+- Inicia desde raíz
+- No salta onboarding
+- Push probado en Android y Chrome
 
-Modo seguimiento cuando usuario confirma acción
+---
 
-3️⃣ Sistema Push Notifications (YA FUNCIONAL ✅)
-Implementado
+# 6️⃣ IDENTIDAD ACTUAL DEL SISTEMA
 
-Service Worker (public/sw.js)
+Estado actual:
 
-Subscribe endpoint:
+❗ userId = "demo-user"
 
-/api/push/subscribe
+Esto implica:
+- Sistema funcional pero no multiusuario real
+- Todas las lecturas y notificaciones comparten identidad
+- No listo aún para distribución pública
 
-Send endpoint:
+---
 
-/api/push/send
+# 7️⃣ PLAN INMEDIATO (SPRINT 1)
 
-Web-push con VAPID
+OBJETIVO: Multiusuario por dispositivo
 
-Variables .env.local configuradas:
+Diseño decidido:
 
-NEXT_PUBLIC_VAPID_PUBLIC_KEY
+Identidad por dispositivo:
+- Generar deviceId único (UUID)
+- Guardar en localStorage
+- Usar como userId real
 
-VAPID_PRIVATE_KEY
+Ventajas:
+- Separación completa entre usuarios
+- Listo para compartir link
+- Base para trial y licencias
 
-VAPID_SUBJECT
+Pendiente implementar:
 
-Soporte multi-device por userId
+- app/lib/deviceId.ts
+- Enviar deviceId al backend
+- Eliminar "demo-user"
+- Asociar push subscriptions a deviceId
 
-Limpieza automática de subscriptions 404 / 410
+---
 
-Funciona en:
+# 8️⃣ SPRINT 2 (AUTENTICACIÓN + TRIAL)
 
-Laptop (Chrome)
+Objetivo:
+- Acceso por teléfono (OTP)
+- Prueba gratuita 48 horas
+- Luego cambiar a 7 días / 30 días
+- Bloqueo posterior con paywall
 
-Android (Chrome)
+Flujo:
 
-Vía túnel Cloudflare HTTPS
+1. Usuario ingresa teléfono
+2. Backend genera OTP
+3. Envío SMS (Twilio o similar)
+4. Verificación
+5. Se activa trial:
 
-4️⃣ Estado Técnico Confirmado
+   trialStartedAt
+   trialEndsAt
 
-tsconfig corregido
+6. En backend:
+   - Si no verificado → bloquear chat
+   - Si trial expirado → bloquear chat
 
-.next excluido correctamente
+---
 
-Errores de validator eliminados
+# 9️⃣ SPRINT 3 (LICENCIA ANUAL)
 
-Dev server estable
+Futuro:
 
-Push real probado y validado
+- licenseActiveUntil
+- Revocación de dispositivo
+- Código de transferencia
+- Cambio controlado a nuevo teléfono
 
-5️⃣ Pendientes Estratégicos
+Modelo:
+Licencia vinculada a deviceId
+Revocable manualmente o vía código temporal
 
-Opciones siguientes:
+---
 
-Notificaciones automáticas programadas
+# 🔟 MIGRACIÓN A NUBE (POST-IMPLEMENTACIÓN MULTIUSUARIO)
 
-Push conectado a eventos clínicos (glucosa alta)
+Objetivo:
+Eliminar dependencia de laptop local.
 
-Persistir subscriptions en Prisma
+Arquitectura recomendada:
 
-Migrar a dominio fijo
+Frontend + API:
+- Vercel
 
-Preparar entorno producción
+Base de datos:
+- Postgres (Neon / Supabase / Railway)
 
-6️⃣ Objetivo General
+Dominio:
+- Cloudflare DNS
 
-AIDA debe convertirse en:
+Cambios necesarios:
+- Migrar Prisma de SQLite a Postgres
+- Ajustar DATABASE_URL
+- Migraciones formales
 
-Asistente clínico educativo
+Beneficios:
+- URL estable
+- HTTPS real
+- Push más confiable
+- Escalabilidad
+- Sistema listo para usuarios reales
 
-Motor de acompañamiento 3 meses
+---
 
-Sistema con:
+# 1️⃣1️⃣ ESTADO GENERAL DEL PROYECTO
 
-Seguimiento cuantitativo
+Nivel actual:
 
-Notificaciones inteligentes
+🟢 Prototipo clínico avanzado funcional
+🟢 Motor cuantitativo sólido
+🟢 Push funcional
+🟢 PWA estable
+🟡 No multiusuario aún
+🟡 No autenticación
+🔴 No producción en nube
 
-Intervención contextual automática
+---
 
-Escalable a producción
+# 1️⃣2️⃣ OBJETIVO ESTRATÉGICO FINAL
 
-7️⃣ Repositorio Oficial
+Convertir AIDA en:
 
-Repositorio público activo:
+- Asistente clínico educativo digital
+- Sistema de acompañamiento 3 meses
+- Plataforma con control de acceso
+- Modelo de licencia anual
+- Infraestructura SaaS escalable
+
+---
+
+# 1️⃣3️⃣ REPOSITORIO
 
 https://github.com/chido261/aida-clinical-engine
 
-El código en producción local puede tener cambios no subidos.
-Confirmar al inciar un nuevo chat que se actualice
+IMPORTANTE:
+Antes de continuar en otro chat:
+Confirmar que el código local esté sincronizado con GitHub.
 
-Código local actual a github
+---
 
+# 1️⃣4️⃣ PRIORIDAD PARA MAÑANA
+
+1️⃣ Implementar multiusuario por dispositivo (Sprint 1)
+2️⃣ Probar con 2–3 dispositivos reales
+3️⃣ Verificar separación de lecturas y push
+4️⃣ Preparar base de datos para futura migración
+
+---
+
+FIN DE CONTEXTO ACTUALIZADO
