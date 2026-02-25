@@ -1,0 +1,45 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model UserState {
+  id                 String    @id
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+  baselineA1c        Float?
+  baselineAvgGlucose Int?
+  baselineSetAt      DateTime?
+  dailyMsgDate       String?
+  dailyMsgCount      Int?
+  totalMsgCount      Int       @default(0)
+  lastMsgAt          DateTime?
+  trialStartedAt     DateTime?
+  trialEndsAt        DateTime?
+  licenseStatus      String    @default("trial")
+  phoneE164          String?
+  phoneVerifiedAt    DateTime?
+}
+
+model Reading {
+  id        Int      @id @default(autoincrement())
+  userId    String
+  glucose   Int
+  moment    String
+  symptoms  String?
+  createdAt DateTime @default(now())
+}
+
+model UsageDaily {
+  id            Int      @id @default(autoincrement())
+  userId        String
+  dateLocal     String
+  count         Int      @default(0)
+  licenseStatus String
+  updatedAt     DateTime @updatedAt
+
+  @@unique([userId, dateLocal])
+}

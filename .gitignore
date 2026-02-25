@@ -47,3 +47,13 @@ dev.db
 
 # prisma generated client (por seguridad)
 node_modules/.prisma
+
+# production secrets
+.env.production
+.env.local
+
+# sqlite local
+prisma/dev.db
+
+# prisma shadow db
+prisma/*.db
