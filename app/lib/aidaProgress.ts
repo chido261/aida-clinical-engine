@@ -1,5 +1,5 @@
 // app/lib/aidaProgress.ts
-import type { PrismaClient } from "@prisma/client";
+import { PrismaClient } from "@prisma/client";
 
 /**
  * Resumen clínico cuantitativo para AIDA (últimos 14 días / últimas 14 lecturas).
