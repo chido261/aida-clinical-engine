@@ -108,7 +108,7 @@ export async function getProgressMetrics(userId: string): Promise<ProgressMetric
 
   const values14 = last14
   .map((r: { glucose: number | null }) => r.glucose)
-  .filter((g): g is number => typeof g === "number");
+  .filter((g: number | null): g is number => typeof g === "number");
 
   // Last7 = las 7 más recientes; Prev7 = las 7 anteriores (dentro de 14)
   const last7 = values14.slice(0, 7);
