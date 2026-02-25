@@ -1,5 +1,5 @@
 // app/lib/aidaProgress.ts
-import { PrismaClient } from "@prisma/client";
+import { prisma } from "@/app/lib/prisma";
 
 /**
  * Resumen clínico cuantitativo para AIDA (últimos 14 días / últimas 14 lecturas).
@@ -41,7 +41,7 @@ export type ProgressMetrics = {
   a1cEstFromAvg7?: number;
 
   deltaVsBaselineMgDl?: number; // avg14 - baselineAvgGlucose
-  deltaVsBaselinePct?: number;  // % relativo
+  deltaVsBaselinePct?: number; // % relativo
 };
 
 function round1(n: number) {
@@ -61,7 +61,8 @@ function stdDevSample(xs: number[]): number | undefined {
   // SD muestral (n-1). Si n < 2, no aplica.
   if (xs.length < 2) return undefined;
   const m = mean(xs)!;
-  const variance = xs.reduce((acc, x) => acc + Math.pow(x - m, 2), 0) / (xs.length - 1);
+  const variance =
+    xs.reduce((acc, x) => acc + Math.pow(x - m, 2), 0) / (xs.length - 1);
   return Math.sqrt(variance);
 }
 
@@ -84,9 +85,9 @@ function trendLabelFromDelta(delta: number | undefined): TrendLabel {
 
 /**
  * Obtiene métricas con Prisma usando UserState + últimas lecturas.
- * Asume que tus modelos se llaman UserState y Reading (según tu resumen).
+ * Usa el prisma singleton (app/lib/prisma.ts)
  */
-export async function getProgressMetrics(prisma: PrismaClient, userId: string): Promise<ProgressMetrics> {
+export async function getProgressMetrics(userId: string): Promise<ProgressMetrics> {
   const userState = await prisma.userState.findUnique({
     where: { id: userId },
     select: {
@@ -105,7 +106,9 @@ export async function getProgressMetrics(prisma: PrismaClient, userId: string): 
     select: { glucose: true, createdAt: true },
   });
 
-  const values14 = last14.map(r => r.glucose).filter((g): g is number => typeof g === "number");
+  const values14 = last14
+    .map((r) => r.glucose)
+    .filter((g): g is number => typeof g === "number");
 
   // Last7 = las 7 más recientes; Prev7 = las 7 anteriores (dentro de 14)
   const last7 = values14.slice(0, 7);
@@ -115,17 +118,18 @@ export async function getProgressMetrics(prisma: PrismaClient, userId: string): 
   const avgLast7 = mean(last7);
   const avgPrev7 = mean(prev7);
 
-  const trendMgDl = (avgLast7 !== undefined && avgPrev7 !== undefined)
-    ? (avgLast7 - avgPrev7)
-    : undefined;
+  const trendMgDl =
+    avgLast7 !== undefined && avgPrev7 !== undefined
+      ? avgLast7 - avgPrev7
+      : undefined;
 
   const sd14 = stdDevSample(values14);
   const min14 = values14.length ? Math.min(...values14) : undefined;
   const max14 = values14.length ? Math.max(...values14) : undefined;
 
-  const over180 = values14.filter(v => v > 180).length;
-  const over250 = values14.filter(v => v > 250).length;
-  const under70 = values14.filter(v => v < 70).length;
+  const over180 = values14.filter((v) => v > 180).length;
+  const over250 = values14.filter((v) => v > 250).length;
+  const under70 = values14.filter((v) => v < 70).length;
 
   const pctOver180 = pct(over180, values14.length);
   const pctOver250 = pct(over250, values14.length);
@@ -137,7 +141,9 @@ export async function getProgressMetrics(prisma: PrismaClient, userId: string): 
   const baselineAvgGlucose = userState?.baselineAvgGlucose ?? null;
 
   const deltaVsBaselineMgDl =
-    baselineAvgGlucose !== null && avg14 !== undefined ? (avg14 - baselineAvgGlucose) : undefined;
+    baselineAvgGlucose !== null && avg14 !== undefined
+      ? avg14 - baselineAvgGlucose
+      : undefined;
 
   const deltaVsBaselinePct =
     baselineAvgGlucose !== null && avg14 !== undefined && baselineAvgGlucose !== 0
@@ -172,8 +178,10 @@ export async function getProgressMetrics(prisma: PrismaClient, userId: string): 
     a1cEstFromAvg14: a1cEstFromAvg14 !== undefined ? round1(a1cEstFromAvg14) : undefined,
     a1cEstFromAvg7: a1cEstFromAvg7 !== undefined ? round1(a1cEstFromAvg7) : undefined,
 
-    deltaVsBaselineMgDl: deltaVsBaselineMgDl !== undefined ? round1(deltaVsBaselineMgDl) : undefined,
-    deltaVsBaselinePct: deltaVsBaselinePct !== undefined ? round1(deltaVsBaselinePct) : undefined,
+    deltaVsBaselineMgDl:
+      deltaVsBaselineMgDl !== undefined ? round1(deltaVsBaselineMgDl) : undefined,
+    deltaVsBaselinePct:
+      deltaVsBaselinePct !== undefined ? round1(deltaVsBaselinePct) : undefined,
   };
 }
 
@@ -190,8 +198,12 @@ export function buildProgressContext(m: ProgressMetrics): string {
       `- Lecturas (14): ${m.n14}`,
       m.avgLast7 !== undefined ? `- Promedio 7: ${round0(m.avgLast7)} mg/dL` : `- Promedio 7: N/D`,
       m.avg14 !== undefined ? `- Promedio 14: ${round0(m.avg14)} mg/dL` : `- Promedio 14: N/D`,
-      m.sd14 !== undefined ? `- Variabilidad SD14: ${round0(m.sd14)} (más bajo = más estable)` : `- Variabilidad SD14: N/D`,
-      m.trendMgDl !== undefined ? `- Tendencia 7vs7: ${m.trendLabel} (${round0(m.trendMgDl)} mg/dL)` : `- Tendencia 7vs7: INSUFICIENTE`,
+      m.sd14 !== undefined
+        ? `- Variabilidad SD14: ${round0(m.sd14)} (más bajo = más estable)`
+        : `- Variabilidad SD14: N/D`,
+      m.trendMgDl !== undefined
+        ? `- Tendencia 7vs7: ${m.trendLabel} (${round0(m.trendMgDl)} mg/dL)`
+        : `- Tendencia 7vs7: INSUFICIENTE`,
     ].join("\n");
   }
 
@@ -202,13 +214,23 @@ export function buildProgressContext(m: ProgressMetrics): string {
     m.avgLast7 !== undefined ? `- Promedio 7: ${round0(m.avgLast7)} mg/dL` : `- Promedio 7: N/D`,
     m.avg14 !== undefined ? `- Promedio 14: ${round0(m.avg14)} mg/dL` : `- Promedio 14: N/D`,
     m.deltaVsBaselineMgDl !== undefined
-      ? `- Cambio vs baseline: ${m.deltaVsBaselineMgDl > 0 ? "+" : ""}${round0(m.deltaVsBaselineMgDl)} mg/dL (${m.deltaVsBaselinePct !== undefined ? `${m.deltaVsBaselinePct > 0 ? "+" : ""}${round1(m.deltaVsBaselinePct)}%` : "N/D"})`
+      ? `- Cambio vs baseline: ${m.deltaVsBaselineMgDl > 0 ? "+" : ""}${round0(m.deltaVsBaselineMgDl)} mg/dL (${
+          m.deltaVsBaselinePct !== undefined
+            ? `${m.deltaVsBaselinePct > 0 ? "+" : ""}${round1(m.deltaVsBaselinePct)}%`
+            : "N/D"
+        })`
       : `- Cambio vs baseline: N/D`,
     m.trendMgDl !== undefined
       ? `- Tendencia 7vs7: ${m.trendLabel} (${m.trendMgDl > 0 ? "+" : ""}${round0(m.trendMgDl)} mg/dL)`
       : `- Tendencia 7vs7: INSUFICIENTE`,
-    m.sd14 !== undefined ? `- Variabilidad SD14: ${round0(m.sd14)} (más bajo = más estable)` : `- Variabilidad SD14: N/D`,
-    `- % >180: ${m.pctOver180 !== undefined ? `${round1(m.pctOver180)}%` : "N/D"} | % >250: ${m.pctOver250 !== undefined ? `${round1(m.pctOver250)}%` : "N/D"} | % <70: ${m.pctUnder70 !== undefined ? `${round1(m.pctUnder70)}%` : "N/D"}`,
-    `- A1c est. (14): ${m.a1cEstFromAvg14 !== undefined ? m.a1cEstFromAvg14 : "N/D"} | A1c est. (7): ${m.a1cEstFromAvg7 !== undefined ? m.a1cEstFromAvg7 : "N/D"}`,
+    m.sd14 !== undefined
+      ? `- Variabilidad SD14: ${round0(m.sd14)} (más bajo = más estable)`
+      : `- Variabilidad SD14: N/D`,
+    `- % >180: ${m.pctOver180 !== undefined ? `${round1(m.pctOver180)}%` : "N/D"} | % >250: ${
+      m.pctOver250 !== undefined ? `${round1(m.pctOver250)}%` : "N/D"
+    } | % <70: ${m.pctUnder70 !== undefined ? `${round1(m.pctUnder70)}%` : "N/D"}`,
+    `- A1c est. (14): ${m.a1cEstFromAvg14 !== undefined ? m.a1cEstFromAvg14 : "N/D"} | A1c est. (7): ${
+      m.a1cEstFromAvg7 !== undefined ? m.a1cEstFromAvg7 : "N/D"
+    }`,
   ].join("\n");
 }
