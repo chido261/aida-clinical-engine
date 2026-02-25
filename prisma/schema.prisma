@@ -4,7 +4,7 @@ generator client {
 
 datasource db {
   provider = "sqlite"
-}
+  }
 
 model UserState {
   id        String   @id // deviceId (NO default demo-user)
