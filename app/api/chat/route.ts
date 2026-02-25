@@ -286,7 +286,7 @@ export async function POST(req: Request) {
     }
 
     // Progress context
-    const progressMetrics = await getProgressMetrics(prisma, userId);
+    const progressMetrics = await getProgressMetrics(userId);
     const progressContext = buildProgressContext(progressMetrics);
 
     // Reglas por fase
