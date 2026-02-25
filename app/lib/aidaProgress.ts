@@ -107,8 +107,8 @@ export async function getProgressMetrics(userId: string): Promise<ProgressMetric
   });
 
   const values14 = last14
-  .map((r: { glucose: number }) => r.glucose)
-  .filter((g: number): g is number => typeof g === "number");
+  .map((r: { glucose: number | null }) => r.glucose)
+  .filter((g): g is number => typeof g === "number");
 
   // Last7 = las 7 más recientes; Prev7 = las 7 anteriores (dentro de 14)
   const last7 = values14.slice(0, 7);
@@ -127,9 +127,9 @@ export async function getProgressMetrics(userId: string): Promise<ProgressMetric
   const min14 = values14.length ? Math.min(...values14) : undefined;
   const max14 = values14.length ? Math.max(...values14) : undefined;
 
-  const over180 = values14.filter((v) => v > 180).length;
-  const over250 = values14.filter((v) => v > 250).length;
-  const under70 = values14.filter((v) => v < 70).length;
+  const over180 = values14.filter((v: number) => v > 180).length;
+  const over250 = values14.filter((v: number) => v > 250).length;
+  const under70 = values14.filter((v: number) => v < 70).length;
 
   const pctOver180 = pct(over180, values14.length);
   const pctOver250 = pct(over250, values14.length);
