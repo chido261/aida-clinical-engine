@@ -1,222 +1,213 @@
 # PROJECT_CONTEXT_AIDA.md
-**Estado Actual – 02 Mar 2026 (Actualizado: Switch Local/Cloud + Prisma 7 config + Migraciones OK + Backup/Restore SQLite + Fail-fast env + API config + Chat paywall control)**
+**Estado Actual – 02 Mar 2026 (Actualizado: Daily Summary + Estado clínico persistente + Intercepts post-hipo + Rate limit 50/día por fecha local + Validaciones Prisma client + avances Módulo 2 plan)**
 
 ---
 
 ## 1) Visión general del proyecto
-**AIDA (Artificial Intelligence Diabetes Assistant)** es un asistente conversacional educativo para personas con **diabetes tipo 2 / prediabetes**, estilo WhatsApp, con:
+**AIDA (Artificial Intelligence Diabetes Assistant)** es un asistente conversacional **educativo** para personas con **diabetes tipo 2 / prediabetes**, estilo WhatsApp, con:
 
-- Educación terapéutica y acompañamiento por fases (meta 3 meses).
+- Acompañamiento tipo **Coach profesional** (pasos cortos y accionables).
 - Seguimiento cuantitativo real (lecturas, promedios, tendencia).
-- PWA con notificaciones push (ya existe base técnica en el proyecto).
-- Control por **dispositivo** (multiusuario real).
-- Modelo **trial + full** (paywall en cloud; en local se ignora para desarrollo).
-- Camino a infraestructura en la nube (Postgres en Neon / deploy Vercel).
+- PWA con notificaciones push (base técnica ya existe).
+- Control por **dispositivo** (`deviceId`) → multiusuario real.
+- Modelo **Trial → Full → Mantenimiento** (en cloud se aplicará paywall; en local se ignora para dev).
+- Camino a infraestructura en la nube (Neon Postgres / deploy).
 
 ---
 
 ## 2) Stack / Arquitectura actual
-- **Next.js 16** (App Router)
+- **Next.js** (App Router)
 - API principal: `app/api/chat/route.ts`
-- Prisma **7.x** + SQLite local (dev.db) / Postgres cloud (Neon)
-- Prisma Client singleton: `app/lib/prisma.ts`
-- Config Prisma 7: `prisma.config.ts` (elige schema y migrations por entorno)
+- Prisma **7.x** + SQLite local / Postgres cloud (Neon)
+- Prisma Client singleton + switch local/cloud: `app/lib/prisma.ts` + `app/lib/runtimeConfig.ts`
+- Motor clínico: `app/lib/aidaRules.ts` (bypass + clinical engine)
+- Memoria/estado usuario: `app/lib/aidaMemory.ts`
+- Resumen diario: `app/lib/aidaDailySummary.ts`
 - UI principal: `/chat` (`app/chat/page.tsx`)
-- Endpoint config: `/api/config` (`app/api/config/route.ts`)
+- Config endpoint: `/api/config`
 
 ---
 
-## 3) Switch Local vs Cloud (objetivo: cambiar sin tocar muchos archivos)
-### 3.1 Variables (idea base)
+## 3) Switch Local vs Cloud
 - `APP_MODE`: `local` | `cloud`
 - `DATABASE_URL`:
   - Local: `file:./prisma/dev.db`
   - Cloud: `postgresql://...` (Neon)
 
-### 3.2 runtimeConfig (fuente de verdad)
-Existe `app/lib/runtimeConfig.ts` (o equivalente) que expone:
-- `APP_MODE`
-- `getDatabaseUrl()`
-
-### 3.3 Endpoint para frontend
-- `app/api/config/route.ts` devuelve `{ appMode: APP_MODE }`
-- `app/chat/page.tsx` consulta `/api/config` y decide:
-  - **Local:** ignora 402/paywall (no bloquea chat para desarrollo)
-  - **Cloud:** si 402, muestra modal de pago y bloquea chat
+**Fail-fast env (en `app/lib/prisma.ts`)**
+- Si `APP_MODE=cloud` → prohíbe `DATABASE_URL` tipo `file:`
+- Si `APP_MODE=local` → exige `DATABASE_URL` tipo `file:`
 
 ---
 
-## 4) Prisma 7: reglas y estado actual (IMPORTANTE)
-### 4.1 Prisma config manda la URL (no schema)
-En Prisma 7 con `prisma.config.ts`, **NO** se usa `url = env("DATABASE_URL")` dentro de `schema.prisma`.
-La URL se define aquí:
-- `prisma.config.ts` → `datasource: { url: databaseUrl }`
-
-### 4.2 Config por entorno (actual)
-`prisma.config.ts` (actual):
-- Local:
-  - env: `.env.local`
-  - schema: `prisma/schema.prisma` (sqlite)
-  - migrations: `prisma/migrations`
-- “Production/Cloud” (vía `PRISMA_ENV=production`):
-  - env: `.env.production`
-  - schema: `prisma/schema.postgres.prisma` (postgres)
-  - migrations: `prisma/migrations_pg`
-
-### 4.3 Migraciones (local) ya existentes y consistentes
-- Carpeta: `prisma/migrations/` ya tiene historial real (varias migraciones).
-- Verificación ejecutada:
-  - `npm run db:migrate` → “Already in sync, no schema change or pending migration”.
-
----
-
-## 5) Fail-fast env (0.5 completado)
-Archivo: `app/lib/prisma.ts`
-
-- Obtiene URL con `getDatabaseUrl()`
-- Aplica validación estricta:
-  - Si `APP_MODE=cloud` → **prohíbe** `DATABASE_URL` que empiece con `file:`
-  - Si `APP_MODE=local` → **exige** `DATABASE_URL` tipo `file:...`
-- Resultado: evita deploy roto o confusiones (sqlite en Vercel / postgres en local).
-
----
-
-## 6) Base de datos y modelos (estado real)
-### 6.1 Local (modo actual de trabajo)
-- SQLite: `prisma/dev.db`
-- DB usada por Prisma: `file:./prisma/dev.db`
-
-### 6.2 Cloud (preparado)
-- Postgres Neon listo (cuando se active `APP_MODE=cloud` y `DATABASE_URL` Postgres).
-- Schema Postgres: `prisma/schema.postgres.prisma` (alineado al schema sqlite).
-
+## 4) Base de datos y modelos (estado real)
 Modelos principales:
-- `UserState` (por deviceId): baseline, rate limit, trial, status de licencia, etc.
-- `Reading` (lecturas glucosa)
-- `UsageDaily` (métrica diaria por usuario)
+- `UserState` (por deviceId): licencia/trial, rate-limit diario, timestamps, **clinicalState**, etc.
+- `Reading`: lecturas glucosa (glucose, moment, createdAt, symptoms)
+- `UsageDaily`: métrica diaria por usuario (dateLocal, count)
+
+### Campos nuevos/clave trabajados
+- `UserState.clinicalState`: `"HYPO_ACTIVE" | "RECOVERING_FROM_HYPO" | null`
+- Daily summary (campos agregados en schema):
+  - `UserState.dailySummaryDate`
+  - `UserState.dailySummaryCount`
+(Estos se usan para evitar repetir el resumen si el usuario insiste varias veces el mismo día.)
 
 ---
 
-## 7) Trial / Paywall / Rate-limit (estado actual)
-**Backend (`app/api/chat/route.ts`)**
-- `ensureUserState()` crea/asegura trial (actualmente 48 horas).
-- Si trial expiró:
-  - responde 402 con paywall (title/message/cta).
-- Rate limit:
-  - 50 mensajes/día SOLO en `licenseStatus === "trial"`
-  - `active` es ilimitado.
-- Se registran métricas:
-  - `UserState.dailyMsgCount/dailyMsgDate/totalMsgCount/lastMsgAt`
-  - `UsageDaily` por fecha local (America/Mexico_City)
+## 5) MÓDULO 1 — Núcleo conversacional tipo Coach (estado real)
+### 5.1 Coach consistente (tono pro)
+- Respuestas cortas y accionables, emojis moderados.
+- Regla: si falta dato → **máximo 1 pregunta**.
 
-**Frontend (`app/chat/page.tsx`)**
-- Cloud: muestra paywall modal y bloquea input al recibir 402.
-- Local: si recibe 402, muestra aviso DEV y NO bloquea (para seguir desarrollando).
+### 5.2 “No asumir” momento (AYUNO/POST/NOCHE)
+- `route.ts` detecta el momento SOLO del texto actual:
+  - Si hay lectura numérica pero momento desconocido: preguntar 1 vez:
+    - “¿Fue en ayunas, 2h postcomida o antes de dormir?”
+- Importante: aunque en memoria haya lecturas previas, **NO etiquetar** el momento si el usuario no lo dijo.
 
----
+### 5.3 Seguridad clínica (banderas rojas)
+Archivo: `app/lib/aidaRules.ts`
+- Dolor pecho / falta de aire → urgencias (aunque no haya glucosa).
+- Hipo <70 → protocolo 15-15.
+- 70–80 + síntomas → tratar como hipo.
+- Hiper ≥300:
+  - con vómitos/síntomas → urgencias
+  - sin síntomas → respiración + agua + re-checar en 15 min (sin ajustar medicación)
 
-## 8) Backup/Restore SQLite (0.4 completado)
-Objetivo: poder experimentar sin miedo y revertir en segundos.
+### 5.4 Estado clínico persistente + intercept determinístico (✅ importante)
+Objetivo logrado: si hubo hipo, AIDA **recuerda** el estado y no “saluda normal”.
 
-Carpetas/archivos:
-- `backups/` (en raíz)
-- `scripts/dbBackup.mjs`
-- `scripts/dbRestore.mjs`
+Implementación (en `app/api/chat/route.ts`):
+- Si bypass por hipo (<70) → se guarda lectura + `UserState.clinicalState = HYPO_ACTIVE`.
+- Si venía de hipo y la glucosa sube a >=90 → limpia `clinicalState = null`.
+- Intercepts:
+  - Si `clinicalState === HYPO_ACTIVE` y el usuario escribe sin número (ej. “hola”) → AIDA intercepta y pide confirmación de 15-15 y re-medición.
+  - Si `clinicalState === RECOVERING_FROM_HYPO` y no hay número → pide glucosa actual.
 
-Scripts NPM:
-- `npm run db:backup` → copia `prisma/dev.db` a `backups/dev-<timestamp>.db`
-- `npm run db:restore backups/<archivo>.db` → restaura a `prisma/dev.db`
+### 5.5 Motor clínico (orden correcto)
+En `route.ts`:
+- Se obtiene `previousGlucose` ANTES de guardar la nueva lectura:
+  - `lastBeforeSave = await getLastReading(userId)` (solo si glucoseNow existe)
+  - `previousGlucose = lastBeforeSave?.glucose ?? null`
+- Se guarda la lectura.
+- Luego corre `applyClinicalDecisionEngine({... previousGlucose, clinicalState ...})`
+- Si decide algo, actualiza `UserState.clinicalState`.
 
-✅ Restore probado y funcionando.
+### 5.6 Resumen diario (parcial: manual + anti-duplicado)
+- `buildDailySummary(userId)` genera:
+  - lecturas del día
+  - promedio / min / max
+  - señal clínica (ej. hipo)
+  - micro-paso mañana
+- `route.ts` ya intercepta `wantsSummary` cuando el usuario pide “resumen”.
+- Anti-spam: si ya se entregó resumen hoy → “Ya te entregué tu resumen hoy...”
 
----
-
-## 9) Scripts de Prisma (estado)
-`package.json` incluye scripts para:
-- `db:migrate` (migrate dev)
-- `db:deploy` (migrate deploy)
-- `db:push`
-- `db:reset`
-- `db:studio`
-- `db:backup` / `db:restore`
-
-(Nota: en Prisma 7, migraciones Cloud deben correr con `PRISMA_ENV=production` y `.env.production` correcto, cuando toque.)
-
----
-
-## 10) Qué se completó hoy (MÓDULO 0 + MÓDULO 1 parcial)
-
-### MÓDULO 0 — Base técnica y switch (Local/Cloud)
-- ✅ Switch APP_MODE + DATABASE_URL (local/cloud)
-- ✅ Paywall apagado en local (no bloquea desarrollo)
-- ✅ Migraciones Prisma formales OK (sin drift)
-- ✅ Backup/Restore SQLite (1 comando cada uno)
-- ✅ Fail-fast env (cloud vs local) en `app/lib/prisma.ts`
-- ✅ Endpoint `/api/config` para que el frontend conozca el modo
-
-### MÓDULO 1 — Núcleo conversacional tipo Coach (avances)
-**1.1 Prompt Coach Pro**
-- ✅ Prompt actualizado a **“coach empático profesional”** (WhatsApp, operativo, sin alarmismo).
-- ✅ Respuesta normal: **4–6 líneas**; si requiere explicación clínica: **8–12 líneas**.
-- ✅ Emojis moderados (1–2).
-
-**Persistencia / coherencia**
-- ✅ “Glicosilada/A1c” ahora se detecta y se **guarda en UserState** (`baselineA1c`, `baselineSetAt`) y se puede recordar al reabrir.
-
-**1.4 Seguridad clínica (banderas rojas)**
-- ✅ `app/lib/aidaRules.ts` mejorado:
-  - Dolor en pecho / falta de aire → **urgencias** (aunque no haya glucosa).
-  - **Hipoglucemia <70** → Protocolo 15-15 con tono empático.
-  - 70–80 + síntomas → tratar como hipo (15-15).
-  - **Hiperglucemia ≥300**:
-    - Con vómitos o síntomas → urgencias.
-    - Sin síntomas → tranquilizar + respiración + agua con limón (sin azúcar) + revisar si tocaba medicamento (sin ajustar dosis) + re-checar en 15 min.
-
-**Importante (continuidad)**
-- ✅ En `app/api/chat/route.ts`: si se dispara un **bypass de seguridad**, **igual se guarda** la lectura en `Reading` para mantener continuidad al reabrir.
+⚠️ Pendiente Módulo 1.5: hacerlo automático (sin que el usuario lo pida) con reglas de “1 vez al día” y/o al cerrar el día.
 
 ---
 
-## 11) Próximo trabajo (Siguiente chat): MÓDULO 1
+## 6) Trial / Paywall / Rate-limit (estado actual)
+**Rate limit**
+- 50 mensajes/día SOLO en `licenseStatus === "trial"`.
+- Reset del contador por **fecha local** `America/Mexico_City`:
+  - `dailyMsgDate === todayLocal ? dailyMsgCount + 1 : 1`
+- `UsageDaily` upsert por `{ userId, dateLocal }`.
 
-### 1.2 Motor por contexto (ayuno / post / noche) — “sin inventar”
-- Ajuste fino: **NO asumir** “AYUNO/POST/NOCHE” si el usuario no lo dijo en el mensaje actual.
-- Si hay glucosa pero momento desconocido → **1 sola pregunta** (ayuno / 2h post / antes de dormir).
-
-### 1.3 Acciones concretas + 1 pregunta máximo
-- Reforzar regla: si pide “¿qué hago ahorita?” → **acción primero**, sin interrogar.
-- Si falta info → **máx 1 pregunta**.
-
-### 1.4 Seguimiento clínico real (post-hipo)
-Objetivo: que al reabrir la app, AIDA recuerde que venimos de una hipo y dé seguimiento.
-- Pendiente: persistir un **estado clínico** simple (ej: `HYPO_ACTIVE`, `RECOVERING_FROM_HYPO`, `null`).
-- Implementar lógica: si venimos de hipo y el usuario manda “hola” sin número → pedir **re-chequeo** (no saludo genérico).
-
-### 1.5 Resumen diario automático
-- Pendiente: resumen corto del día (lecturas + micro-paso para mañana).
+**Trial**
+- Actualmente implementado como trial por horas (48h) en `ensureUserState()` (MÓDULO 2 lo cambia a 7 días exactos).
 
 ---
 
-## 12) Texto listo para pegar en el siguiente chat
+## 7) Archivos clave (lo que NO tocar sin motivo)
+- `app/api/chat/route.ts` → orquestación completa
+- `app/lib/aidaRules.ts` → bypass + clinical engine
+- `app/lib/aidaMemory.ts` → ensureUserState + isTrialExpired + lecturas
+- `app/lib/aidaDailySummary.ts` → resumen diario
+- `prisma/schema.prisma` (sqlite) + `prisma/schema.postgres.prisma` (cloud)
+- `prisma/migrations/...` (incluye migración daily summary fields)
 
-Estamos trabajando en **AIDA – Clinical Engine** (Next.js App Router + Prisma 7).
+---
 
-**Estado actual (estable):**
-- Local funciona con **SQLite** en `prisma/dev.db`.
-- Switch **APP_MODE local/cloud** + endpoint `/api/config`.
-- **Backup/restore** SQLite:
-  - `npm run db:backup`
-  - `npm run db:restore backups/<archivo>.db`
-- Prompt coach pro ya está afinado (4–6 líneas, empático, emojis moderados).
-- “Glicosilada/A1c” ya se guarda en `UserState`.
-- `aidaRules.applySafetyBypass()` ya cubre:
-  - pecho/respiración → urgencias
-  - hipo <70 → 15-15
-  - 70–80 + síntomas → 15-15
-  - hiper ≥300 (con síntomas/vómitos → urgencias; sin síntomas → respiración + agua con limón + re-checar 15 min)
-- `route.ts`: si hay bypass, **se guarda Reading** para continuidad.
+## 8) Estado GitHub (para push)
+Cambios detectados:
+- modified: `app/api/chat/route.ts`
+- modified: `prisma/schema.prisma`
+- modified: `prisma/schema.postgres.prisma`
+- untracked:
+  - `app/lib/aidaDailySummary.ts`
+  - `prisma/migrations/20260302113746_add_daily_summary_fields/`
 
-**Siguiente objetivo (en el nuevo chat):**
-1) Implementar **estado clínico persistente** para seguimiento post-hipo (al reabrir).
-2) Afinar el motor por contexto (no asumir momento; 1 pregunta máximo).
-3) Preparar **resumen diario** (1.5).
+Comandos recomendados:
+- `git status`
+- `git add .`
+- `git commit -m "Add daily summary + clinical state intercept + trial daily limit"`
+- `git push`
+
+(Advertencia normal LF/CRLF en Windows, no es bloqueo.)
+
+---
+
+## 9) PLAN — MÓDULO 2 (lo que sigue)
+### TRIAL 7D (nuevo objetivo)
+Requerimientos:
+- Duración exacta **7 días** (no 48h).
+- Límite: **50 mensajes por día** (se mantiene).
+- Solo “Fase Trial”: NO desescalamiento de fármacos.
+- Objetivo: estabilizar lecturas (ayuno y 2h post) de forma segura.
+- Día 7: reporte final:
+  - promedio 7 días
+  - tendencia
+  - hábitos que funcionaron
+  - invitación a Full
+
+Cambios técnicos pendientes:
+- Cambiar `ensureUserState()`:
+  - `trialEndsAt = now + 7 días`
+  - lógica de expiración por fecha
+- Agregar “TrialDayIndex” (opcional):
+  - day 1..7 calculado por diferencia entre `trialStartedAt` y `now` (tz MX).
+- Reporte día 7: función nueva `buildTrialFinalReport(userId)`.
+
+### FULL 12 semanas / 90 días
+- Fase 1: estabilización glucosa + horarios
+- Fase 2: optimización nutricional + sensibilidad a insulina
+- Fase 3: mantenimiento + prevención recaída
+- Objetivo: “control real” + glicosilada < 5.6 (medible).
+- Medicación: NO quitar meds automático.
+  - Pendiente: módulo de conversación guiada para hablar con médico.
+
+### Mantenimiento (post 3 meses)
+- Pago mensual recurrente cancelable.
+- CTA de pago solo cuando termine Full.
+
+---
+
+## 10) Requerimientos UI (pendiente de implementar)
+El asistente debe mostrar:
+1) Leyenda fija abajo: “Asistente educativo, no sustituye consulta médica.”
+2) Estado del modo:
+   - Trial (días restantes) + link/botón de pago siempre visible en trial
+   - Full (semanas restantes) sin botón, hasta que termine
+   - Mantenimiento (suscripción mensual) con opción de cancelar
+
+Recomendación técnica:
+- `/api/config` o nuevo `/api/status` que devuelva:
+  - `licenseStatus`
+  - `daysRemaining` (trial/full)
+  - `modeLabel`
+  - `ctaUrl` (si aplica)
+
+---
+
+## 11) Texto listo para iniciar el siguiente chat
+Estamos trabajando en AIDA (Next.js App Router + Prisma 7). Ya quedó:
+- Estado clínico persistente post-hipo con intercepts (HYPO_ACTIVE/RECOVERING).
+- Resumen diario manual (cuando el usuario lo pide) + anti-duplicado.
+- Rate limit trial 50/día con reset por fecha local MX.
+- Bypass clínico guarda lecturas y setea clinicalState.
+
+Siguiente paso: arrancamos MÓDULO 2:
+1) Cambiar trial de 48h a 7 días exactos.
+2) Reporte final día 7.
+3) API/Frontend para mostrar “modo actual” + disclaimer educativo + CTAs.

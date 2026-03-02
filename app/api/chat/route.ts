@@ -49,6 +49,10 @@ type Moment = "AYUNO" | "POSTCOMIDA" | "NOCHE" | "DESCONOCIDO";
 const currentPhase = "FASE_1";
 const MX_TZ = "America/Mexico_City";
 
+// ✅ UI constants
+const EDUCATIONAL_DISCLAIMER =
+  "AIDA es un asistente educativo. No sustituye la valoración de un profesional de la salud. En urgencias o síntomas severos: acude a atención médica.";
+
 // ---------------- helpers ----------------
 
 function loadPhase1Protocol() {
@@ -69,6 +73,104 @@ function getLocalDateISO(timeZone: string) {
   const m = parts.find((p) => p.type === "month")?.value ?? "01";
   const d = parts.find((p) => p.type === "day")?.value ?? "01";
   return `${y}-${m}-${d}`;
+}
+
+function daysLeftFromEndsAt(endsAt?: Date | null) {
+  if (!endsAt) return null;
+  const ms = new Date(endsAt).getTime() - Date.now();
+  const days = Math.ceil(ms / (1000 * 60 * 60 * 24));
+  return Math.max(0, days);
+}
+
+function buildUI(userState?: any, opts?: { blocked?: boolean }) {
+  const blocked = Boolean(opts?.blocked);
+
+  // LOCAL (dev): no paywall, pero sí mostramos modo
+  if (isLocal) {
+    return {
+      disclaimer: EDUCATIONAL_DISCLAIMER,
+      mode: "LOCAL",
+      modeLabel: "Modo: Desarrollo (Local)",
+      daysLeft: null,
+      blocked: false,
+      ctaText: null,
+      ctaUrl: null,
+    };
+  }
+
+  const status = (userState?.licenseStatus ?? "trial") as string;
+
+  // Trial
+  if (status === "trial") {
+    const daysLeft = daysLeftFromEndsAt(userState?.trialEndsAt ?? null);
+    return {
+      disclaimer: EDUCATIONAL_DISCLAIMER,
+      mode: "TRIAL",
+      modeLabel: daysLeft != null ? `Modo: Prueba (${daysLeft} día(s) restantes)` : "Modo: Prueba",
+      daysLeft,
+      blocked: false,
+      ctaText: "Activar versión completa",
+      ctaUrl: process.env.AIDA_BILLING_URL ?? "/pago",
+    };
+  }
+
+  // Expired
+  if (status === "expired") {
+    return {
+      disclaimer: EDUCATIONAL_DISCLAIMER,
+      mode: "EXPIRED",
+      modeLabel: "Modo: Prueba finalizada",
+      daysLeft: 0,
+      blocked: true,
+      ctaText: "Pagar 1 año",
+      ctaUrl: process.env.AIDA_BILLING_URL ?? "/pago",
+    };
+  }
+
+  // Active = Full (por ahora)
+  if (status === "active") {
+    return {
+      disclaimer: EDUCATIONAL_DISCLAIMER,
+      mode: "FULL",
+      modeLabel: "Modo: Paquete completo",
+      daysLeft: null,
+      blocked,
+      ctaText: null,
+      ctaUrl: null,
+    };
+  }
+
+  // Future: maintenance
+  if (status === "maintenance") {
+    return {
+      disclaimer: EDUCATIONAL_DISCLAIMER,
+      mode: "MAINTENANCE",
+      modeLabel: "Modo: Mantenimiento",
+      daysLeft: null,
+      blocked,
+      ctaText: "Administrar suscripción",
+      ctaUrl: process.env.AIDA_BILLING_URL ?? "/pago",
+    };
+  }
+
+  // Fallback
+  return {
+    disclaimer: EDUCATIONAL_DISCLAIMER,
+    mode: status.toUpperCase(),
+    modeLabel: `Modo: ${status}`,
+    daysLeft: null,
+    blocked,
+    ctaText: null,
+    ctaUrl: null,
+  };
+}
+
+function jsonOK(payload: any) {
+  return NextResponse.json(payload);
+}
+
+function jsonERR(payload: any, status: number) {
+  return NextResponse.json(payload, { status });
 }
 
 /**
@@ -103,7 +205,6 @@ Responde como coach cercano con acción inmediata según reglas. No inventes mom
 Acción ligera y cierre. No inventes momentos.`;
   }
 
-  // ✅ Momento desconocido pero hay glucosa: NO asumir por memoria
   return `Hay lectura numérica PERO el usuario NO dijo el momento.
 PROHIBIDO etiquetar como "ayuno" o "postcomida" aunque en memoria haya lecturas previas.
 Haz SOLO 1 pregunta: "¿Fue en ayunas, 2h postcomida o antes de dormir?"`;
@@ -175,18 +276,18 @@ export async function POST(req: Request) {
     const onboarding = body.onboarding;
 
     if (!Array.isArray(messagesFromClient) || messagesFromClient.length === 0) {
-      return NextResponse.json({ ok: false, error: "Historial de mensajes inválido" }, { status: 400 });
+      return jsonERR({ ok: false, error: "Historial de mensajes inválido" }, 400);
     }
 
     const userId = (body.deviceId ?? "").trim();
     if (!userId) {
-      return NextResponse.json({ ok: false, error: "Falta deviceId" }, { status: 400 });
+      return jsonERR({ ok: false, error: "Falta deviceId" }, 400);
     }
 
     const lastUserMsg = [...messagesFromClient].reverse().find((m) => m.role === "user")?.content ?? "";
 
     if (lastUserMsg.length > 1000) {
-      return NextResponse.json({ ok: false, error: "Mensaje demasiado largo" }, { status: 400 });
+      return jsonERR({ ok: false, error: "Mensaje demasiado largo" }, 400);
     }
 
     const historyPlain = messagesFromClient
@@ -211,6 +312,7 @@ export async function POST(req: Request) {
     if ((bypass as any)?.bypass) {
       // ✅ guardar lectura aunque haya bypass (sin paywall/limit)
       const us = await ensureUserState(userId);
+      const ui = buildUI(us);
 
       if (glucoseNow !== null) {
         await saveReading({
@@ -227,7 +329,6 @@ export async function POST(req: Request) {
             data: { clinicalState: "HYPO_ACTIVE" },
           });
         } else if (us.clinicalState && glucoseNow >= 90) {
-          // si venía de hipo y ahora ya está normal, limpiamos (por si bypass no dejó pasar motor)
           await prisma.userState.update({
             where: { id: userId },
             data: { clinicalState: null },
@@ -235,42 +336,47 @@ export async function POST(req: Request) {
         }
       }
 
-      return NextResponse.json({ ok: true, reply: (bypass as any).reply, bypass: true });
+      return jsonOK({ ok: true, reply: (bypass as any).reply, bypass: true, ui });
     }
 
-    // 2) Estado + Trial 48h
+    // 2) Estado + Trial
     const userState = await ensureUserState(userId);
     const clinicalState = (userState.clinicalState ?? null) as ClinicalState;
+    const uiBase = buildUI(userState);
 
-        // 2.1) Intercept clínico determinístico (si NO hay glucosa ahora)
-        if (glucoseNow === null && clinicalState === "HYPO_ACTIVE") {
-          return NextResponse.json({
-            ok: true,
-            bypass: false,
-            clinicalIntercept: true,
-            reply:
-              `Antes de continuar: hace rato tuviste una hipoglucemia.\n` +
-              `1) ¿Ya tomaste 15 g de carbohidrato rápido?\n` +
-              `2) ¿Ya te re-mediste? (dime el número)\n` +
-              `Si tienes confusión, desmayo o te sientes peor: urgencias. 🚑`,
-          });
-        }
-    
-        if (glucoseNow === null && clinicalState === "RECOVERING_FROM_HYPO") {
-          return NextResponse.json({
-            ok: true,
-            bypass: false,
-            clinicalIntercept: true,
-            reply:
-              `Seguimos en recuperación de la baja.\n` +
-              `Dime tu glucosa actual (número) para confirmar estabilidad.\n` +
-              `Si sigues <90, mantenemos snack con proteína + grasa y re-checamos.`,
-          });
-        }
+    // 2.1) Intercept clínico determinístico (si NO hay glucosa ahora)
+    if (glucoseNow === null && clinicalState === "HYPO_ACTIVE") {
+      return jsonOK({
+        ok: true,
+        bypass: false,
+        clinicalIntercept: true,
+        reply:
+          `Antes de continuar: hace rato tuviste una hipoglucemia.\n` +
+          `1) ¿Ya tomaste 15 g de carbohidrato rápido?\n` +
+          `2) ¿Ya te re-mediste? (dime el número)\n` +
+          `Si tienes confusión, desmayo o te sientes peor: urgencias. 🚑`,
+        ui: uiBase,
+      });
+    }
+
+    if (glucoseNow === null && clinicalState === "RECOVERING_FROM_HYPO") {
+      return jsonOK({
+        ok: true,
+        bypass: false,
+        clinicalIntercept: true,
+        reply:
+          `Seguimos en recuperación de la baja.\n` +
+          `Dime tu glucosa actual (número) para confirmar estabilidad.\n` +
+          `Si sigues <90, mantenemos snack con proteína + grasa y re-checamos.`,
+        ui: uiBase,
+      });
+    }
 
     // ✅ LOCAL: nunca paywall
     if (!isLocal && isTrialExpired(userState)) {
-      return NextResponse.json(
+      const uiExpired = buildUI({ ...userState, licenseStatus: "expired" }, { blocked: true });
+
+      return jsonERR(
         {
           ok: false,
           error: "TRIAL_EXPIRED",
@@ -281,12 +387,13 @@ export async function POST(req: Request) {
             ctaText: "Pagar 1 año",
             ctaUrl: process.env.AIDA_BILLING_URL ?? "/pago",
           },
+          ui: uiExpired,
         },
-        { status: 402 }
+        402
       );
     }
 
-    // 3) Rate limit SOLO trial
+    // 3) Rate limit SOLO trial (50/día, reinicia por dailyMsgDate)
     const todayLocal = getLocalDateISO(MX_TZ);
     const isTrial = isLocal ? false : userState.licenseStatus === "trial";
 
@@ -294,9 +401,13 @@ export async function POST(req: Request) {
     const currentCount = userState.dailyMsgDate === todayLocal ? (userState.dailyMsgCount ?? 0) : 0;
 
     if (isTrial && currentCount >= LIMIT_PER_DAY_TRIAL) {
-      return NextResponse.json(
-        { ok: false, error: "Límite diario alcanzado (50 mensajes en prueba). Intenta mañana o activa la versión completa." },
-        { status: 429 }
+      return jsonERR(
+        {
+          ok: false,
+          error: "Límite diario alcanzado (50 mensajes en prueba). Intenta mañana o activa la versión completa.",
+          ui: uiBase,
+        },
+        429
       );
     }
 
@@ -351,10 +462,10 @@ export async function POST(req: Request) {
 
     if (wantsSummary) {
       const summary = await buildDailySummary(userId);
-      return NextResponse.json({ ok: true, reply: summary.text, bypass: false, dailySummary: true });
+      return jsonOK({ ok: true, reply: summary.text, bypass: false, dailySummary: true, ui: uiBase });
     }
 
-    // ✅ 6) Motor clínico PRIMERO (antes de phase/nutrition)
+    // ✅ 6) Motor clínico PRIMERO
     if (glucoseNow !== null) {
       const clinicalDecision = applyClinicalDecisionEngine({
         glucose: glucoseNow,
@@ -370,10 +481,11 @@ export async function POST(req: Request) {
           data: { clinicalState: clinicalDecision.nextClinicalState },
         });
 
-        return NextResponse.json({
+        return jsonOK({
           ok: true,
           reply: clinicalDecision.response,
           bypass: false,
+          ui: uiBase,
         });
       }
 
@@ -392,7 +504,7 @@ export async function POST(req: Request) {
     // Reglas por fase
     const phaseRule = applyPhaseRules(lastUserMsg, currentPhase);
     if (phaseRule?.handled && phaseRule?.response) {
-      return NextResponse.json({ ok: true, reply: phaseRule.response, bypass: false });
+      return jsonOK({ ok: true, reply: phaseRule.response, bypass: false, ui: uiBase });
     }
 
     // Reglas nutricionales
@@ -406,7 +518,7 @@ export async function POST(req: Request) {
     );
 
     if (ruleResult?.handled && ruleResult?.response) {
-      return NextResponse.json({ ok: true, reply: ruleResult.response, bypass: false });
+      return jsonOK({ ok: true, reply: ruleResult.response, bypass: false, ui: uiBase });
     }
 
     // Memoria reciente (para prompt)
@@ -432,7 +544,9 @@ export async function POST(req: Request) {
       ? `Datos base del usuario (onboarding):\n${JSON.stringify(onboarding)}`
       : "No hay datos de onboarding.";
 
-    const protocolContext = `Reglas del protocolo actual (usar como referencia educativa, no repetir literal):\n${JSON.stringify(protocol)}`;
+    const protocolContext = `Reglas del protocolo actual (usar como referencia educativa, no repetir literal):\n${JSON.stringify(
+      protocol
+    )}`;
 
     const situationDirective = buildSituationDirective(moment, confirmation, hasGlucoseNow);
 
@@ -454,9 +568,9 @@ export async function POST(req: Request) {
 
     const reply = resp.choices?.[0]?.message?.content ?? "No pude generar respuesta en este momento.";
 
-    return NextResponse.json({ ok: true, reply, bypass: false });
+    return jsonOK({ ok: true, reply, bypass: false, ui: uiBase });
   } catch (err: any) {
     console.error("API /api/chat ERROR:", err);
-    return NextResponse.json({ ok: false, error: err?.message ?? "Error desconocido" }, { status: 500 });
+    return jsonERR({ ok: false, error: err?.message ?? "Error desconocido" }, 500);
   }
 }

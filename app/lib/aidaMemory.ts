@@ -1,9 +1,25 @@
 import { prisma } from "@/app/lib/prisma";
 import { isLocal } from "@/app/lib/runtimeConfig";
 
-/**
- * Guarda una lectura de glucosa si existe
- */
+/* =========================================
+   CONFIGURACIÓN TRIAL
+========================================= */
+
+const TRIAL_DAYS = 7;
+export const DAILY_LIMIT_TRIAL = 50;
+
+/* =========================================
+   HELPERS
+========================================= */
+
+function addDays(date: Date, days: number) {
+  return new Date(date.getTime() + days * 24 * 60 * 60 * 1000);
+}
+
+/* =========================================
+   LECTURAS
+========================================= */
+
 export async function saveReading(params: {
   userId: string;
   glucose: number;
@@ -22,9 +38,6 @@ export async function saveReading(params: {
   });
 }
 
-/**
- * Obtiene la última lectura registrada
- */
 export async function getLastReading(userId: string) {
   return prisma.reading.findFirst({
     where: { userId },
@@ -32,9 +45,6 @@ export async function getLastReading(userId: string) {
   });
 }
 
-/**
- * Obtiene las últimas N lecturas para contexto
- */
 export async function getRecentReadings(userId: string, limit = 5) {
   return prisma.reading.findMany({
     where: { userId },
@@ -43,17 +53,10 @@ export async function getRecentReadings(userId: string, limit = 5) {
   });
 }
 
-const TRIAL_HOURS = 48;
+/* =========================================
+   ESTADO USUARIO + TRIAL 7D
+========================================= */
 
-function addHours(date: Date, hours: number) {
-  return new Date(date.getTime() + hours * 60 * 60 * 1000);
-}
-
-/**
- * Garantiza que exista el estado del usuario
- * - LOCAL: fuerza "active" (sin expiración)
- * - CLOUD: aplica trial 48h y expira si corresponde
- */
 export async function ensureUserState(userId: string) {
   const existing = await prisma.userState.findUnique({
     where: { id: userId },
@@ -61,14 +64,14 @@ export async function ensureUserState(userId: string) {
 
   const now = new Date();
 
-  // ✅ MODO LOCAL: siempre activo (para desarrollo)
+  // 🔧 LOCAL → siempre activo
   if (isLocal) {
     if (!existing) {
       return prisma.userState.create({
         data: {
           id: userId,
           trialStartedAt: now,
-          trialEndsAt: addHours(now, TRIAL_HOURS),
+          trialEndsAt: addDays(now, TRIAL_DAYS),
           licenseStatus: "active",
         },
       });
@@ -84,35 +87,36 @@ export async function ensureUserState(userId: string) {
     return existing;
   }
 
-  // 🌩️ MODO CLOUD: trial real
-  // 1) No existe -> crear con trial
+  // 🌩️ CLOUD
+
+  // 1) No existe → crear trial 7D
   if (!existing) {
     return prisma.userState.create({
       data: {
         id: userId,
         trialStartedAt: now,
-        trialEndsAt: addHours(now, TRIAL_HOURS),
+        trialEndsAt: addDays(now, TRIAL_DAYS),
         licenseStatus: "trial",
       },
     });
   }
 
-  // 2) Si está active, no tocar
+  // 2) Active → no tocar
   if (existing.licenseStatus === "active") return existing;
 
-  // 3) Existe pero sin trial -> inicializar
+  // 3) Si no tiene fechas → inicializar
   if (!existing.trialStartedAt || !existing.trialEndsAt) {
     return prisma.userState.update({
       where: { id: userId },
       data: {
         trialStartedAt: now,
-        trialEndsAt: addHours(now, TRIAL_HOURS),
+        trialEndsAt: addDays(now, TRIAL_DAYS),
         licenseStatus: "trial",
       },
     });
   }
 
-  // 4) Si expiró -> marcar expired
+  // 4) Expiración automática
   const endsAt = new Date(existing.trialEndsAt);
   if (now > endsAt && existing.licenseStatus !== "expired") {
     return prisma.userState.update({
@@ -124,11 +128,57 @@ export async function ensureUserState(userId: string) {
   return existing;
 }
 
-/**
- * Helper para checar si el usuario está bloqueado por trial
- * - LOCAL: nunca bloquea
- * - CLOUD: bloquea si expired o si ya pasó trialEndsAt
- */
+/* =========================================
+   TRIAL INFO (día actual + días restantes)
+========================================= */
+
+export function getTrialInfo(userState: {
+  trialStartedAt: Date | null;
+  trialEndsAt: Date | null;
+  licenseStatus: string;
+}) {
+  if (isLocal || userState.licenseStatus === "active") {
+    return {
+      isTrial: false,
+      isExpired: false,
+      dayNumber: null,
+      daysLeft: null,
+    };
+  }
+
+  if (!userState.trialStartedAt || !userState.trialEndsAt) {
+    return {
+      isTrial: false,
+      isExpired: false,
+      dayNumber: null,
+      daysLeft: null,
+    };
+  }
+
+  const now = new Date();
+  const start = new Date(userState.trialStartedAt);
+  const end = new Date(userState.trialEndsAt);
+
+  const diffMs = now.getTime() - start.getTime();
+  const dayNumber = Math.floor(diffMs / (1000 * 60 * 60 * 24)) + 1;
+
+  const daysLeft = Math.max(
+    0,
+    Math.ceil((end.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
+  );
+
+  return {
+    isTrial: userState.licenseStatus === "trial",
+    isExpired: now > end || userState.licenseStatus === "expired",
+    dayNumber,
+    daysLeft,
+  };
+}
+
+/* =========================================
+   VALIDACIÓN EXPIRACIÓN
+========================================= */
+
 export function isTrialExpired(userState: {
   licenseStatus: string;
   trialEndsAt: Date | null;
@@ -139,6 +189,7 @@ export function isTrialExpired(userState: {
   if (userState.licenseStatus === "expired") return true;
 
   if (!userState.trialEndsAt) return false;
+
   const now = new Date();
   return now > new Date(userState.trialEndsAt);
 }
