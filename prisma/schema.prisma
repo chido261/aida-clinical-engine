@@ -32,6 +32,9 @@ model UserState {
   // OTP / licencia (siguiente sprint)
   phoneE164       String?  // +52...
   phoneVerifiedAt DateTime?
+
+  // estado clínico persistente (motor conversacional)
+  clinicalState String? // HYPO_ACTIVE | RECOVERING_FROM_HYPO | null
 }
 
 model Reading {

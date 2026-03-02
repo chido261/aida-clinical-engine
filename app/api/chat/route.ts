@@ -10,7 +10,13 @@ import path from "node:path";
 
 import { detectAndSaveBaseline } from "@/app/lib/aidaBaseline";
 import { buildAidaSystemPrompt } from "@/app/lib/aidaPrompt";
-import { applySafetyBypass, detectMomentFromText, isConfirmation } from "@/app/lib/aidaRules";
+import {
+  applySafetyBypass,
+  detectMomentFromText,
+  isConfirmation,
+  applyClinicalDecisionEngine,
+  type ClinicalState,
+} from "@/app/lib/aidaRules";
 import { applyNutritionRules } from "@/app/lib/aidaNutritionRules";
 import { applyPhaseRules } from "@/app/lib/aidaPhaseRules";
 
@@ -51,7 +57,6 @@ function loadPhase1Protocol() {
 }
 
 function getLocalDateISO(timeZone: string) {
-  // YYYY-MM-DD en zona horaria dada
   const parts = new Intl.DateTimeFormat("en-CA", {
     timeZone,
     year: "numeric",
@@ -66,7 +71,9 @@ function getLocalDateISO(timeZone: string) {
 }
 
 /**
- * ✅ FIX: Solo preguntar "ayuno/post/noche" si el usuario dio lectura numérica EN ESTE MENSAJE.
+ * ✅ IMPORTANTE:
+ * - Si NO hay momento explícito en el mensaje actual, NO asumirlo.
+ * - Si hay lectura numérica pero momento desconocido -> preguntar 1 vez.
  */
 function buildSituationDirective(moment: Moment, confirmation: boolean, hasGlucoseNow: boolean) {
   if (confirmation) {
@@ -74,33 +81,31 @@ function buildSituationDirective(moment: Moment, confirmation: boolean, hasGluco
 Refuerza la acción + indica el siguiente micro-paso (cuándo medir o qué observar) y cierra con un cierre VARIADO sin pregunta.`;
   }
 
-  if (moment === "AYUNO") {
-    return `Contexto: AYUNO. Responde como coach cercano.
-Si el usuario pidió acción inmediata ("ahorita/para desayunar"), responde con acción y/o 3 opciones sin preguntar permiso.
-Evita preguntas innecesarias.`;
-  }
-
-  if (moment === "POSTCOMIDA") {
-    return `Contexto: 2H POSTCOMIDA. Responde como coach cercano.
-Da 1 acción simple (caminar/agua/respirar) y cierre breve.
-Si falta info, SOLO 1 pregunta.`;
-  }
-
-  if (moment === "NOCHE") {
-    return `Contexto: NOCHE. Responde como coach cercano.
-Recomienda hábito de cierre y descanso.
-Si falta info, SOLO 1 pregunta.`;
-  }
-
   if (!hasGlucoseNow) {
     return `El usuario NO dio una lectura numérica en este mensaje.
 Responde breve, natural y útil.
-1) Saluda (si aplica) y ofrece 1 camino:
-2) Haz SOLO 1 pregunta: "Estoy a tus órdenes, ¿dime como te puedo ayuda?"`;
+Haz SOLO 1 pregunta para avanzar.`;
   }
 
-  return `Contexto no claro PERO hay lectura numérica.
-Pregunta SOLO 1 cosa: "¿Fue en ayuno, 2h postcomida o antes de dormir?"`;
+  if (moment === "AYUNO") {
+    return `Contexto: AYUNO (solo porque el usuario lo dijo explícitamente).
+Responde como coach cercano con acción inmediata. No inventes momentos.`;
+  }
+
+  if (moment === "POSTCOMIDA") {
+    return `Contexto: POSTCOMIDA (solo porque el usuario lo dijo explícitamente).
+Responde como coach cercano con acción inmediata según reglas. No inventes momentos.`;
+  }
+
+  if (moment === "NOCHE") {
+    return `Contexto: NOCHE (solo porque el usuario lo dijo explícitamente).
+Acción ligera y cierre. No inventes momentos.`;
+  }
+
+  // ✅ Momento desconocido pero hay glucosa: NO asumir por memoria
+  return `Hay lectura numérica PERO el usuario NO dijo el momento.
+PROHIBIDO etiquetar como "ayuno" o "postcomida" aunque en memoria haya lecturas previas.
+Haz SOLO 1 pregunta: "¿Fue en ayunas, 2h postcomida o antes de dormir?"`;
 }
 
 function extractGlucose(text: string): number | null {
@@ -115,9 +120,11 @@ function extractSymptoms(text: string): string[] {
   const t = text.toLowerCase();
   const symptoms: string[] = [];
 
-  if (/(maread|mareo|temblor|sudor|debil|debilidad|confus|desmayo)/i.test(t)) symptoms.push("low_symptoms");
+  if (/(maread|mareo|temblor|sudor|debil|debilidad|confus|desmayo|taquicardia|palpitaciones)/i.test(t))
+    symptoms.push("low_symptoms");
   if (/(vomit|v[oó]mito|nausea|n[áa]usea)/i.test(t)) symptoms.push("vomiting");
-  if (/(dolor\s+pecho|falta\s+de\s+aire|ahogo|dificultad\s+para\s+respirar)/i.test(t)) symptoms.push("respiratory_or_chest");
+  if (/(dolor\s+pecho|falta\s+de\s+aire|ahogo|dificultad\s+para\s+respirar)/i.test(t))
+    symptoms.push("respiratory_or_chest");
 
   return symptoms;
 }
@@ -152,7 +159,9 @@ ${lastLine}
 Lecturas recientes:
 ${recentLines}
 
-Uso: si hay mejora vs histórico, menciónala breve ("hace X lecturas estabas más alto...").`;
+Uso:
+- Si la última lectura fue baja (<70), prioriza seguimiento de estabilización.
+- NO asumas el momento si el usuario no lo dijo explícitamente en el mensaje actual.`;
 }
 
 // ---------------- route ----------------
@@ -185,16 +194,38 @@ export async function POST(req: Request) {
       .map((m) => `${m.role.toUpperCase()}: ${m.content}`)
       .join("\n");
 
+    // ✅ Detectores DEL MENSAJE ACTUAL (para guardar eventos aunque haya bypass)
+    const glucoseNow = extractGlucose(lastUserMsg);
+    const hasGlucoseNow = glucoseNow !== null;
+
+    const confirmation = isConfirmation(lastUserMsg);
+    const detected = (detectMomentFromText(lastUserMsg) ?? "DESCONOCIDO") as Moment;
+    const moment: Moment =
+      detected === "AYUNO" || detected === "POSTCOMIDA" || detected === "NOCHE" ? detected : "DESCONOCIDO";
+
+    const symptoms = extractSymptoms(lastUserMsg);
+
     // 1) Bypass de seguridad
     const bypass = applySafetyBypass(lastUserMsg, historyPlain);
-    if (bypass?.bypass) {
-      return NextResponse.json({ ok: true, reply: bypass.reply, bypass: true });
+    if ((bypass as any)?.bypass) {
+      // ✅ IMPORTANTÍSIMO: guardar lectura aunque haya bypass (sin paywall/limit)
+      await ensureUserState(userId);
+      if (glucoseNow !== null) {
+        await saveReading({
+          userId,
+          glucose: glucoseNow,
+          moment,
+          symptoms,
+        });
+      }
+
+      return NextResponse.json({ ok: true, reply: (bypass as any).reply, bypass: true });
     }
 
     // 2) Estado + Trial 48h
     const userState = await ensureUserState(userId);
 
-    // ✅ LOCAL: nunca paywall (aunque alguien marque expired en DB)
+    // ✅ LOCAL: nunca paywall
     if (!isLocal && isTrialExpired(userState)) {
       return NextResponse.json(
         {
@@ -212,32 +243,24 @@ export async function POST(req: Request) {
       );
     }
 
-    // 3) ✅ Rate limit SOLO en trial (Active = ilimitado)
+    // 3) Rate limit SOLO trial
     const todayLocal = getLocalDateISO(MX_TZ);
-
-    // LOCAL: tratamos como active para no limitar
     const isTrial = isLocal ? false : userState.licenseStatus === "trial";
 
     const LIMIT_PER_DAY_TRIAL = 50;
-    const currentCount =
-      userState.dailyMsgDate === todayLocal ? (userState.dailyMsgCount ?? 0) : 0;
+    const currentCount = userState.dailyMsgDate === todayLocal ? (userState.dailyMsgCount ?? 0) : 0;
 
     if (isTrial && currentCount >= LIMIT_PER_DAY_TRIAL) {
       return NextResponse.json(
-        {
-          ok: false,
-          error: "Límite diario alcanzado (50 mensajes en prueba). Intenta mañana o activa la versión completa.",
-        },
+        { ok: false, error: "Límite diario alcanzado (50 mensajes en prueba). Intenta mañana o activa la versión completa." },
         { status: 429 }
       );
     }
 
-    // ✅ Incremento (guardamos contador diario aunque sea active, para métricas)
     const now = new Date();
     const nextCount = userState.dailyMsgDate === todayLocal ? currentCount + 1 : 1;
 
     await prisma.$transaction([
-      // UserState counters
       prisma.userState.update({
         where: { id: userId },
         data: {
@@ -247,15 +270,12 @@ export async function POST(req: Request) {
           lastMsgAt: now,
         },
       }),
-
-      // Métrica diaria (UsageDaily)
       prisma.usageDaily.upsert({
         where: { userId_dateLocal: { userId, dateLocal: todayLocal } },
         create: {
           userId,
           dateLocal: todayLocal,
           count: 1,
-          // LOCAL lo etiquetamos como active para no contaminar métricas de trial
           licenseStatus: isTrial ? "trial" : "active",
         },
         update: {
@@ -266,22 +286,9 @@ export async function POST(req: Request) {
     ]);
 
     // 4) Baseline
-    const baselineResult = await detectAndSaveBaseline({
-      userId,
-      text: lastUserMsg,
-    });
+    const baselineResult = await detectAndSaveBaseline({ userId, text: lastUserMsg });
 
-    // 5) Momento + confirmación
-    const confirmation = isConfirmation(lastUserMsg);
-    const detected = (detectMomentFromText(lastUserMsg) ?? "DESCONOCIDO") as Moment;
-    const moment: Moment =
-      detected === "AYUNO" || detected === "POSTCOMIDA" || detected === "NOCHE" ? detected : "DESCONOCIDO";
-
-    // 6) Lectura (solo si hay número)
-    const glucoseNow = extractGlucose(lastUserMsg);
-    const hasGlucoseNow = glucoseNow !== null;
-    const symptoms = extractSymptoms(lastUserMsg);
-
+    // 5) Guardar lectura normal (si hay número)
     if (glucoseNow !== null) {
       await saveReading({
         userId,
@@ -304,7 +311,7 @@ export async function POST(req: Request) {
     // Reglas nutricionales
     const ruleResult = applyNutritionRules(lastUserMsg, {
       moment,
-      glucose: glucoseNow,
+      glucose: glucoseNow ?? undefined,
       symptoms,
     } as any);
 
@@ -315,6 +322,25 @@ export async function POST(req: Request) {
     // Memoria reciente
     const last = await getLastReading(userId);
     const recent = await getRecentReadings(userId, 6);
+
+    const previous = last?.glucose ?? null;
+
+if (glucoseNow !== null) {
+  const clinicalDecision = applyClinicalDecisionEngine({
+    glucose: glucoseNow,
+    moment,
+    previousGlucose: previous,
+    symptoms,
+  });
+
+  if (clinicalDecision.handled) {
+    return NextResponse.json({
+      ok: true,
+      reply: clinicalDecision.response,
+      bypass: false,
+    });
+  }
+}
 
     const memoryContext = buildMemoryContext({
       last,
@@ -335,9 +361,7 @@ export async function POST(req: Request) {
       ? `Datos base del usuario (onboarding):\n${JSON.stringify(onboarding)}`
       : "No hay datos de onboarding.";
 
-    const protocolContext = `Reglas del protocolo actual (usar como referencia educativa, no repetir literal):\n${JSON.stringify(
-      protocol
-    )}`;
+    const protocolContext = `Reglas del protocolo actual (usar como referencia educativa, no repetir literal):\n${JSON.stringify(protocol)}`;
 
     const situationDirective = buildSituationDirective(moment, confirmation, hasGlucoseNow);
 
