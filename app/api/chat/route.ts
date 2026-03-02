@@ -19,6 +19,7 @@ import {
 } from "@/app/lib/aidaRules";
 import { applyNutritionRules } from "@/app/lib/aidaNutritionRules";
 import { applyPhaseRules } from "@/app/lib/aidaPhaseRules";
+import { buildDailySummary } from "@/app/lib/aidaDailySummary";
 
 import {
   ensureUserState,
@@ -194,7 +195,7 @@ export async function POST(req: Request) {
       .map((m) => `${m.role.toUpperCase()}: ${m.content}`)
       .join("\n");
 
-    // ✅ Detectores DEL MENSAJE ACTUAL (para guardar eventos aunque haya bypass)
+    // ✅ Detectores DEL MENSAJE ACTUAL
     const glucoseNow = extractGlucose(lastUserMsg);
     const hasGlucoseNow = glucoseNow !== null;
 
@@ -208,8 +209,9 @@ export async function POST(req: Request) {
     // 1) Bypass de seguridad
     const bypass = applySafetyBypass(lastUserMsg, historyPlain);
     if ((bypass as any)?.bypass) {
-      // ✅ IMPORTANTÍSIMO: guardar lectura aunque haya bypass (sin paywall/limit)
-      await ensureUserState(userId);
+      // ✅ guardar lectura aunque haya bypass (sin paywall/limit)
+      const us = await ensureUserState(userId);
+
       if (glucoseNow !== null) {
         await saveReading({
           userId,
@@ -217,6 +219,20 @@ export async function POST(req: Request) {
           moment,
           symptoms,
         });
+
+        // ✅ Persistir estado clínico si hubo hipo
+        if (glucoseNow < 70) {
+          await prisma.userState.update({
+            where: { id: userId },
+            data: { clinicalState: "HYPO_ACTIVE" },
+          });
+        } else if (us.clinicalState && glucoseNow >= 90) {
+          // si venía de hipo y ahora ya está normal, limpiamos (por si bypass no dejó pasar motor)
+          await prisma.userState.update({
+            where: { id: userId },
+            data: { clinicalState: null },
+          });
+        }
       }
 
       return NextResponse.json({ ok: true, reply: (bypass as any).reply, bypass: true });
@@ -224,6 +240,33 @@ export async function POST(req: Request) {
 
     // 2) Estado + Trial 48h
     const userState = await ensureUserState(userId);
+    const clinicalState = (userState.clinicalState ?? null) as ClinicalState;
+
+        // 2.1) Intercept clínico determinístico (si NO hay glucosa ahora)
+        if (glucoseNow === null && clinicalState === "HYPO_ACTIVE") {
+          return NextResponse.json({
+            ok: true,
+            bypass: false,
+            clinicalIntercept: true,
+            reply:
+              `Antes de continuar: hace rato tuviste una hipoglucemia.\n` +
+              `1) ¿Ya tomaste 15 g de carbohidrato rápido?\n` +
+              `2) ¿Ya te re-mediste? (dime el número)\n` +
+              `Si tienes confusión, desmayo o te sientes peor: urgencias. 🚑`,
+          });
+        }
+    
+        if (glucoseNow === null && clinicalState === "RECOVERING_FROM_HYPO") {
+          return NextResponse.json({
+            ok: true,
+            bypass: false,
+            clinicalIntercept: true,
+            reply:
+              `Seguimos en recuperación de la baja.\n` +
+              `Dime tu glucosa actual (número) para confirmar estabilidad.\n` +
+              `Si sigues <90, mantenemos snack con proteína + grasa y re-checamos.`,
+          });
+        }
 
     // ✅ LOCAL: nunca paywall
     if (!isLocal && isTrialExpired(userState)) {
@@ -288,6 +331,10 @@ export async function POST(req: Request) {
     // 4) Baseline
     const baselineResult = await detectAndSaveBaseline({ userId, text: lastUserMsg });
 
+    // 4.5) Tomar previousGlucose ANTES de guardar nueva lectura
+    const lastBeforeSave = glucoseNow !== null ? await getLastReading(userId) : null;
+    const previousGlucose = lastBeforeSave?.glucose ?? null;
+
     // 5) Guardar lectura normal (si hay número)
     if (glucoseNow !== null) {
       await saveReading({
@@ -296,6 +343,46 @@ export async function POST(req: Request) {
         moment,
         symptoms,
       });
+    }
+
+    // 5.5) Resumen diario (solo si el usuario lo pide)
+    const wantsSummary =
+      /(resumen|resumen del d[ií]a|c[oó]mo voy|como voy|qu[eé] pas[oó] hoy|que paso hoy)/i.test(lastUserMsg);
+
+    if (wantsSummary) {
+      const summary = await buildDailySummary(userId);
+      return NextResponse.json({ ok: true, reply: summary.text, bypass: false, dailySummary: true });
+    }
+
+    // ✅ 6) Motor clínico PRIMERO (antes de phase/nutrition)
+    if (glucoseNow !== null) {
+      const clinicalDecision = applyClinicalDecisionEngine({
+        glucose: glucoseNow,
+        moment,
+        previousGlucose,
+        symptoms,
+        clinicalState,
+      });
+
+      if (clinicalDecision.handled) {
+        await prisma.userState.update({
+          where: { id: userId },
+          data: { clinicalState: clinicalDecision.nextClinicalState },
+        });
+
+        return NextResponse.json({
+          ok: true,
+          reply: clinicalDecision.response,
+          bypass: false,
+        });
+      }
+
+      if (clinicalDecision.nextClinicalState !== clinicalState) {
+        await prisma.userState.update({
+          where: { id: userId },
+          data: { clinicalState: clinicalDecision.nextClinicalState },
+        });
+      }
     }
 
     // Progress context
@@ -309,38 +396,22 @@ export async function POST(req: Request) {
     }
 
     // Reglas nutricionales
-    const ruleResult = applyNutritionRules(lastUserMsg, {
-      moment,
-      glucose: glucoseNow ?? undefined,
-      symptoms,
-    } as any);
+    const ruleResult = applyNutritionRules(
+      lastUserMsg,
+      {
+        moment,
+        glucose: glucoseNow ?? undefined,
+        symptoms,
+      } as any
+    );
 
     if (ruleResult?.handled && ruleResult?.response) {
       return NextResponse.json({ ok: true, reply: ruleResult.response, bypass: false });
     }
 
-    // Memoria reciente
+    // Memoria reciente (para prompt)
     const last = await getLastReading(userId);
     const recent = await getRecentReadings(userId, 6);
-
-    const previous = last?.glucose ?? null;
-
-if (glucoseNow !== null) {
-  const clinicalDecision = applyClinicalDecisionEngine({
-    glucose: glucoseNow,
-    moment,
-    previousGlucose: previous,
-    symptoms,
-  });
-
-  if (clinicalDecision.handled) {
-    return NextResponse.json({
-      ok: true,
-      reply: clinicalDecision.response,
-      bypass: false,
-    });
-  }
-}
 
     const memoryContext = buildMemoryContext({
       last,
