@@ -22,6 +22,8 @@ import {
   getRecentReadings,
 } from "@/app/lib/aidaMemory";
 
+import { isLocal } from "@/app/lib/runtimeConfig";
+
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 type ChatMessage = {
@@ -192,7 +194,8 @@ export async function POST(req: Request) {
     // 2) Estado + Trial 48h
     const userState = await ensureUserState(userId);
 
-    if (isTrialExpired(userState)) {
+    // ✅ LOCAL: nunca paywall (aunque alguien marque expired en DB)
+    if (!isLocal && isTrialExpired(userState)) {
       return NextResponse.json(
         {
           ok: false,
@@ -211,7 +214,9 @@ export async function POST(req: Request) {
 
     // 3) ✅ Rate limit SOLO en trial (Active = ilimitado)
     const todayLocal = getLocalDateISO(MX_TZ);
-    const isTrial = userState.licenseStatus === "trial";
+
+    // LOCAL: tratamos como active para no limitar
+    const isTrial = isLocal ? false : userState.licenseStatus === "trial";
 
     const LIMIT_PER_DAY_TRIAL = 50;
     const currentCount =
@@ -250,6 +255,7 @@ export async function POST(req: Request) {
           userId,
           dateLocal: todayLocal,
           count: 1,
+          // LOCAL lo etiquetamos como active para no contaminar métricas de trial
           licenseStatus: isTrial ? "trial" : "active",
         },
         update: {

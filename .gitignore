@@ -57,3 +57,7 @@ prisma/dev.db
 
 # prisma shadow db
 prisma/*.db
+
+# local backups (never commit)
+backups/
+*.db

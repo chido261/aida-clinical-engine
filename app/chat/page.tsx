@@ -58,6 +58,22 @@ export default function ChatPage() {
 
   const [paywall, setPaywall] = useState<Paywall | null>(null);
 
+  // ✅ AppMode real desde backend
+  const [appMode, setAppMode] = useState<"local" | "cloud">("local");
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch("/api/config");
+        const data = await res.json();
+        const mode = data?.appMode === "cloud" ? "cloud" : "local";
+        setAppMode(mode);
+      } catch {
+        setAppMode("local");
+      }
+    })();
+  }, []);
+
   useEffect(() => {
     setDeviceId(getDeviceId());
   }, []);
@@ -104,7 +120,8 @@ Cuando quieras, dime:
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, isSending, paywall]);
 
-  const chatLocked = !!paywall;
+  // ✅ En local, nunca bloqueamos el chat por paywall
+  const chatLocked = appMode === "cloud" && !!paywall;
 
   const canSend = useMemo(() => {
     return input.trim().length > 0 && !isSending && !!deviceId && !!onboarding && !chatLocked;
@@ -130,9 +147,20 @@ Cuando quieras, dime:
         }),
       });
 
-      // ✅ 402 Trial expired => paywall
+      // ✅ 402 Trial expired => paywall (pero en local NO lo mostramos ni bloqueamos)
       if (res.status === 402) {
         const data = await safeReadJson(res);
+
+        if (appMode === "local") {
+          setMessages((prev) => [
+            ...prev,
+            {
+              role: "assistant",
+              content: "⚠️ (DEV) El backend respondió 402, pero en LOCAL ignoramos el paywall para seguir desarrollando.",
+            },
+          ]);
+          return;
+        }
 
         const pw: Paywall = data?.paywall
           ? {
@@ -291,7 +319,8 @@ Cuando quieras, dime:
         </p>
       )}
 
-      {paywall && (
+      {/* ✅ En local no mostramos el modal */}
+      {appMode === "cloud" && paywall && (
         <div
           style={{
             position: "fixed",
@@ -317,7 +346,9 @@ Cuando quieras, dime:
             <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
               <div>
                 <div style={{ fontSize: 18, fontWeight: 800 }}>{paywall.title}</div>
-                <div style={{ marginTop: 8, opacity: 0.9, whiteSpace: "pre-wrap" }}>{paywall.message}</div>
+                <div style={{ marginTop: 8, opacity: 0.9, whiteSpace: "pre-wrap" }}>
+                  {paywall.message}
+                </div>
               </div>
 
               <button

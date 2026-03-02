@@ -1,23 +1,35 @@
 // app/lib/prisma.ts
 import { PrismaClient } from "@prisma/client";
 import { PrismaBetterSqlite3 } from "@prisma/adapter-better-sqlite3";
+import { APP_MODE, getDatabaseUrl } from "@/app/lib/runtimeConfig";
 
 const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient };
 
-function makePrismaClient() {
-  const url = process.env.DATABASE_URL;
-
-  if (!url) {
-    throw new Error("DATABASE_URL no está definida");
+function assertEnv(url: string) {
+  // Fail-fast en cloud
+  if (APP_MODE === "cloud") {
+    if (!url) throw new Error("DATABASE_URL missing (cloud)");
+    if (url.startsWith("file:")) throw new Error("DATABASE_URL cannot be sqlite in cloud");
   }
 
-  // Si es sqlite (local), usamos adapter better-sqlite3
+  // Fail-fast local
+  if (APP_MODE === "local") {
+    if (!url) throw new Error("DATABASE_URL missing (local)");
+    if (!url.startsWith("file:")) throw new Error("DATABASE_URL must be sqlite file: in local");
+  }
+}
+
+function makePrismaClient() {
+  const url = getDatabaseUrl();
+  assertEnv(url);
+
+  // Local sqlite
   if (url.startsWith("file:")) {
     const adapter = new PrismaBetterSqlite3({ url });
     return new PrismaClient({ adapter });
   }
 
-  // Si NO es sqlite, asumimos Postgres (Neon/Vercel)
+  // Cloud postgres
   return new PrismaClient();
 }
 

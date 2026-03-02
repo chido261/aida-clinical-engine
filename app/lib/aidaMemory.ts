@@ -1,4 +1,5 @@
 import { prisma } from "@/app/lib/prisma";
+import { isLocal } from "@/app/lib/runtimeConfig";
 
 /**
  * Guarda una lectura de glucosa si existe
@@ -50,9 +51,8 @@ function addHours(date: Date, hours: number) {
 
 /**
  * Garantiza que exista el estado del usuario
- * - Si no existe, lo crea
- * - Si existe pero no tiene trial, lo inicializa
- * - Si expiró el trial y no está active, marca expired
+ * - LOCAL: fuerza "active" (sin expiración)
+ * - CLOUD: aplica trial 48h y expira si corresponde
  */
 export async function ensureUserState(userId: string) {
   const existing = await prisma.userState.findUnique({
@@ -61,6 +61,30 @@ export async function ensureUserState(userId: string) {
 
   const now = new Date();
 
+  // ✅ MODO LOCAL: siempre activo (para desarrollo)
+  if (isLocal) {
+    if (!existing) {
+      return prisma.userState.create({
+        data: {
+          id: userId,
+          trialStartedAt: now,
+          trialEndsAt: addHours(now, TRIAL_HOURS),
+          licenseStatus: "active",
+        },
+      });
+    }
+
+    if (existing.licenseStatus !== "active") {
+      return prisma.userState.update({
+        where: { id: userId },
+        data: { licenseStatus: "active" },
+      });
+    }
+
+    return existing;
+  }
+
+  // 🌩️ MODO CLOUD: trial real
   // 1) No existe -> crear con trial
   if (!existing) {
     return prisma.userState.create({
@@ -102,11 +126,15 @@ export async function ensureUserState(userId: string) {
 
 /**
  * Helper para checar si el usuario está bloqueado por trial
+ * - LOCAL: nunca bloquea
+ * - CLOUD: bloquea si expired o si ya pasó trialEndsAt
  */
 export function isTrialExpired(userState: {
   licenseStatus: string;
   trialEndsAt: Date | null;
 }) {
+  if (isLocal) return false;
+
   if (userState.licenseStatus === "active") return false;
   if (userState.licenseStatus === "expired") return true;
 

@@ -7,21 +7,31 @@ datasource db {
 }
 
 model UserState {
-  id                 String    @id
-  createdAt          DateTime  @default(now())
-  updatedAt          DateTime  @updatedAt
+  id        String   @id // deviceId (NO default demo-user)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // baseline
   baselineA1c        Float?
   baselineAvgGlucose Int?
   baselineSetAt      DateTime?
-  dailyMsgDate       String?
-  dailyMsgCount      Int?
-  totalMsgCount      Int       @default(0)
-  lastMsgAt          DateTime?
-  trialStartedAt     DateTime?
-  trialEndsAt        DateTime?
-  licenseStatus      String    @default("trial")
-  phoneE164          String?
-  phoneVerifiedAt    DateTime?
+
+  // rate limit / uso diario (lo usaremos con FECHA LOCAL MX)
+  dailyMsgDate  String?
+  dailyMsgCount Int?
+
+  // métricas simples
+  totalMsgCount Int      @default(0)
+  lastMsgAt     DateTime?
+
+  // trial
+  trialStartedAt DateTime?
+  trialEndsAt    DateTime?
+  licenseStatus  String   @default("trial") // trial | active | expired
+
+  // OTP / licencia (siguiente sprint)
+  phoneE164       String?  // +52...
+  phoneVerifiedAt DateTime?
 }
 
 model Reading {
@@ -36,9 +46,9 @@ model Reading {
 model UsageDaily {
   id            Int      @id @default(autoincrement())
   userId        String
-  dateLocal     String
+  dateLocal     String   // YYYY-MM-DD (America/Mexico_City)
   count         Int      @default(0)
-  licenseStatus String
+  licenseStatus String   // trial | active
   updatedAt     DateTime @updatedAt
 
   @@unique([userId, dateLocal])
