@@ -28,6 +28,17 @@ type Paywall = {
   ctaUrl: string;
 };
 
+// ✅ UI desde backend
+type UiPayload = {
+  disclaimer?: string;
+  mode?: string; // LOCAL | TRIAL | FULL | EXPIRED | MAINTENANCE...
+  modeLabel?: string;
+  daysLeft?: number | null;
+  blocked?: boolean;
+  ctaText?: string | null;
+  ctaUrl?: string | null;
+};
+
 const LS_KEY = "glucosa_onboarding_v1";
 
 function safeParse<T>(value: string | null): T | null {
@@ -60,6 +71,9 @@ export default function ChatPage() {
 
   // ✅ AppMode real desde backend
   const [appMode, setAppMode] = useState<"local" | "cloud">("local");
+
+  // ✅ UI state
+  const [ui, setUi] = useState<UiPayload | null>(null);
 
   useEffect(() => {
     (async () => {
@@ -120,8 +134,8 @@ Cuando quieras, dime:
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, isSending, paywall]);
 
-  // ✅ En local, nunca bloqueamos el chat por paywall
-  const chatLocked = appMode === "cloud" && !!paywall;
+  // ✅ Lock real viene del backend (ui.blocked)
+  const chatLocked = appMode === "cloud" && (ui?.blocked === true || !!paywall);
 
   const canSend = useMemo(() => {
     return input.trim().length > 0 && !isSending && !!deviceId && !!onboarding && !chatLocked;
@@ -147,9 +161,12 @@ Cuando quieras, dime:
         }),
       });
 
-      // ✅ 402 Trial expired => paywall (pero en local NO lo mostramos ni bloqueamos)
+      // ✅ 402 Trial expired => paywall (pero en local NO bloquea)
       if (res.status === 402) {
         const data = await safeReadJson(res);
+
+        // ✅ guarda ui si viene
+        if (data?.ui) setUi(data.ui as UiPayload);
 
         if (appMode === "local") {
           setMessages((prev) => [
@@ -194,9 +211,11 @@ Cuando quieras, dime:
         return;
       }
 
-      // ✅ 429 Rate limit => mensaje claro, sin “problema técnico”
+      // ✅ 429 Rate limit
       if (res.status === 429) {
         const data = await safeReadJson(res);
+        if (data?.ui) setUi(data.ui as UiPayload);
+
         const msg =
           (typeof data?.error === "string" && data.error) ||
           "Límite diario alcanzado. Intenta mañana.";
@@ -207,11 +226,15 @@ Cuando quieras, dime:
 
       if (!res.ok) {
         const data = await safeReadJson(res);
+        if (data?.ui) setUi(data.ui as UiPayload);
+
         const msg = (typeof data?.error === "string" && data.error) || "Error al llamar /api/chat";
         throw new Error(msg);
       }
 
-      const data = (await res.json()) as { reply: string };
+      const data = (await res.json()) as { reply: string; ui?: UiPayload };
+      if (data?.ui) setUi(data.ui);
+
       setMessages((prev) => [...prev, { role: "assistant", content: data.reply }]);
     } catch (e: any) {
       setMessages((prev) => [
@@ -234,9 +257,79 @@ Cuando quieras, dime:
     }
   }
 
+  const modeLabel = ui?.modeLabel ?? (appMode === "local" ? "Modo: Desarrollo (Local)" : "Modo: —");
+  const disclaimer =
+    ui?.disclaimer ??
+    "AIDA es un asistente educativo. No sustituye la valoración de un profesional de la salud. En caso de urgencias o síntomas severos: acude a atención médica.";
+
+    const uiMode = (ui?.mode ?? "").toUpperCase();
+    const isTrialBanner = appMode === "cloud" && uiMode === "TRIAL" && !chatLocked;
+    const trialCtaText = ui?.ctaText ?? "Activa versión FULL";
+    const trialCtaUrl = ui?.ctaUrl ?? "/pago";
+
   return (
     <main style={{ maxWidth: 720, margin: "0 auto", padding: 16, position: "relative" }}>
-      <h1 style={{ fontSize: 22, fontWeight: 700, marginBottom: 12 }}>AIDA</h1>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+        <h1 style={{ fontSize: 22, fontWeight: 700, marginBottom: 12 }}>AIDA</h1>
+
+        {/* ✅ Badge modo */}
+      {/* ✅ Banner visible en TRIAL (solo cloud) */}
+      {isTrialBanner && (
+        <div
+          style={{
+            border: "1px solid #e5e7eb",
+            background: "#fff7ed",
+            borderRadius: 12,
+            padding: 12,
+            marginBottom: 12,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 12,
+          }}
+        >
+          <div style={{ fontSize: 13, lineHeight: 1.35 }}>
+            <div style={{ fontWeight: 800 }}>Estás en versión de prueba</div>
+            <div style={{ opacity: 0.85 }}>
+              Te acompaño 7 días para demostrar control con alimentación. Si quieres acceso completo por 3 meses:
+            </div>
+          </div>
+
+          <a
+            href={trialCtaUrl}
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              padding: "10px 12px",
+              borderRadius: 10,
+              border: "1px solid #e5e7eb",
+              background: "black",
+              color: "white",
+              fontWeight: 800,
+              textDecoration: "none",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {trialCtaText}
+          </a>
+        </div>
+      )}
+
+        <div
+          style={{
+            border: "1px solid #e5e7eb",
+            background: "white",
+            borderRadius: 999,
+            padding: "6px 10px",
+            fontSize: 12,
+            fontWeight: 600,
+            marginBottom: 12,
+          }}
+        >
+          {modeLabel}
+        </div>
+      </div>
 
       <div
         style={{
@@ -297,6 +390,7 @@ Cuando quieras, dime:
           }}
           disabled={!onboarding || isSending || !deviceId || chatLocked}
         />
+
         <button
           onClick={handleSend}
           disabled={!canSend}
@@ -319,7 +413,21 @@ Cuando quieras, dime:
         </p>
       )}
 
-      {/* ✅ En local no mostramos el modal */}
+      {/* ✅ Leyenda educativa SIEMPRE */}
+      <div style={{ marginTop: 10, fontSize: 12, opacity: 0.75 }}>
+        {disclaimer}
+        {/* ✅ CTA “soft” (solo si backend lo manda y NO está bloqueado) */}
+        {appMode === "cloud" && ui?.ctaUrl && ui?.ctaText && !chatLocked ? (
+          <>
+            {" "}
+            <a href={ui.ctaUrl} style={{ fontWeight: 700, textDecoration: "underline" }}>
+              {ui.ctaText}
+            </a>
+          </>
+        ) : null}
+      </div>
+
+      {/* ✅ Modal paywall SOLO en cloud */}
       {appMode === "cloud" && paywall && (
         <div
           style={{

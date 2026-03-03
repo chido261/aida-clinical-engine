@@ -10,7 +10,6 @@
     "lint": "eslint",
     "db:backup": "node scripts/dbBackup.mjs",
     "db:restore": "node scripts/dbRestore.mjs",
-
     "db:generate": "prisma generate",
     "db:studio": "prisma studio",
     "db:migrate": "prisma migrate dev",
@@ -22,6 +21,7 @@
     "@prisma/adapter-better-sqlite3": "^7.3.0",
     "@prisma/client": "^7.3.0",
     "better-sqlite3": "^12.6.2",
+    "luxon": "^3.7.2",
     "next": "16.1.6",
     "openai": "^6.18.0",
     "prisma": "^7.3.0",
@@ -31,6 +31,7 @@
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
+    "@types/luxon": "^3.7.1",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",

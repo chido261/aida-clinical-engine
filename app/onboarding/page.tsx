@@ -244,6 +244,12 @@ export default function OnboardingPage() {
             </button>
           )}
         </div>
+
+        {/* ✅ Leyenda educativa */}
+        <div className="mt-4 text-xs text-zinc-400">
+          AIDA es un asistente educativo. No sustituye la valoración de un profesional de la salud. En caso de urgencias o síntomas
+          severos: acude a atención médica.
+        </div>
       </div>
     </main>
   );

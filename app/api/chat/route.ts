@@ -24,6 +24,7 @@ import { buildDailySummary } from "@/app/lib/aidaDailySummary";
 import {
   ensureUserState,
   isTrialExpired,
+  getTrialInfo,
   saveReading,
   getLastReading,
   getRecentReadings,
@@ -51,7 +52,7 @@ const MX_TZ = "America/Mexico_City";
 
 // ✅ UI constants
 const EDUCATIONAL_DISCLAIMER =
-  "AIDA es un asistente educativo. No sustituye la valoración de un profesional de la salud. En urgencias o síntomas severos: acude a atención médica.";
+  "AIDA es un asistente educativo. No sustituye la valoración de un profesional de la salud. En caso de urgencias o síntomas severos: acude a atención médica.";
 
 // ---------------- helpers ----------------
 
@@ -75,13 +76,6 @@ function getLocalDateISO(timeZone: string) {
   return `${y}-${m}-${d}`;
 }
 
-function daysLeftFromEndsAt(endsAt?: Date | null) {
-  if (!endsAt) return null;
-  const ms = new Date(endsAt).getTime() - Date.now();
-  const days = Math.ceil(ms / (1000 * 60 * 60 * 24));
-  return Math.max(0, days);
-}
-
 function buildUI(userState?: any, opts?: { blocked?: boolean }) {
   const blocked = Boolean(opts?.blocked);
 
@@ -92,6 +86,7 @@ function buildUI(userState?: any, opts?: { blocked?: boolean }) {
       mode: "LOCAL",
       modeLabel: "Modo: Desarrollo (Local)",
       daysLeft: null,
+      daysRemaining: null,
       blocked: false,
       ctaText: null,
       ctaUrl: null,
@@ -102,12 +97,20 @@ function buildUI(userState?: any, opts?: { blocked?: boolean }) {
 
   // Trial
   if (status === "trial") {
-    const daysLeft = daysLeftFromEndsAt(userState?.trialEndsAt ?? null);
+    const info = getTrialInfo(userState);
+    const daysRemaining = info.daysRemaining ?? null;
+
     return {
       disclaimer: EDUCATIONAL_DISCLAIMER,
       mode: "TRIAL",
-      modeLabel: daysLeft != null ? `Modo: Prueba (${daysLeft} día(s) restantes)` : "Modo: Prueba",
-      daysLeft,
+      modeLabel:
+        daysRemaining != null
+          ? `Modo: Prueba (${daysRemaining} día(s) restantes)`
+          : "Modo: Prueba",
+      // compat: lo viejo sigue existiendo
+      daysLeft: daysRemaining,
+      // nuevo
+      daysRemaining,
       blocked: false,
       ctaText: "Activar versión completa",
       ctaUrl: process.env.AIDA_BILLING_URL ?? "/pago",
@@ -121,6 +124,7 @@ function buildUI(userState?: any, opts?: { blocked?: boolean }) {
       mode: "EXPIRED",
       modeLabel: "Modo: Prueba finalizada",
       daysLeft: 0,
+      daysRemaining: 0,
       blocked: true,
       ctaText: "Pagar 1 año",
       ctaUrl: process.env.AIDA_BILLING_URL ?? "/pago",
@@ -134,6 +138,7 @@ function buildUI(userState?: any, opts?: { blocked?: boolean }) {
       mode: "FULL",
       modeLabel: "Modo: Paquete completo",
       daysLeft: null,
+      daysRemaining: null,
       blocked,
       ctaText: null,
       ctaUrl: null,
@@ -147,6 +152,7 @@ function buildUI(userState?: any, opts?: { blocked?: boolean }) {
       mode: "MAINTENANCE",
       modeLabel: "Modo: Mantenimiento",
       daysLeft: null,
+      daysRemaining: null,
       blocked,
       ctaText: "Administrar suscripción",
       ctaUrl: process.env.AIDA_BILLING_URL ?? "/pago",
@@ -159,6 +165,7 @@ function buildUI(userState?: any, opts?: { blocked?: boolean }) {
     mode: status.toUpperCase(),
     modeLabel: `Modo: ${status}`,
     daysLeft: null,
+    daysRemaining: null,
     blocked,
     ctaText: null,
     ctaUrl: null,

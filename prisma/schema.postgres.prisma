@@ -29,6 +29,10 @@ model UserState {
   trialEndsAt    DateTime?
   licenseStatus  String   @default("trial") // trial | active | expired
 
+    // full (90 días)
+  fullStartedAt DateTime?
+  fullEndsAt    DateTime?
+
   // OTP / licencia (siguiente sprint)
   phoneE164       String?  // +52...
   phoneVerifiedAt DateTime?
