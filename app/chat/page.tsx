@@ -29,6 +29,26 @@ type Paywall = {
   ctaUrl: string;
 };
 
+type SpeechRecognitionLike = {
+  lang: string;
+  interimResults: boolean;
+  continuous: boolean;
+  start: () => void;
+  stop: () => void;
+  onresult: ((event: any) => void) | null;
+  onerror: ((event: any) => void) | null;
+  onend: (() => void) | null;
+};
+
+type SpeechRecognitionConstructor = new () => SpeechRecognitionLike;
+
+declare global {
+  interface Window {
+    SpeechRecognition?: SpeechRecognitionConstructor;
+    webkitSpeechRecognition?: SpeechRecognitionConstructor;
+  }
+}
+
 type UiPayload = {
   disclaimer?: string;
   mode?: string;
@@ -74,9 +94,13 @@ export default function ChatPage() {
 
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
 
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
   const [showAttachMenu, setShowAttachMenu] = useState(false);
+  const [isListening, setIsListening] = useState(false);
   const [deviceId, setDeviceId] = useState<string>("");
   const [paywall, setPaywall] = useState<Paywall | null>(null);
   const [appMode, setAppMode] = useState<"local" | "cloud">("local");
@@ -141,6 +165,10 @@ Cuando quieras, dime:
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, isSending, paywall, selectedFile]);
 
+  useEffect(() => {
+    autoResizeTextarea();
+  }, [input]);
+
   const chatLocked = appMode === "cloud" && (ui?.blocked === true || !!paywall);
 
   const canSend = useMemo(() => {
@@ -152,6 +180,19 @@ Cuando quieras, dime:
       !chatLocked
     );
   }, [input, selectedFile, isSending, deviceId, onboarding, chatLocked]);
+
+  function autoResizeTextarea() {
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+  
+    textarea.style.height = "auto";
+  
+    const maxHeight = 120;
+    const nextHeight = Math.min(textarea.scrollHeight, maxHeight);
+  
+    textarea.style.height = `${nextHeight}px`;
+    textarea.style.overflowY = textarea.scrollHeight > maxHeight ? "auto" : "hidden";
+  }
 
   function handleFileSelected(file: File | null) {
     if (!file) return;
@@ -173,6 +214,13 @@ Cuando quieras, dime:
     }
 
     setSelectedFile(file);
+
+if (file.type.startsWith("image/")) {
+  const url = URL.createObjectURL(file);
+  setImagePreviewUrl(url);
+} else {
+  setImagePreviewUrl(null);
+}
   }
 
   async function handleSend() {
@@ -334,6 +382,51 @@ Cuando quieras, dime:
     }
   }
 
+  function toggleVoiceInput() {
+    if (isListening) {
+      recognitionRef.current?.stop();
+      setIsListening(false);
+      return;
+    }
+  
+    const SpeechRecognition =
+      window.SpeechRecognition || window.webkitSpeechRecognition;
+  
+    if (!SpeechRecognition) {
+      alert("Tu navegador no permite dictado por voz. Prueba con Chrome en Android.");
+      return;
+    }
+  
+    const recognition = new SpeechRecognition();
+  
+    recognition.lang = "es-MX";
+    recognition.interimResults = false;
+    recognition.continuous = false;
+  
+    recognition.onresult = (event: any) => {
+      const transcript = event.results?.[0]?.[0]?.transcript ?? "";
+  
+      if (transcript) {
+        setInput((prev) => {
+          const separator = prev.trim().length ? " " : "";
+          return `${prev}${separator}${transcript}`;
+        });
+      }
+    };
+  
+    recognition.onerror = () => {
+      setIsListening(false);
+    };
+  
+    recognition.onend = () => {
+      setIsListening(false);
+    };
+  
+    recognitionRef.current = recognition;
+    setIsListening(true);
+    recognition.start();
+  }
+
   function onKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
@@ -476,6 +569,20 @@ Cuando quieras, dime:
             gap: 8,
           }}
         >
+{imagePreviewUrl && (
+  <img
+    src={imagePreviewUrl}
+    alt="Vista previa"
+    style={{
+      width: 48,
+      height: 48,
+      objectFit: "cover",
+      borderRadius: 10,
+      border: "1px solid #e5e7eb",
+    }}
+  />
+)}
+
           <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
             📎 {getFileKind(selectedFile)}: {selectedFile.name}
           </div>
@@ -484,7 +591,8 @@ Cuando quieras, dime:
             type="button"
             onClick={() => {
               setSelectedFile(null);
-              if (fileInputRef.current) fileInputRef.current.value = "";
+setImagePreviewUrl(null);
+if (fileInputRef.current) fileInputRef.current.value = "";
             }}
             style={{
               border: "none",
@@ -654,6 +762,7 @@ Cuando quieras, dime:
           }}
         >
           <textarea
+          ref={textareaRef}
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={onKeyDown}
@@ -665,7 +774,8 @@ Cuando quieras, dime:
               outline: "none",
               resize: "none",
               minHeight: 24,
-              maxHeight: 88,
+              maxHeight: 120,
+              overflowY: "hidden",
               fontSize: 16,
               lineHeight: "22px",
               padding: "10px 0",
@@ -677,7 +787,7 @@ Cuando quieras, dime:
 
           <button
             type="button"
-            onClick={() => alert("Después agregamos dictado por voz, no conversación por audio.")}
+            onClick={toggleVoiceInput}
             disabled={!onboarding || isSending || !deviceId || chatLocked}
             style={{
               width: 34,
@@ -691,11 +801,11 @@ Cuando quieras, dime:
               alignItems: "center",
               justifyContent: "center",
               cursor: !onboarding || isSending || !deviceId || chatLocked ? "not-allowed" : "pointer",
-              opacity: !onboarding || isSending || !deviceId || chatLocked ? 0.45 : 0.8,
+              opacity: !onboarding || isSending || !deviceId || chatLocked ? 0.45 : 1,              
             }}
             title="Dictar por voz"
           >
-            🎙️
+            {isListening ? "🔴" : "🎙️"}
           </button>
         </div>
 
