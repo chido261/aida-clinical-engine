@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { getDeviceId } from "@/app/lib/deviceId";
+import PushInit from "@/app/components/PushInit";
 
 type OnboardingData = {
   name: string;
@@ -28,12 +29,12 @@ type Paywall = {
   ctaUrl: string;
 };
 
-// ✅ UI desde backend
 type UiPayload = {
   disclaimer?: string;
-  mode?: string; // LOCAL | TRIAL | FULL | EXPIRED | MAINTENANCE...
+  mode?: string;
   modeLabel?: string;
   daysLeft?: number | null;
+  daysRemaining?: number | null;
   blocked?: boolean;
   ctaText?: string | null;
   ctaUrl?: string | null;
@@ -58,21 +59,27 @@ async function safeReadJson(res: Response): Promise<any | null> {
   }
 }
 
+function getFileKind(file: File | null) {
+  if (!file) return "";
+  if (file.type.startsWith("image/")) return "Imagen";
+  if (file.type === "application/pdf") return "PDF";
+  return "Archivo";
+}
+
 export default function ChatPage() {
   const [onboarding, setOnboarding] = useState<OnboardingData | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [isSending, setIsSending] = useState(false);
+
   const bottomRef = useRef<HTMLDivElement | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [showAttachMenu, setShowAttachMenu] = useState(false);
   const [deviceId, setDeviceId] = useState<string>("");
-
   const [paywall, setPaywall] = useState<Paywall | null>(null);
-
-  // ✅ AppMode real desde backend
   const [appMode, setAppMode] = useState<"local" | "cloud">("local");
-
-  // ✅ UI state
   const [ui, setUi] = useState<UiPayload | null>(null);
 
   useEffect(() => {
@@ -132,25 +139,97 @@ Cuando quieras, dime:
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, isSending, paywall]);
+  }, [messages, isSending, paywall, selectedFile]);
 
-  // ✅ Lock real viene del backend (ui.blocked)
   const chatLocked = appMode === "cloud" && (ui?.blocked === true || !!paywall);
 
   const canSend = useMemo(() => {
-    return input.trim().length > 0 && !isSending && !!deviceId && !!onboarding && !chatLocked;
-  }, [input, isSending, deviceId, onboarding, chatLocked]);
+    return (
+      (input.trim().length > 0 || !!selectedFile) &&
+      !isSending &&
+      !!deviceId &&
+      !!onboarding &&
+      !chatLocked
+    );
+  }, [input, selectedFile, isSending, deviceId, onboarding, chatLocked]);
+
+  function handleFileSelected(file: File | null) {
+    if (!file) return;
+
+    const isImage = file.type.startsWith("image/");
+    const isPdf = file.type === "application/pdf";
+
+    if (!isImage && !isPdf) {
+      alert("Solo puedes subir imágenes o PDF.");
+      return;
+    }
+
+    const maxMb = 10;
+    const maxBytes = maxMb * 1024 * 1024;
+
+    if (file.size > maxBytes) {
+      alert(`El archivo es muy grande. Máximo permitido: ${maxMb} MB.`);
+      return;
+    }
+
+    setSelectedFile(file);
+  }
 
   async function handleSend() {
     const text = input.trim();
-    if (!text || isSending || !deviceId || !onboarding || chatLocked) return;
 
-    const nextMessages: ChatMessage[] = [...messages, { role: "user", content: text }];
+    if ((!text && !selectedFile) || isSending || !deviceId || !onboarding || chatLocked) return;
+
+    const fileToSend = selectedFile;
+
+    const userContent = fileToSend
+      ? `${text || "Analiza este archivo."}\n\n[${getFileKind(fileToSend)}: ${fileToSend.name}]`
+      : text;
+
+    const nextMessages: ChatMessage[] = [...messages, { role: "user", content: userContent }];
+
     setMessages(nextMessages);
     setInput("");
+    setSelectedFile(null);
+    setShowAttachMenu(false);
+
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+
     setIsSending(true);
 
     try {
+      if (fileToSend) {
+        const formData = new FormData();
+        formData.append("file", fileToSend);
+        formData.append("message", text || "Analiza este archivo.");
+
+        const res = await fetch("/api/analyze-file", {
+          method: "POST",
+          body: formData,
+        });
+
+        const data = await safeReadJson(res);
+
+        if (!res.ok) {
+          throw new Error(
+            (typeof data?.error === "string" && data.error) ||
+              "Error al analizar el archivo."
+          );
+        }
+
+        setMessages((prev) => [
+          ...prev,
+          {
+            role: "assistant",
+            content: data?.reply || "No pude analizar el archivo.",
+          },
+        ]);
+
+        return;
+      }
+
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -161,11 +240,9 @@ Cuando quieras, dime:
         }),
       });
 
-      // ✅ 402 Trial expired => paywall (pero en local NO bloquea)
       if (res.status === 402) {
         const data = await safeReadJson(res);
 
-        // ✅ guarda ui si viene
         if (data?.ui) setUi(data.ui as UiPayload);
 
         if (appMode === "local") {
@@ -173,7 +250,8 @@ Cuando quieras, dime:
             ...prev,
             {
               role: "assistant",
-              content: "⚠️ (DEV) El backend respondió 402, pero en LOCAL ignoramos el paywall para seguir desarrollando.",
+              content:
+                "⚠️ (DEV) El backend respondió 402, pero en LOCAL ignoramos el paywall para seguir desarrollando.",
             },
           ]);
           return;
@@ -211,7 +289,6 @@ Cuando quieras, dime:
         return;
       }
 
-      // ✅ 429 Rate limit
       if (res.status === 429) {
         const data = await safeReadJson(res);
         if (data?.ui) setUi(data.ui as UiPayload);
@@ -228,11 +305,15 @@ Cuando quieras, dime:
         const data = await safeReadJson(res);
         if (data?.ui) setUi(data.ui as UiPayload);
 
-        const msg = (typeof data?.error === "string" && data.error) || "Error al llamar /api/chat";
+        const msg =
+          (typeof data?.error === "string" && data.error) ||
+          "Error al llamar /api/chat";
+
         throw new Error(msg);
       }
 
       const data = (await res.json()) as { reply: string; ui?: UiPayload };
+
       if (data?.ui) setUi(data.ui);
 
       setMessages((prev) => [...prev, { role: "assistant", content: data.reply }]);
@@ -241,9 +322,12 @@ Cuando quieras, dime:
         ...prev,
         {
           role: "assistant",
-          content: "Tuve un problema técnico al responder 😕. Inténtalo de nuevo en unos segundos.",
+          content:
+            e?.message ||
+            "Tuve un problema técnico al responder 😕. Inténtalo de nuevo en unos segundos.",
         },
       ]);
+
       console.error(e);
     } finally {
       setIsSending(false);
@@ -257,23 +341,45 @@ Cuando quieras, dime:
     }
   }
 
-  const modeLabel = ui?.modeLabel ?? (appMode === "local" ? "Modo: Desarrollo (Local)" : "Modo: —");
+  const modeLabel =
+    ui?.modeLabel ?? (appMode === "local" ? "Modo: Desarrollo (Local)" : "Modo: —");
+
   const disclaimer =
     ui?.disclaimer ??
     "AIDA es un asistente educativo. No sustituye la valoración de un profesional de la salud. En caso de urgencias o síntomas severos: acude a atención médica.";
 
-    const uiMode = (ui?.mode ?? "").toUpperCase();
-    const isTrialBanner = appMode === "cloud" && uiMode === "TRIAL" && !chatLocked;
-    const trialCtaText = ui?.ctaText ?? "Activa versión FULL";
-    const trialCtaUrl = ui?.ctaUrl ?? "/pago";
+  const uiMode = (ui?.mode ?? "").toUpperCase();
+  const isTrialBanner = appMode === "cloud" && uiMode === "TRIAL" && !chatLocked;
+  const trialCtaText = ui?.ctaText ?? "Activa versión FULL";
+  const trialCtaUrl = ui?.ctaUrl ?? "/pago";
 
   return (
     <main style={{ maxWidth: 720, margin: "0 auto", padding: 16, position: "relative" }}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-        <h1 style={{ fontSize: 22, fontWeight: 700, marginBottom: 12 }}>AIDA</h1>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 12,
+          marginBottom: 12,
+        }}
+      >
+        <h1 style={{ fontSize: 22, fontWeight: 700, margin: 0 }}>AIDA</h1>
 
-        {/* ✅ Badge modo */}
-      {/* ✅ Banner visible en TRIAL (solo cloud) */}
+        <div
+          style={{
+            border: "1px solid #e5e7eb",
+            background: "white",
+            borderRadius: 999,
+            padding: "6px 10px",
+            fontSize: 12,
+            fontWeight: 600,
+          }}
+        >
+          {modeLabel}
+        </div>
+      </div>
+
       {isTrialBanner && (
         <div
           style={{
@@ -316,21 +422,6 @@ Cuando quieras, dime:
         </div>
       )}
 
-        <div
-          style={{
-            border: "1px solid #e5e7eb",
-            background: "white",
-            borderRadius: 999,
-            padding: "6px 10px",
-            fontSize: 12,
-            fontWeight: 600,
-            marginBottom: 12,
-          }}
-        >
-          {modeLabel}
-        </div>
-      </div>
-
       <div
         style={{
           border: "1px solid #e5e7eb",
@@ -365,45 +456,270 @@ Cuando quieras, dime:
           </div>
         ))}
 
-        {isSending && <div style={{ opacity: 0.7, marginTop: 6 }}>AIDA está escribiendo…</div>}
+        {isSending && <div style={{ opacity: 0.7, marginTop: 6 }}>AIDA está analizando…</div>}
 
         <div ref={bottomRef} />
       </div>
 
-      <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
-        <textarea
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={onKeyDown}
-          placeholder={
-            chatLocked
-              ? "Tu prueba terminó. Realiza tu pago para continuar."
-              : "Escribe aquí… (Enter para enviar, Shift+Enter salto de línea)"
-          }
-          rows={2}
+      {selectedFile && (
+        <div
+          style={{
+            marginTop: 8,
+            border: "1px solid #e5e7eb",
+            borderRadius: 14,
+            padding: "8px 10px",
+            background: "#f9fafb",
+            fontSize: 13,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 8,
+          }}
+        >
+          <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            📎 {getFileKind(selectedFile)}: {selectedFile.name}
+          </div>
+
+          <button
+            type="button"
+            onClick={() => {
+              setSelectedFile(null);
+              if (fileInputRef.current) fileInputRef.current.value = "";
+            }}
+            style={{
+              border: "none",
+              background: "transparent",
+              fontSize: 16,
+              cursor: "pointer",
+            }}
+            title="Quitar archivo"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
+      <div
+        style={{
+          display: "flex",
+          alignItems: "flex-end",
+          gap: 8,
+          marginTop: 12,
+        }}
+      >
+        <button
+          type="button"
+          onClick={() => setShowAttachMenu((prev) => !prev)}
+          disabled={!onboarding || isSending || !deviceId || chatLocked}
+          style={{
+            width: 44,
+            minWidth: 44,
+            height: 44,
+            borderRadius: 999,
+            border: "1px solid #e5e7eb",
+            background: "white",
+            fontSize: 28,
+            lineHeight: "28px",
+            fontWeight: 300,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            cursor: !onboarding || isSending || !deviceId || chatLocked ? "not-allowed" : "pointer",
+          }}
+          title="Adjuntar foto o archivo"
+        >
+          +
+        </button>
+
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*,.pdf,application/pdf"
+          style={{ display: "none" }}
+          onChange={(e) => {
+            const file = e.target.files?.[0] ?? null;
+            handleFileSelected(file);
+          }}
+        />
+
+        {showAttachMenu && (
+          <div
+            style={{
+              position: "absolute",
+              left: 16,
+              bottom: 96,
+              width: 230,
+              background: "white",
+              border: "1px solid #e5e7eb",
+              borderRadius: 22,
+              boxShadow: "0 18px 45px rgba(0,0,0,0.16)",
+              padding: 10,
+              zIndex: 40,
+            }}
+          >
+            <button
+              type="button"
+              onClick={() => {
+                setShowAttachMenu(false);
+                fileInputRef.current?.setAttribute("accept", "image/*");
+                fileInputRef.current?.setAttribute("capture", "environment");
+                fileInputRef.current?.click();
+              }}
+              style={{
+                width: "100%",
+                border: "none",
+                background: "white",
+                display: "flex",
+                alignItems: "center",
+                gap: 12,
+                padding: "12px 10px",
+                borderRadius: 14,
+                fontSize: 16,
+                fontWeight: 700,
+                cursor: "pointer",
+                textAlign: "left",
+              }}
+            >
+              <span style={{ fontSize: 22 }}>📷</span>
+              Cámara
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setShowAttachMenu(false);
+                fileInputRef.current?.removeAttribute("capture");
+                fileInputRef.current?.setAttribute("accept", "image/*");
+                fileInputRef.current?.click();
+              }}
+              style={{
+                width: "100%",
+                border: "none",
+                background: "white",
+                display: "flex",
+                alignItems: "center",
+                gap: 12,
+                padding: "12px 10px",
+                borderRadius: 14,
+                fontSize: 16,
+                fontWeight: 700,
+                cursor: "pointer",
+                textAlign: "left",
+              }}
+            >
+              <span style={{ fontSize: 22 }}>🖼️</span>
+              Fotos
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setShowAttachMenu(false);
+                fileInputRef.current?.removeAttribute("capture");
+                fileInputRef.current?.setAttribute("accept", ".pdf,application/pdf,image/*");
+                fileInputRef.current?.click();
+              }}
+              style={{
+                width: "100%",
+                border: "none",
+                background: "white",
+                display: "flex",
+                alignItems: "center",
+                gap: 12,
+                padding: "12px 10px",
+                borderRadius: 14,
+                fontSize: 16,
+                fontWeight: 700,
+                cursor: "pointer",
+                textAlign: "left",
+              }}
+            >
+              <span style={{ fontSize: 22 }}>📎</span>
+              Archivos
+            </button>
+          </div>
+        )}
+
+        <div
           style={{
             flex: 1,
+            minHeight: 44,
             border: "1px solid #e5e7eb",
-            borderRadius: 10,
-            padding: 10,
-            resize: "none",
+            borderRadius: 999,
+            background: "white",
+            display: "flex",
+            alignItems: "center",
+            padding: "0 8px 0 14px",
+            gap: 8,
           }}
-          disabled={!onboarding || isSending || !deviceId || chatLocked}
-        />
+        >
+          <textarea
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={onKeyDown}
+            placeholder={chatLocked ? "Tu prueba terminó" : "Pregúntale a AIDA"}
+            rows={1}
+            style={{
+              flex: 1,
+              border: "none",
+              outline: "none",
+              resize: "none",
+              minHeight: 24,
+              maxHeight: 88,
+              fontSize: 16,
+              lineHeight: "22px",
+              padding: "10px 0",
+              background: "transparent",
+              fontFamily: "inherit",
+            }}
+            disabled={!onboarding || isSending || !deviceId || chatLocked}
+          />
+
+          <button
+            type="button"
+            onClick={() => alert("Después agregamos dictado por voz, no conversación por audio.")}
+            disabled={!onboarding || isSending || !deviceId || chatLocked}
+            style={{
+              width: 34,
+              minWidth: 34,
+              height: 34,
+              borderRadius: 999,
+              border: "none",
+              background: "transparent",
+              fontSize: 20,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              cursor: !onboarding || isSending || !deviceId || chatLocked ? "not-allowed" : "pointer",
+              opacity: !onboarding || isSending || !deviceId || chatLocked ? 0.45 : 0.8,
+            }}
+            title="Dictar por voz"
+          >
+            🎙️
+          </button>
+        </div>
 
         <button
           onClick={handleSend}
           disabled={!canSend}
           style={{
-            padding: "0 14px",
-            borderRadius: 10,
-            border: "1px solid #e5e7eb",
-            background: canSend ? "black" : "#9ca3af",
+            width: 44,
+            minWidth: 44,
+            height: 44,
+            borderRadius: 999,
+            border: "none",
+            background: canSend ? "black" : "#d1d5db",
             color: "white",
-            fontWeight: 600,
+            fontWeight: 800,
+            fontSize: 18,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            cursor: canSend ? "pointer" : "not-allowed",
           }}
+          title="Enviar"
         >
-          Enviar
+          ↑
         </button>
       </div>
 
@@ -413,10 +729,9 @@ Cuando quieras, dime:
         </p>
       )}
 
-      {/* ✅ Leyenda educativa SIEMPRE */}
       <div style={{ marginTop: 10, fontSize: 12, opacity: 0.75 }}>
         {disclaimer}
-        {/* ✅ CTA “soft” (solo si backend lo manda y NO está bloqueado) */}
+
         {appMode === "cloud" && ui?.ctaUrl && ui?.ctaText && !chatLocked ? (
           <>
             {" "}
@@ -427,7 +742,8 @@ Cuando quieras, dime:
         ) : null}
       </div>
 
-      {/* ✅ Modal paywall SOLO en cloud */}
+      <PushInit userId={deviceId} />
+
       {appMode === "cloud" && paywall && (
         <div
           style={{

@@ -19,7 +19,10 @@ import {
 } from "@/app/lib/aidaRules";
 import { applyNutritionRules } from "@/app/lib/aidaNutritionRules";
 import { applyPhaseRules } from "@/app/lib/aidaPhaseRules";
-import { buildDailySummary } from "@/app/lib/aidaDailySummary";
+import {
+  buildDailySummary,
+  buildTrialFinalReport,
+} from "@/app/lib/aidaDailySummary";
 
 import {
   ensureUserState,
@@ -463,14 +466,40 @@ export async function POST(req: Request) {
       });
     }
 
-    // 5.5) Resumen diario (solo si el usuario lo pide)
-    const wantsSummary =
-      /(resumen|resumen del d[ií]a|c[oó]mo voy|como voy|qu[eé] pas[oó] hoy|que paso hoy)/i.test(lastUserMsg);
+// 5.5) Reportes manuales
+const wantsTrialFinalReport =
+  /(reporte final|reporte trial|reporte de trial|reporte 7 d[ií]as|reporte final trial|cierre del trial|cierre de trial)/i.test(
+    lastUserMsg
+  );
 
-    if (wantsSummary) {
-      const summary = await buildDailySummary(userId);
-      return jsonOK({ ok: true, reply: summary.text, bypass: false, dailySummary: true, ui: uiBase });
-    }
+if (wantsTrialFinalReport) {
+  const report = await buildTrialFinalReport(userId);
+
+  return jsonOK({
+    ok: true,
+    reply: report,
+    bypass: false,
+    trialFinalReport: true,
+    ui: uiBase,
+  });
+}
+
+const wantsSummary =
+  /(resumen|resumen del d[ií]a|c[oó]mo voy|como voy|qu[eé] pas[oó] hoy|que paso hoy)/i.test(
+    lastUserMsg
+  );
+
+if (wantsSummary) {
+  const summary = await buildDailySummary(userId);
+
+  return jsonOK({
+    ok: true,
+    reply: summary.text,
+    bypass: false,
+    dailySummary: true,
+    ui: uiBase,
+  });
+}
 
     // ✅ 6) Motor clínico PRIMERO
     if (glucoseNow !== null) {
