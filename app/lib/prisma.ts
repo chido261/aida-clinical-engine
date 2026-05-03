@@ -9,13 +9,17 @@ function assertEnv(url: string) {
   // Fail-fast en cloud
   if (APP_MODE === "cloud") {
     if (!url) throw new Error("DATABASE_URL missing (cloud)");
-    if (url.startsWith("file:")) throw new Error("DATABASE_URL cannot be sqlite in cloud");
+    if (url.startsWith("file:")) {
+      throw new Error("DATABASE_URL cannot be sqlite in cloud");
+    }
   }
 
   // Fail-fast local
   if (APP_MODE === "local") {
     if (!url) throw new Error("DATABASE_URL missing (local)");
-    if (!url.startsWith("file:")) throw new Error("DATABASE_URL must be sqlite file: in local");
+    if (!url.startsWith("file:")) {
+      throw new Error("DATABASE_URL must be sqlite file: in local");
+    }
   }
 }
 
@@ -30,9 +34,13 @@ function makePrismaClient() {
   }
 
   // Cloud postgres
-  return new PrismaClient();
+  process.env.DATABASE_URL = url;
+
+  return new PrismaClient({} as ConstructorParameters<typeof PrismaClient>[0]);
 }
 
 export const prisma = globalForPrisma.prisma ?? makePrismaClient();
 
-if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = prisma;
+if (process.env.NODE_ENV !== "production") {
+  globalForPrisma.prisma = prisma;
+}
