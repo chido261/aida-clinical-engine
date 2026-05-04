@@ -1,6 +1,7 @@
 // app/lib/prisma.ts
 import { PrismaClient } from "@prisma/client";
 import { PrismaBetterSqlite3 } from "@prisma/adapter-better-sqlite3";
+import { PrismaPg } from "@prisma/adapter-pg";
 import { APP_MODE, getDatabaseUrl } from "@/app/lib/runtimeConfig";
 
 const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient };
@@ -34,9 +35,8 @@ function makePrismaClient() {
   }
 
   // Cloud postgres
-  process.env.DATABASE_URL = url;
-
-  return new PrismaClient({} as ConstructorParameters<typeof PrismaClient>[0]);
+  const adapter = new PrismaPg({ connectionString: url });
+  return new PrismaClient({ adapter });
 }
 
 export const prisma = globalForPrisma.prisma ?? makePrismaClient();
