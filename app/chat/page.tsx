@@ -129,37 +129,67 @@ export default function ChatPage() {
   }, []);
 
   useEffect(() => {
-    if (!onboarding) return;
+    if (!onboarding || !deviceId) return;
 
-    const fasting = Number(onboarding.fastingPeakMgDl);
-    const postMeal = Number(onboarding.postMealPeakMgDl);
+    const currentOnboarding = onboarding;
+    let cancelled = false;
 
-    const focus =
-      postMeal > fasting
-        ? "cómo responde tu cuerpo a los alimentos"
-        : "tu balance de alimentos y horarios de comidas";
+    async function loadWelcomeMessage() {
+      try {
+        const res = await fetch("/api/chat-welcome", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            deviceId,
+            onboarding: currentOnboarding,
+          }),
+        });
 
-    const wakeTime = onboarding.wakeTime || "06:00";
+        const data = await safeReadJson(res);
 
-    setMessages((prev) =>
-      prev.length
-        ? prev
-        : [
-            {
-              role: "assistant",
-              content: `Hola ${onboarding.name} 👋
+        if (!res.ok) {
+          throw new Error(
+            (typeof data?.error === "string" && data.error) ||
+              "No pude cargar el mensaje de bienvenida."
+          );
+        }
 
-Gracias por compartir tus datos. Para comenzar, me enfocaré en ${focus}.
+        if (cancelled) return;
 
-☀️ Como normalmente despiertas a las ${wakeTime}, te voy a pedir tu lectura en ayunas alrededor de esa hora todos los días.
+        setMessages((prev) =>
+          prev.length
+            ? prev
+            : [
+                {
+                  role: "assistant",
+                  content: data?.reply || `Hola ${currentOnboarding.name} 👋`,
+                },
+              ]
+        );
+      } catch (e) {
+        console.error(e);
 
-Cuando quieras, dime:
-- ¿Qué sueles desayunar?
-- o ¿Cuál fue tu última lectura de glucosa?`,
-            },
-          ]
-    );
-  }, [onboarding]);
+        if (cancelled) return;
+
+        setMessages((prev) =>
+          prev.length
+            ? prev
+            : [
+                {
+                  role: "assistant",
+                  content: `Hola ${currentOnboarding.name} 👋`,
+                },
+              ]
+        );
+      }
+    }
+
+    loadWelcomeMessage();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [onboarding, deviceId]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });

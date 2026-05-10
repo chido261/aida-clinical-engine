@@ -29,7 +29,7 @@ model UserState {
   trialEndsAt    DateTime?
   licenseStatus  String   @default("trial") // trial | active | expired
 
-    // full (90 días)
+  // full (90 días)
   fullStartedAt DateTime?
   fullEndsAt    DateTime?
 
@@ -39,6 +39,13 @@ model UserState {
 
   // estado clínico persistente (motor conversacional)
   clinicalState String? // HYPO_ACTIVE | RECOVERING_FROM_HYPO | null
+
+  // seguimiento conversacional persistente
+  lastEventType       String?
+  lastEventAt         DateTime?
+  pendingFollowUpType String?
+  pendingFollowUpAt   DateTime?
+  lastRecommendation  String?
 
   // resumen diario (1 vez por día)
   dailySummaryDate  String?

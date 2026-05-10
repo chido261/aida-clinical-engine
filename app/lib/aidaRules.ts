@@ -32,8 +32,9 @@ export type ClinicalDecision =
     previousGlucose?: number | null;
     symptoms?: string[];
     clinicalState?: ClinicalState;
+    pendingFollowUpType?: string | null;
   }): ClinicalDecision {
-    const { glucose, moment, previousGlucose, clinicalState } = params;
+    const { glucose, moment, previousGlucose, clinicalState, pendingFollowUpType } = params;
   
     // 1) HIPO (ACTIVA)
     if (glucose < 70) {
@@ -49,28 +50,36 @@ export type ClinicalDecision =
       };
     }
   
-    // 2) RECUPERACIÓN POST-HIPO
     const wasHypo =
       clinicalState === "HYPO_ACTIVE" ||
-      (previousGlucose != null && previousGlucose < 70);
-  
+      clinicalState === "RECOVERING_FROM_HYPO" ||
+      pendingFollowUpType === "HYPO_RECHECK_15MIN" ||
+      pendingFollowUpType === "HYPO_STABILITY_RECHECK" ||
+      (previousGlucose != null && previousGlucose < 70);    // 2) RECUPERACIÓN POST-HIPO
+
     if (wasHypo && glucose >= 70 && glucose < 90) {
       return {
         handled: true,
         nextClinicalState: "RECOVERING_FROM_HYPO",
         response:
           `Perfecto, ya subiste y vas saliendo de la baja. 👍\n` +
-          `Ahora estabiliza con proteína + grasa (ej: huevo, queso, atún, yogurt natural).\n` +
+          `Ahora estabiliza con proteína + grasa + fibra para evitar que vuelva a bajar.\n` +
           `Evita caminar por ahora.\n` +
           `Mide de nuevo en 30–60 min y me dices el número. Vamos paso a paso. 💪`,
       };
     }
-  
-    // 3) NORMALIZACIÓN (limpia estado)
-    if (clinicalState && glucose >= 90) {
-      return { handled: false, nextClinicalState: null };
+
+    if (wasHypo && glucose >= 90) {
+      return {
+        handled: true,
+        nextClinicalState: "RECOVERING_FROM_HYPO",
+        response:
+          `Perfecto, ${glucose} ya indica que saliste de la baja. 👍\n\n` +
+          `Ahora conviene comer algo con proteína, grasa y fibra para ayudarte a mantenerte estable, sobre todo si falta para tu siguiente comida.\n\n` +
+          `Vuelve a medirte en 30–60 minutos para confirmar que no vuelva a bajar.`,
+      };
     }
-  
+    
     // 4) AYUNO (solo si lo dijo)
     if (moment === "AYUNO") {
       if (glucose < 90) {

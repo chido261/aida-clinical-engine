@@ -241,6 +241,24 @@ function extractSymptoms(text: string): string[] {
   return symptoms;
 }
 
+function saysCannotMeasureNow(text: string) {
+  return /(no traigo (mi )?gluc[oó]metro|no tengo (mi )?gluc[oó]metro|no puedo medir|no puedo medirme|me mido m[aá]s tarde|te confirmo medici[oó]n|cuando llegue a casa|cuando regrese a casa)/i.test(
+    text
+  );
+}
+
+function saysFeelsWell(text: string) {
+  return /(me siento bien|me siento muy bien|estoy bien|me encuentro bien|sin s[ií]ntomas|no tengo s[ií]ntomas)/i.test(
+    text
+  );
+}
+
+function mentionsStabilizingFood(text: string) {
+  return /(pollo|pechuga|huevo|at[uú]n|yogurt|queso|aguacate|br[oó]coli|prote[ií]na|grasa|fibra)/i.test(
+    text
+  );
+}
+
 function buildMemoryContext(params: {
   last?: any | null;
   recent?: any[];
@@ -332,11 +350,20 @@ export async function POST(req: Request) {
           symptoms,
         });
 
-        // ✅ Persistir estado clínico si hubo hipo
+        // ✅ Persistir estado clínico y seguimiento si hubo hipo
         if (glucoseNow < 70) {
+          const now = new Date();
+
           await prisma.userState.update({
             where: { id: userId },
-            data: { clinicalState: "HYPO_ACTIVE" },
+            data: {
+              clinicalState: "HYPO_ACTIVE",
+              lastEventType: "HYPOGLYCEMIA",
+              lastEventAt: now,
+              pendingFollowUpType: "HYPO_RECHECK_15MIN",
+              pendingFollowUpAt: now,
+              lastRecommendation: "Aplicar protocolo 15-15 y volver a medir en 15 minutos.",
+            },
           });
         } else if (us.clinicalState && glucoseNow >= 90) {
           await prisma.userState.update({
@@ -370,6 +397,30 @@ export async function POST(req: Request) {
     }
 
     if (glucoseNow === null && clinicalState === "RECOVERING_FROM_HYPO") {
+      const cannotMeasureNow = saysCannotMeasureNow(lastUserMsg);
+      const feelsWell = saysFeelsWell(lastUserMsg);
+      const ateForStability = mentionsStabilizingFood(lastUserMsg);
+
+      if (cannotMeasureNow) {
+        const acknowledgment =
+          feelsWell && ateForStability
+            ? `Perfecto, gracias por avisarme. Que te sientas bien y que ya hayas comido proteína, grasa y fibra ayuda a mantenerte estable.\n\n`
+            : feelsWell
+              ? `Perfecto, gracias por avisarme. Que te sientas bien es una buena señal.\n\n`
+              : `Gracias por avisarme.\n\n`;
+
+        return jsonOK({
+          ok: true,
+          bypass: false,
+          clinicalIntercept: true,
+          reply:
+            acknowledgment +
+            `Como ahora no puedes medirte, en cuanto tengas tu glucómetro confírmame tu lectura para cerrar bien el seguimiento de la baja.\n\n` +
+            `Si antes de eso notas temblor, sudor frío, debilidad o mareo, atiéndelo de inmediato y mídete en cuanto puedas.`,
+          ui: uiBase,
+        });
+      }
+
       return jsonOK({
         ok: true,
         bypass: false,
@@ -509,12 +560,37 @@ if (wantsSummary) {
         previousGlucose,
         symptoms,
         clinicalState,
+        pendingFollowUpType: userState.pendingFollowUpType ?? null,
       });
 
       if (clinicalDecision.handled) {
+        const followUpData =
+          clinicalDecision.nextClinicalState === "HYPO_ACTIVE"
+            ? {
+                clinicalState: "HYPO_ACTIVE",
+                lastEventType: "HYPOGLYCEMIA",
+                lastEventAt: new Date(),
+                pendingFollowUpType: "HYPO_RECHECK_15MIN",
+                pendingFollowUpAt: new Date(),
+                lastRecommendation: "Aplicar protocolo 15-15 y volver a medir en 15 minutos.",
+              }
+            : clinicalDecision.nextClinicalState === "RECOVERING_FROM_HYPO"
+              ? {
+                  clinicalState: "RECOVERING_FROM_HYPO",
+                  lastEventType: "HYPOGLYCEMIA_RECOVERY",
+                  lastEventAt: new Date(),
+                  pendingFollowUpType: "HYPO_STABILITY_RECHECK",
+                  pendingFollowUpAt: new Date(),
+                  lastRecommendation:
+                    "Comer algo con proteína y grasa para estabilizar y volver a medir en 30–60 minutos.",
+                }
+              : {
+                  clinicalState: clinicalDecision.nextClinicalState,
+                };
+
         await prisma.userState.update({
           where: { id: userId },
-          data: { clinicalState: clinicalDecision.nextClinicalState },
+          data: followUpData,
         });
 
         return jsonOK({
