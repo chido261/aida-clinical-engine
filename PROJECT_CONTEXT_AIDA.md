@@ -1,7 +1,7 @@
 # PROJECT_CONTEXT_AIDA.md
 
 **Estado Actual – 03 May 2026**  
-**Actualizado: PWA funcional en celular + análisis de imágenes/PDF + menú de adjuntos + dictado por voz + build limpio + estrategia Local vs Cloud separada**
+**Actualizado: AIDA funcional en producción + dominio `bajatuglucosa.com` conectado + Vercel/Neon operando + estrategia Local vs Cloud separada**
 
 ---
 
@@ -18,7 +18,9 @@
 - PWA instalable en celular.
 - Análisis de imágenes y PDFs.
 - Dictado por voz.
-- Preparación para deploy en nube con dominio propio.
+- Versión cloud funcional en Vercel.
+- Base de datos PostgreSQL en Neon.
+- Dominio propio conectado: `bajatuglucosa.com`.
 
 ---
 
@@ -29,20 +31,49 @@ Stack:
 - Next.js 16.1.6 con App Router.
 - Prisma 7.x.
 - SQLite local.
-- PostgreSQL cloud proyectado con Neon.
+- PostgreSQL cloud con Neon.
 - OpenAI SDK.
 - PWA con manifest y service worker.
 - GitHub repo: `https://github.com/chido261/aida-clinical-engine`
-- Rama actual: `main`
+- Ramas actuales:
+  - `main` = producción estable.
+  - `dev` = desarrollo local/pruebas.
+- Producción en Vercel.
+- Dominio comprado en Namecheap y conectado a Vercel.
+
+URLs actuales:
+
+```txt
+https://bajatuglucosa.com/chat
+https://aida-clinical-engine.vercel.app/chat
+```
+
+Dominio estratégico:
+
+```txt
+https://bajatuglucosa.com
+```
+
+Uso planeado:
+
+```txt
+https://bajatuglucosa.com        → página principal / carta de venta
+https://bajatuglucosa.com/app    → acceso a AIDA (pendiente crear redirect a /chat)
+https://bajatuglucosa.com/chat   → AIDA actualmente funcional
+```
 
 Últimos commits relevantes:
 
 ```txt
+cd230c4 - Add PostgreSQL Prisma adapter for Vercel
+1dc9089 - Fix Prisma client initialization for cloud build
+bdfdccc - Add PostgreSQL migration to sync cloud schema
+5f90023 - Update AIDA project context before cloud setup
 f82576e - Add file analysis and mobile attachment menu
 b55f2ff - Add image preview and voice dictation
 ```
 
-Build actual:
+Build actual local:
 
 ```bash
 npm run build
@@ -55,9 +86,21 @@ Resultado:
 ✅ TypeScript correcto
 ✅ Next build correcto
 ✅ /api/analyze-file correcto
+✅ /api/chat correcto
 ✅ /chat correcto
 ✅ Sin errores
 ✅ working tree clean
+```
+
+Producción actual:
+
+```txt
+✅ Vercel Production: Ready
+✅ Dominio bajatuglucosa.com: Valid Configuration
+✅ AIDA responde en producción
+✅ Neon/PostgreSQL conectado correctamente
+✅ Imagen funciona
+✅ Micrófono funciona
 ```
 
 ---
@@ -117,6 +160,146 @@ Objetivo del endpoint:
   - No diagnosticar.
   - No suspender medicamentos.
 
+### Prisma client
+
+```txt
+app/lib/prisma.ts
+```
+
+Estado actual:
+
+- Local SQLite usa:
+
+```txt
+@prisma/adapter-better-sqlite3
+```
+
+- Cloud PostgreSQL usa:
+
+```txt
+@prisma/adapter-pg
+pg
+```
+
+Código actual esperado:
+
+```ts
+// app/lib/prisma.ts
+import { PrismaClient } from "@prisma/client";
+import { PrismaBetterSqlite3 } from "@prisma/adapter-better-sqlite3";
+import { PrismaPg } from "@prisma/adapter-pg";
+import { APP_MODE, getDatabaseUrl } from "@/app/lib/runtimeConfig";
+
+const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient };
+
+function assertEnv(url: string) {
+  // Fail-fast en cloud
+  if (APP_MODE === "cloud") {
+    if (!url) throw new Error("DATABASE_URL missing (cloud)");
+    if (url.startsWith("file:")) {
+      throw new Error("DATABASE_URL cannot be sqlite in cloud");
+    }
+  }
+
+  // Fail-fast local
+  if (APP_MODE === "local") {
+    if (!url) throw new Error("DATABASE_URL missing (local)");
+    if (!url.startsWith("file:")) {
+      throw new Error("DATABASE_URL must be sqlite file: in local");
+    }
+  }
+}
+
+function makePrismaClient() {
+  const url = getDatabaseUrl();
+  assertEnv(url);
+
+  // Local sqlite
+  if (url.startsWith("file:")) {
+    const adapter = new PrismaBetterSqlite3({ url });
+    return new PrismaClient({ adapter });
+  }
+
+  // Cloud postgres
+  const adapter = new PrismaPg({ connectionString: url });
+  return new PrismaClient({ adapter });
+}
+
+export const prisma = globalForPrisma.prisma ?? makePrismaClient();
+
+if (process.env.NODE_ENV !== "production") {
+  globalForPrisma.prisma = prisma;
+}
+```
+
+### Runtime config
+
+```txt
+app/lib/runtimeConfig.ts
+```
+
+Estado:
+
+- `APP_MODE=local` para laptop.
+- `APP_MODE=cloud` para Vercel.
+- Protege para que cloud no use SQLite por error.
+
+### Prisma config
+
+```txt
+prisma.config.ts
+```
+
+Estado:
+
+- Usa `PRISMA_ENV=production` para seleccionar:
+
+```txt
+prisma/schema.postgres.prisma
+prisma/migrations_pg
+.env.production
+```
+
+- En local, sin `PRISMA_ENV=production`, usa:
+
+```txt
+prisma/schema.prisma
+prisma/migrations
+.env.local
+```
+
+### Schemas Prisma
+
+```txt
+prisma/schema.prisma              → SQLite local
+prisma/schema.postgres.prisma     → PostgreSQL cloud
+```
+
+Modelos actuales:
+
+```txt
+UserState
+Reading
+UsageDaily
+```
+
+### Migraciones PostgreSQL
+
+```txt
+prisma/migrations_pg/20260225132933_init_pg/migration.sql
+prisma/migrations_pg/20260503232059_sync_pg_schema/migration.sql
+```
+
+La migración `sync_pg_schema` agregó los campos faltantes:
+
+```txt
+clinicalState
+dailySummaryCount
+dailySummaryDate
+fullEndsAt
+fullStartedAt
+```
+
 ### Device ID
 
 ```txt
@@ -147,7 +330,9 @@ Estado:
 
 ---
 
-## 4) Funciones ya probadas en celular
+## 4) Funciones ya probadas
+
+### Local / celular
 
 Probado en celular vía red local:
 
@@ -157,7 +342,7 @@ http://192.168.50.212:3000/chat
 
 También se probó con HTTPS mediante Cloudflare Tunnel para funciones como micrófono.
 
-Estado funcional:
+Estado funcional local:
 
 ```txt
 ✅ Abre en celular
@@ -172,6 +357,41 @@ Estado funcional:
 ✅ PDF se sube y se interpreta correctamente
 ✅ Micrófono dicta texto
 ✅ Textarea crece automáticamente
+```
+
+### Producción / dominio propio
+
+Probado en:
+
+```txt
+https://bajatuglucosa.com/chat
+```
+
+Estado funcional producción:
+
+```txt
+✅ Abre con dominio propio
+✅ Trial visible
+✅ Chat responde
+✅ Neon/PostgreSQL conectado
+✅ AIDA responde a lecturas de glucosa
+✅ Lee imágenes
+✅ Micrófono funciona
+✅ HTTPS activo por Vercel
+```
+
+Prueba realizada:
+
+```txt
+Hola, soy David. Hoy amanecí con glucosa de 145 en ayunas.
+```
+
+AIDA respondió correctamente:
+
+```txt
+En ayunas está elevado.
+Hoy enfócate en desayuno sin azúcar/harinas y revisemos la cena de ayer.
+Si te sientes bien, movimiento suave 10 min es opcional.
 ```
 
 ---
@@ -247,55 +467,229 @@ DATABASE_URL=file:./prisma/dev.db
 - No aplica paywall.
 - No bloquea desarrollo.
 - Se usa para laptop/desarrollo/pruebas.
+- Usa SQLite local.
 
 ### Cloud
 
 ```txt
 APP_MODE=cloud
+PRISMA_ENV=production
 DATABASE_URL=postgresql://... Neon
 ```
 
-- Debe aplicar trial 7 días.
-- Debe aplicar 50 mensajes/día.
-- Debe bloquear cuando trial termine.
-- Debe mostrar CTA de pago o activación full.
-- Debe usar PostgreSQL/Neon, no SQLite.
+- Aplica trial 7 días.
+- Aplica 50 mensajes/día.
+- Bloquea cuando trial termina.
+- Muestra CTA de pago o activación full.
+- Usa PostgreSQL/Neon, no SQLite.
 
 ---
 
-## 7) Objetivo del próximo chat
+## 7) Infraestructura cloud actual
 
-Ahora se trabajará en subir AIDA a la nube.
+### Vercel
 
-Objetivo:
+Proyecto:
 
 ```txt
-Tener una versión funcional online con URL fija para que personas puedan probar AIDA durante 7 días y dar retroalimentación.
+aida-clinical-engine
 ```
 
-El usuario comprará dominio en Namecheap.
-
-Deseo del usuario:
+Producción:
 
 ```txt
-Quiero tener una versión funcional en la nube con dominio propio.
-Quiero enviar el link a personas para que prueben la app por 7 días.
-Quiero recibir retroalimentación.
-Quiero mantener mi versión local/laptop aislada de la versión cloud.
-No quiero que cada cambio local se actualice automáticamente en producción.
-Quiero probar cambios localmente y, cuando estén listos, decidir cuándo actualizar la nube.
+main
+```
+
+Estado:
+
+```txt
+✅ Production Ready
+```
+
+Dominio Vercel:
+
+```txt
+https://aida-clinical-engine.vercel.app/chat
+```
+
+Dominio propio:
+
+```txt
+https://bajatuglucosa.com/chat
+```
+
+Variables configuradas en Vercel:
+
+```txt
+APP_MODE=cloud
+PRISMA_ENV=production
+DATABASE_URL=postgresql://... Neon
+OPENAI_API_KEY=...
+NEXT_PUBLIC_VAPID_PUBLIC_KEY=...
+VAPID_PRIVATE_KEY=...
+VAPID_SUBJECT=mailto:...
+```
+
+Notas:
+
+- `APP_MODE` y `PRISMA_ENV` quedaron configuradas en Production and Preview.
+- Variables críticas actualizadas tras errores iniciales.
+- `DATABASE_URL` fue corregida para apuntar correctamente a Neon.
+
+### Neon
+
+Proyecto:
+
+```txt
+aida-production
+```
+
+Base:
+
+```txt
+neondb
+```
+
+Estado:
+
+```txt
+✅ Conexión validada
+✅ Migraciones aplicadas
+✅ Schema sincronizado
+```
+
+Problemas resueltos:
+
+1. Error inicial:
+
+```txt
+P1000 Authentication failed
+```
+
+Causa: credenciales viejas o inválidas en `.env.production`.
+
+Solución: copiar connection string nueva desde Neon.
+
+2. Drift detectado:
+
+```txt
+Your database schema is not in sync with your migration history
+```
+
+Solución:
+
+```powershell
+$env:PRISMA_ENV="production"; npx prisma migrate reset
+$env:PRISMA_ENV="production"; npx prisma migrate dev --name sync_pg_schema
+```
+
+3. Error Vercel/Prisma:
+
+```txt
+Using engine type "client" requires either "adapter" or "accelerateUrl"
+```
+
+Solución:
+
+```powershell
+npm install @prisma/adapter-pg pg
+npm install -D @types/pg
+```
+
+Y actualizar `app/lib/prisma.ts` para usar `PrismaPg` en cloud.
+
+---
+
+## 8) Dominio y estrategia comercial
+
+Dominio comprado:
+
+```txt
+bajatuglucosa.com
+```
+
+Registrador:
+
+```txt
+Namecheap
+```
+
+Configuración DNS actual en Namecheap:
+
+```txt
+Type: A Record
+Host: @
+Value: 216.198.79.1
+TTL: Automatic
+```
+
+Registros eliminados en Namecheap:
+
+```txt
+CNAME Record    www    parkingpage.namecheap.com
+URL Redirect    @      http://www.bajatuglucosa...
+```
+
+Estado en Vercel:
+
+```txt
+bajatuglucosa.com → Valid Configuration
+```
+
+Estrategia comercial:
+
+```txt
+https://bajatuglucosa.com
+```
+
+Se usará como página principal o carta de venta.
+
+```txt
+https://bajatuglucosa.com/app
+```
+
+Se quiere usar como acceso directo a AIDA.
+
+Estado pendiente:
+
+```txt
+Crear redirect /app → /chat
+```
+
+Recomendación técnica para próximo paso:
+
+Modificar `next.config.ts` para agregar redirect:
+
+```ts
+import type { NextConfig } from "next";
+
+const nextConfig: NextConfig = {
+  devIndicators: false,
+  async redirects() {
+    return [
+      {
+        source: "/app",
+        destination: "/chat",
+        permanent: false,
+      },
+    ];
+  },
+};
+
+export default nextConfig;
 ```
 
 ---
 
-## 8) Estrategia recomendada Local vs Cloud
+## 9) Estrategia Local vs Cloud
 
-La nube y la laptop deben quedar separadas así:
+La nube y la laptop quedaron separadas así:
 
 ### Laptop / desarrollo
 
 ```txt
-Rama sugerida: dev
+Rama: dev
 APP_MODE=local
 DATABASE_URL=file:./prisma/dev.db
 ```
@@ -311,8 +705,9 @@ Uso:
 ### Nube / producción
 
 ```txt
-Rama sugerida: main
+Rama: main
 APP_MODE=cloud
+PRISMA_ENV=production
 DATABASE_URL=Neon PostgreSQL
 ```
 
@@ -328,260 +723,238 @@ Flujo recomendado:
 ```txt
 1. Trabajar cambios en rama dev.
 2. Probar en laptop.
-3. Hacer build.
-4. Si todo está bien, mergear dev → main.
-5. Hacer push a main.
-6. Vercel actualiza producción desde main.
+3. Hacer build local.
+4. Si todo está bien, commit en dev.
+5. Push a dev.
+6. Merge dev → main.
+7. Push a main.
+8. Vercel actualiza producción desde main.
 ```
 
 Esto evita que cambios en laptop se publiquen automáticamente en nube.
 
 ---
 
-## 9) Deploy recomendado
+## 10) Comandos importantes usados
 
-### Frontend / Backend Next.js
-
-```txt
-Vercel
-```
-
-Razón:
-
-- Next.js funciona nativamente.
-- Deploy sencillo desde GitHub.
-- Permite variables de entorno.
-- Permite dominio propio.
-- Permite rama de producción y preview deployments.
-
-### Base de datos cloud
-
-```txt
-Neon PostgreSQL
-```
-
-Razón:
-
-- Compatible con Prisma.
-- Ideal para Vercel.
-- Tiene string `DATABASE_URL`.
-- Permite separar base local y base cloud.
-
-### Dominio
-
-```txt
-Namecheap
-```
-
-Plan:
-
-- Comprar dominio.
-- Conectarlo a Vercel.
-- Configurar DNS según Vercel:
-  - A record o CNAME según indique Vercel.
-- Dominio sugerido puede ser:
-  - `aida.tudominio.com`
-  - `app.tudominio.com`
-  - según disponibilidad.
-
----
-
-## 10) Variables de entorno necesarias en cloud
-
-En Vercel se deben configurar:
-
-```txt
-APP_MODE=cloud
-DATABASE_URL=postgresql://...
-OPENAI_API_KEY=...
-AIDA_BILLING_URL=/pago
-NEXT_PUBLIC_VAPID_PUBLIC_KEY=...
-VAPID_PRIVATE_KEY=...
-VAPID_SUBJECT=mailto:...
-```
-
-Notas:
-
-- `DATABASE_URL` en cloud NO debe ser SQLite.
-- `APP_MODE=cloud` activará validaciones fail-fast.
-- Para producción, si aún no hay pagos reales, `AIDA_BILLING_URL` puede apuntar a una página provisional o WhatsApp.
-
----
-
-## 11) Riesgos / puntos que revisar en deploy
-
-Antes de producción revisar:
-
-1. Prisma schema para cloud:
-   - Confirmar si se usa `prisma/schema.postgres.prisma`.
-   - Confirmar cómo `prisma.config.ts` selecciona schema local/cloud.
-2. Migrations:
-   - Asegurar migraciones compatibles con PostgreSQL.
-3. Build en Vercel:
-   - Confirmar que `npm run build` funcione con env cloud.
-4. OpenAI:
-   - Confirmar que `OPENAI_API_KEY` esté en Vercel.
-5. PDF:
-   - Confirmar que `openai.files.create()` funcione en Vercel.
-6. PWA:
-   - Confirmar manifest e íconos en dominio HTTPS.
-7. Micrófono:
-   - En producción funcionará mejor por HTTPS.
-8. Trial:
-   - Confirmar que usuarios nuevos en cloud realmente entren como `trial`.
-9. Paywall:
-   - Confirmar bloqueo al terminar trial.
-10. No mezclar DB local y DB cloud.
-
----
-
-## 12) Plan paso a paso para próximo chat
-
-No saltar pasos.
-
-### Fase 1 — Preparar ramas
-
-1. Verificar estado actual:
-
-```powershell
-git status
-git branch
-```
-
-2. Crear rama de desarrollo:
+### Crear rama dev
 
 ```powershell
 git checkout -b dev
 git push -u origin dev
 ```
 
-3. Definir producción en Vercel desde `main`.
-4. Trabajar cambios nuevos en `dev`, no en `main`.
+### Probar build local
+
+```powershell
+npm run build
+```
+
+### Migraciones cloud
+
+```powershell
+$env:PRISMA_ENV="production"; npx prisma migrate reset
+$env:PRISMA_ENV="production"; npx prisma migrate dev --name sync_pg_schema
+```
+
+### Regresar terminal a local después de usar producción
+
+```powershell
+Remove-Item Env:\PRISMA_ENV
+$env:APP_MODE="local"
+```
+
+### Instalar adapter PostgreSQL
+
+```powershell
+npm install @prisma/adapter-pg pg
+npm install -D @types/pg
+```
+
+### Flujo dev → main
+
+```powershell
+git checkout dev
+npm run build
+git add .
+git commit -m "mensaje"
+git push origin dev
+
+git checkout main
+git pull origin main
+git merge dev
+git push origin main
+git status
+```
 
 ---
 
-### Fase 2 — Revisar configuración cloud
+## 11) Riesgos / puntos a cuidar
 
-Archivos a revisar:
+1. No dejar `PRISMA_ENV=production` activo en terminal local cuando se quiera hacer build local con SQLite.
+2. En Vercel, `PRISMA_ENV=production` es obligatorio para usar `schema.postgres.prisma`.
+3. En Vercel, `APP_MODE=cloud` es obligatorio para activar lógica cloud/trial.
+4. `DATABASE_URL` en cloud debe ser PostgreSQL Neon, nunca `file:`.
+5. `DATABASE_URL` local debe ser SQLite `file:`.
+6. Si se actualiza Prisma, revisar compatibilidad de adapters.
+7. No correr `npm audit fix --force` sin revisar, porque puede romper dependencias.
+8. Si se cambia schema, actualizar tanto SQLite como PostgreSQL si aplica.
+9. Las migraciones PostgreSQL van en `prisma/migrations_pg`.
+10. No mezclar datos reales de usuarios con pruebas destructivas como `migrate reset`.
+
+---
+
+## 12) Próximo objetivo recomendado
+
+### Objetivo inmediato
+
+Crear acceso limpio:
 
 ```txt
-package.json
-prisma.config.ts
-app/lib/prisma.ts
-app/lib/runtimeConfig.ts
-prisma/schema.prisma
-prisma/schema.postgres.prisma
+https://bajatuglucosa.com/app
+```
+
+para que abra AIDA.
+
+Acción:
+
+- Modificar `next.config.ts`.
+- Agregar redirect `/app` → `/chat`.
+- Probar build local.
+- Commit en `dev`.
+- Merge a `main`.
+- Deploy automático en Vercel.
+- Probar:
+
+```txt
+https://bajatuglucosa.com/app
+```
+
+### Objetivo comercial posterior
+
+Crear carta de venta en:
+
+```txt
+https://bajatuglucosa.com
+```
+
+con CTA hacia:
+
+```txt
+https://bajatuglucosa.com/app
+```
+
+Promesa sugerida:
+
+```txt
+Aprende a bajar y estabilizar tu glucosa en 7 días con ayuda de AIDA, tu asistente educativo para diabetes tipo 2.
+```
+
+Tono recomendado:
+
+- Educativo.
+- Ético.
+- No prometer curación absoluta.
+- Evitar “garantizado”.
+- Enfocar en acompañamiento, alimentación, seguimiento y control.
+
+---
+
+## 13) Checklist para siguiente sesión
+
+Al iniciar la siguiente sesión, verificar:
+
+```powershell
+git status
+git branch
+```
+
+Estado esperado:
+
+```txt
+On branch main o dev
+working tree clean
+```
+
+Si se va a trabajar código:
+
+```powershell
+git checkout dev
+```
+
+Primer archivo recomendado para modificar:
+
+```txt
+next.config.ts
 ```
 
 Objetivo:
 
-- Confirmar que local usa SQLite.
-- Confirmar que cloud usa PostgreSQL.
-- Confirmar que build de Vercel no use accidentalmente SQLite.
-
----
-
-### Fase 3 — Crear Neon
-
-1. Crear proyecto en Neon.
-2. Copiar `DATABASE_URL`.
-3. Configurar en Vercel:
-
 ```txt
-DATABASE_URL=...
-APP_MODE=cloud
-```
-
-4. Ejecutar migraciones cloud según estrategia que se defina.
-
----
-
-### Fase 4 — Subir a Vercel
-
-1. Conectar GitHub repo a Vercel.
-2. Seleccionar `main` como producción.
-3. Configurar variables.
-4. Deploy.
-5. Probar URL temporal de Vercel.
-
----
-
-### Fase 5 — Conectar dominio Namecheap
-
-1. Comprar dominio.
-2. En Vercel agregar dominio.
-3. En Namecheap configurar DNS.
-4. Esperar propagación.
-5. Probar:
-
-```txt
-https://tudominio.com/chat
+Agregar redirect /app → /chat
 ```
 
 ---
 
-### Fase 6 — Prueba de usuario real
-
-Checklist:
-
-```txt
-✅ Usuario nuevo entra
-✅ Completa onboarding
-✅ Chat funciona
-✅ Trial inicia 7 días
-✅ Muestra modo trial
-✅ Cuenta mensajes
-✅ Imagen se analiza
-✅ PDF se analiza
-✅ PWA se instala
-✅ Micrófono funciona
-✅ No usa DB local
-✅ No se actualiza con cambios locales en dev
-```
-
----
-
-## 13) Texto listo para iniciar el próximo chat
+## 14) Texto listo para iniciar el próximo chat
 
 Copiar y pegar esto al iniciar el próximo chat:
 
 ```txt
-Vamos a subir AIDA a la nube.
+Vamos a continuar con AIDA.
 
-Contexto:
-AIDA ya funciona localmente como PWA en celular. Ya tiene chat, análisis de imágenes/PDF, vista previa de imagen, dictado por voz, textarea auto-creciente, trial 7 días, rate limit 50 mensajes/día, estado clínico persistente, resumen diario manual y endpoint /api/analyze-file.
+Estado actual:
+AIDA ya funciona en producción con Vercel + Neon PostgreSQL + dominio propio.
 
-Últimos commits:
-- f82576e Add file analysis and mobile attachment menu
-- b55f2ff Add image preview and voice dictation
+URL actual funcional:
+https://bajatuglucosa.com/chat
 
-Build actual:
-npm run build → limpio, sin errores.
-git status → working tree clean.
+Dominio comprado en Namecheap:
+bajatuglucosa.com
 
-Objetivo:
-Subir una versión funcional online para que personas prueben AIDA por 7 días y den retroalimentación.
+DNS configurado:
+A Record @ → 216.198.79.1
 
-Quiero comprar un dominio en Namecheap y conectarlo a Vercel.
+Vercel:
+Production Ready
+Dominio bajatuglucosa.com Valid Configuration
 
-Condición importante:
-Quiero mantener mi versión local/laptop aislada de la versión cloud. No quiero que cada cambio que haga en laptop se publique automáticamente. Quiero trabajar en una rama dev/local, probar ahí, y solo cuando algo esté listo pasarlo a producción/main/nube.
+GitHub:
+Repo: chido261/aida-clinical-engine
+main = producción
+dev = desarrollo
 
-Trabajemos paso a paso, un punto a la vez. Primero quiero dejar clara la estrategia de ramas y luego subir a Vercel + Neon.
+Último estado:
+Chat responde, imagen funciona y micrófono funciona en producción.
+
+Siguiente objetivo:
+Crear la ruta https://bajatuglucosa.com/app para abrir AIDA.
+Para eso quiero modificar next.config.ts y agregar redirect /app → /chat.
+
+Trabajemos paso a paso, un punto a la vez, sin saltarnos pruebas.
 ```
 
 ---
 
-## 14) Nota de actualización
+## 15) Nota de actualización
 
-El `PROJECT_CONTEXT_AIDA.md` anterior estaba desactualizado en varios puntos: todavía decía que el trial seguía en 48h y que Módulo 2 estaba pendiente.
+El contexto anterior decía que la nube era el objetivo próximo. Eso ya quedó completado.
 
-En el código real actual:
+Estado real actual:
 
-- `app/lib/aidaMemory.ts` ya tiene `TRIAL_DAYS = 7`.
-- La app ya funciona como PWA en celular.
-- Ya analiza imágenes y PDF.
-- Ya tiene dictado por voz.
-- Ya tiene vista previa de imagen.
-- Ya tiene textarea auto-creciente.
-- Ya pasó `npm run build` sin errores.
+```txt
+✅ AIDA ya está en la nube
+✅ Vercel funciona
+✅ Neon funciona
+✅ Dominio propio funciona
+✅ bajatuglucosa.com conectado
+✅ /chat funciona en producción
+✅ imagen y micrófono probados
+```
+
+Pendiente inmediato:
+
+```txt
+Crear /app → /chat
+Crear página principal / carta de venta en bajatuglucosa.com
+```
