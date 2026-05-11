@@ -122,6 +122,26 @@ ${timePhrase} subiste después de una glucosa baja. Quiero confirmar que sigas e
 Dime cómo te sientes y cuánto marca tu glucosa ahora.`;
   }
 
+  if (
+    userState.pendingFollowUpType === "POSTMEAL_WALK_RECHECK" &&
+    userState.pendingFollowUpAt
+  ) {
+    const minutes = getElapsedMinutes(userState.pendingFollowUpAt, now);
+
+    const timePhrase =
+      minutes < 60
+        ? "Hace un rato"
+        : getDayRelation(userState.pendingFollowUpAt, now) === "today"
+          ? "Hoy"
+          : "La última vez";
+
+    return `Hola ${name} 👋
+
+${timePhrase} tu lectura postcomida quedó un poco alta y te recomendé caminar 10–15 minutos para ayudar a bajarla.
+
+¿Ya caminaste? Si ya te mediste de nuevo, dime cuánto marca ahora.`;
+  }
+
   return null;
 }
 
@@ -207,6 +227,14 @@ Hoy registraste ${readingWithMoment}. Podemos revisar cómo va cerrando tu día.
   }
 
   if (relation === "yesterday") {
+    if (partOfDay === "morning" && lastReading.moment === "NOCHE") {
+      return `Hola ${name} 👋
+
+Ayer cerraste el día en ${readingWithMoment}.
+
+Cuando tengas tu lectura en ayunas de hoy, compártemela y vemos cómo respondió tu cuerpo durante la noche.`;
+    }
+
     if (partOfDay === "morning") {
       return `Hola ${name} 👋
 

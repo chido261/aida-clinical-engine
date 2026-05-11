@@ -22,174 +22,227 @@ export function extractLastGlucoseMgDl(text: string): number | null {
 
 export type ClinicalState = "HYPO_ACTIVE" | "RECOVERING_FROM_HYPO" | null;
 
-export type ClinicalDecision =
-  | { handled: true; response: string; nextClinicalState: ClinicalState }
+export type PendingFollowUpType =
+  | "HYPO_RECHECK_15MIN"
+  | "HYPO_STABILITY_RECHECK"
+  | "POSTMEAL_WALK_RECHECK"
+  | "POSTMEAL_PLATE_REVIEW"
+  | null;
+  
+  export type ClinicalDecision =
+  | {
+      handled: true;
+      response: string;
+      nextClinicalState: ClinicalState;
+      resolvedFollowUpType?: PendingFollowUpType;
+    }
   | { handled: false; nextClinicalState: ClinicalState };
 
-  export function applyClinicalDecisionEngine(params: {
-    glucose: number;
-    moment: "AYUNO" | "POSTCOMIDA" | "NOCHE" | "DESCONOCIDO";
-    previousGlucose?: number | null;
-    symptoms?: string[];
-    clinicalState?: ClinicalState;
-    pendingFollowUpType?: string | null;
-  }): ClinicalDecision {
-    const { glucose, moment, previousGlucose, clinicalState, pendingFollowUpType } = params;
-  
-    // 1) HIPO (ACTIVA)
-    if (glucose < 70) {
-      return {
-        handled: true,
-        nextClinicalState: "HYPO_ACTIVE",
-        response:
-          `Ok, tranquilo(a). ${glucose} está por debajo del rango saludable. ⚠️\n` +
-          `Aplicaremos Protocolo 15-15 ahora:\n` +
-          `1) Toma 15 g de carbohidrato de absorción rápida (1 cda de miel **o** 150 ml de jugo).\n` +
-          `2) Espera 15 min y vuelve a medir.\n` +
-          `Si sigues <70, repite la dosis. Si hay síntomas fuertes o te sientes peor, urgencias. 🚑`,
-      };
-    }
-  
-    const wasHypo =
-      clinicalState === "HYPO_ACTIVE" ||
-      clinicalState === "RECOVERING_FROM_HYPO" ||
-      pendingFollowUpType === "HYPO_RECHECK_15MIN" ||
-      pendingFollowUpType === "HYPO_STABILITY_RECHECK" ||
-      (previousGlucose != null && previousGlucose < 70);    // 2) RECUPERACIÓN POST-HIPO
+export function applyClinicalDecisionEngine(params: {
+  glucose: number;
+  moment: "AYUNO" | "POSTCOMIDA" | "NOCHE" | "DESCONOCIDO";
+  previousGlucose?: number | null;
+  symptoms?: string[];
+  clinicalState?: ClinicalState;
+  pendingFollowUpType?: PendingFollowUpType;
+}): ClinicalDecision {
+  const {
+    glucose,
+    moment,
+    previousGlucose,
+    clinicalState,
+    pendingFollowUpType,
+  } = params;
 
-    if (wasHypo && glucose >= 70 && glucose < 90) {
-      return {
-        handled: true,
-        nextClinicalState: "RECOVERING_FROM_HYPO",
-        response:
-          `Perfecto, ya subiste y vas saliendo de la baja. 👍\n` +
-          `Ahora estabiliza con proteína + grasa + fibra para evitar que vuelva a bajar.\n` +
-          `Evita caminar por ahora.\n` +
-          `Mide de nuevo en 30–60 min y me dices el número. Vamos paso a paso. 💪`,
-      };
-    }
-
-    if (wasHypo && glucose >= 90) {
-      return {
-        handled: true,
-        nextClinicalState: "RECOVERING_FROM_HYPO",
-        response:
-          `Perfecto, ${glucose} ya indica que saliste de la baja. 👍\n\n` +
-          `Ahora conviene comer algo con proteína, grasa y fibra para ayudarte a mantenerte estable, sobre todo si falta para tu siguiente comida.\n\n` +
-          `Vuelve a medirte en 30–60 minutos para confirmar que no vuelva a bajar.`,
-      };
-    }
-    
-    // 4) AYUNO (solo si lo dijo)
-    if (moment === "AYUNO") {
-      if (glucose < 90) {
-        return {
-          handled: true,
-          nextClinicalState: clinicalState ?? null,
-          response:
-            `En ayunas está algo bajo.\n` +
-            `Desayuna proteína + grasa + fibra para estabilizar.\n` +
-            `Sin ejercicio por ahora. Aquí sigo contigo.`,
-        };
-      }
-  
-      if (glucose <= 110) {
-        return {
-          handled: true,
-          nextClinicalState: clinicalState ?? null,
-          response:
-            `En ayunas está en buen rango. 👍\n` +
-            `Mantén desayuno estable (proteína + grasa + fibra) y seguimos monitoreando.\n` +
-            `Avísame tu siguiente lectura.`,
-        };
-      }
-  
-      if (glucose > 130) {
-        return {
-          handled: true,
-          nextClinicalState: clinicalState ?? null,
-          response:
-            `En ayunas está elevado.\n` +
-            `Hoy enfócate en desayuno sin azúcar/harinas y revisemos la cena de ayer.\n` +
-            `Si te sientes bien, movimiento suave 10 min es opcional.`,
-        };
-      }
-    }
-  
-    // 5) POSTCOMIDA (2h explícito)
-    if (moment === "POSTCOMIDA") {
-      if (glucose <= 140) {
-        return {
-          handled: true,
-          nextClinicalState: clinicalState ?? null,
-          response:
-            `2h postcomida está en rango. 👍\n` +
-            `Solo hidrátate y mantén el mismo patrón de comida.\n` +
-            `Avísame tu siguiente lectura.`,
-        };
-      }
-  
-      if (glucose <= 180) {
-        return {
-          handled: true,
-          nextClinicalState: clinicalState ?? null,
-          response:
-            `2h postcomida está un poco elevado.\n` +
-            `Camina 10–15 min ahora y toma agua.\n` +
-            `Luego me dices cuánto baja. Aquí sigo contigo.`,
-        };
-      }
-  
-      if (glucose > 180) {
-        return {
-          handled: true,
-          nextClinicalState: clinicalState ?? null,
-          response:
-            `Está elevado postcomida.\n` +
-            `Camina 15 min + agua y evita más carbohidratos por ahora.\n` +
-            `Si hay síntomas importantes, consulta médico.`,
-        };
-      }
-    }
-  
-    // 6) NOCHE (explícito)
-    if (moment === "NOCHE") {
-      if (glucose < 80) {
-        return {
-          handled: true,
-          nextClinicalState: clinicalState ?? null,
-          response:
-            `Antes de dormir está bajo.\n` +
-            `Toma un snack pequeño con proteína (yogurt natural / huevo / queso) para evitar bajadas.\n` +
-            `Si te sientes raro(a), vuelve a medir en 15–30 min.`,
-        };
-      }
-  
-      if (glucose <= 110) {
-        return {
-          handled: true,
-          nextClinicalState: clinicalState ?? null,
-          response:
-            `Buen nivel para dormir. 👍\n` +
-            `Cena ligera si te falta algo y descansa.\n` +
-            `Mañana medimos en ayunas.`,
-        };
-      }
-  
-      if (glucose > 120) {
-        return {
-          handled: true,
-          nextClinicalState: clinicalState ?? null,
-          response:
-            `Está un poco alto para la noche.\n` +
-            `Evita más comida y mañana revisamos ajuste de cena.\n` +
-            `Descansa y me cuentas cómo amaneces.`,
-        };
-      }
-    }
-  
-    return { handled: false, nextClinicalState: clinicalState ?? null };
+  // 1) HIPO (ACTIVA)
+  if (glucose < 70) {
+    return {
+      handled: true,
+      nextClinicalState: "HYPO_ACTIVE",
+      response:
+        `Ok, tranquilo(a). ${glucose} está por debajo del rango saludable. ⚠️\n` +
+        `Aplicaremos Protocolo 15-15 ahora:\n` +
+        `1) Toma 15 g de carbohidrato de absorción rápida (1 cda de miel **o** 150 ml de jugo).\n` +
+        `2) Espera 15 min y vuelve a medir.\n` +
+        `Si sigues <70, repite la dosis. Si hay síntomas fuertes o te sientes peor, urgencias. 🚑`,
+    };
   }
+
+  // 2) RECUPERACIÓN POST-HIPO
+  const wasHypo =
+    clinicalState === "HYPO_ACTIVE" ||
+    (previousGlucose != null && previousGlucose < 70);
+
+  if (wasHypo && glucose >= 70 && glucose < 90) {
+    return {
+      handled: true,
+      nextClinicalState: "RECOVERING_FROM_HYPO",
+      response:
+        `Perfecto, ya subiste y vas saliendo de la baja. 👍\n` +
+        `Ahora estabiliza con proteína + grasa (ej: huevo, queso, atún, yogurt natural).\n` +
+        `Evita caminar por ahora.\n` +
+        `Mide de nuevo en 30–60 min y me dices el número. Vamos paso a paso. 💪`,
+    };
+  }
+
+  // 3) CIERRE DE EPISODIO POST-HIPO
+  // Si venía en recuperación y la nueva re-medición ya es estable,
+  // no debe tratarse como lectura normal: primero se cierra el episodio.
+  const isPostHypoStabilityRecheck =
+    clinicalState === "RECOVERING_FROM_HYPO" ||
+    pendingFollowUpType === "HYPO_STABILITY_RECHECK";
+
+  if (isPostHypoStabilityRecheck && glucose >= 90) {
+    return {
+      handled: true,
+      nextClinicalState: null,
+      response:
+        `Perfecto, ${glucose} ya es una lectura estable después de la baja. 👍\n` +
+        `Con esto cerramos el seguimiento de la hipoglucemia por ahora.\n` +
+        `Mantén una comida estable y evita dejar pasar muchas horas sin comer.\n` +
+        `Si vuelves a sentir temblor, sudor frío, debilidad o mareo, mídete de nuevo y me dices.`,
+    };
+  }
+
+  // 4) NORMALIZACIÓN GENERAL (limpia estado si quedara alguno activo)
+  if (clinicalState && glucose >= 90) {
+    return { handled: false, nextClinicalState: null };
+  }
+
+  // 5) CIERRE DE SEGUIMIENTO POSTCOMIDA DESPUÉS DE CAMINAR
+  const isPostMealWalkRecheck =
+    pendingFollowUpType === "POSTMEAL_WALK_RECHECK";
+
+  if (
+    isPostMealWalkRecheck &&
+    previousGlucose != null &&
+    glucose < previousGlucose
+  ) {
+    return {
+      handled: true,
+      nextClinicalState: clinicalState ?? null,
+      resolvedFollowUpType: "POSTMEAL_WALK_RECHECK",
+      response:
+        `Perfecto, bajar de ${previousGlucose} a ${glucose} después de caminar muestra que tu cuerpo sí respondió bien al movimiento. 👍\n` +
+        `Estas experiencias ayudan a aprender qué le funciona a tu glucosa.\n` +
+        `En tu próxima comida, recuerda asegurar el balance del plato para buscar una respuesta más estable desde el inicio.\n` +
+        `Sabes que cuentas conmigo para cualquier duda.`,
+    };
+  }
+
+  // 5) AYUNO (solo si lo dijo)
+  if (moment === "AYUNO") {
+    if (glucose < 90) {
+      return {
+        handled: true,
+        nextClinicalState: clinicalState ?? null,
+        response:
+          `En ayunas está algo bajo.\n` +
+          `Desayuna proteína + grasa + fibra para estabilizar.\n` +
+          `Sin ejercicio por ahora. Aquí sigo contigo.`,
+      };
+    }
+
+    if (glucose <= 110) {
+      return {
+        handled: true,
+        nextClinicalState: clinicalState ?? null,
+        response:
+          `En ayunas está en buen rango. 👍\n` +
+          `Mantén desayuno estable (proteína + grasa + fibra) y seguimos monitoreando.\n` +
+          `Avísame tu siguiente lectura.`,
+      };
+    }
+
+    if (glucose > 130) {
+      return {
+        handled: true,
+        nextClinicalState: clinicalState ?? null,
+        response:
+          `Amanecer en ${glucose} significa que hoy conviene empezar con un desayuno muy estable para no seguir empujando la glucosa hacia arriba.\n` +
+          `Hazlo con proteína + grasa + vegetales, sin pan, fruta, jugos ni harinas por ahora.\n` +
+          `También vale la pena revisar qué cenaste ayer, porque muchas veces el ayuno alto se empieza a construir desde la noche anterior.\n` +
+          `¿Quieres que te dé 3 opciones de desayuno para hoy?`,
+      };
+    }
+   }
+
+  // 6) POSTCOMIDA (2h explícito)
+  if (moment === "POSTCOMIDA") {
+    if (glucose <= 140) {
+      return {
+        handled: true,
+        nextClinicalState: clinicalState ?? null,
+        response:
+          `2h postcomida está en rango. 👍\n` +
+          `Solo hidrátate y mantén el mismo patrón de comida.\n` +
+          `Avísame tu siguiente lectura.`,
+      };
+    }
+
+    if (glucose <= 180) {
+      return {
+        handled: true,
+        nextClinicalState: clinicalState ?? null,
+        response:
+          `${glucose} a las 2 horas después de comer está un poco por arriba de lo que buscamos.\n` +
+          `Lo más útil ahora es caminar 10–15 minutos y tomar agua para ayudar a que el músculo use parte de esa glucosa.\n` +
+          `Después podemos revisar qué hubo en ese plato, porque ahí suele estar la clave para que la siguiente comida responda mejor.\n` +
+          `¿Quieres decirme qué comiste y lo revisamos juntos?`,
+      };
+    }
+
+    if (glucose > 180) {
+      return {
+        handled: true,
+        nextClinicalState: clinicalState ?? null,
+        response:
+          `Está elevado postcomida.\n` +
+          `Camina 15 min + agua y evita más carbohidratos por ahora.\n` +
+          `Si hay síntomas importantes, consulta médico.`,
+      };
+    }
+  }
+
+  // 7) NOCHE (explícito)
+  if (moment === "NOCHE") {
+    if (glucose < 80) {
+      return {
+        handled: true,
+        nextClinicalState: clinicalState ?? null,
+        response:
+          `Antes de dormir está bajo.\n` +
+          `Toma un snack pequeño con proteína (yogurt natural / huevo / queso) para evitar bajadas.\n` +
+          `Si te sientes raro(a), vuelve a medir en 15–30 min.`,
+      };
+    }
+
+    if (glucose <= 110) {
+      return {
+        handled: true,
+        nextClinicalState: clinicalState ?? null,
+        response:
+          `Buen nivel para dormir. 👍\n` +
+          `Cena ligera si te falta algo y descansa.\n` +
+          `Mañana medimos en ayunas.`,
+      };
+    }
+
+    if (glucose > 120) {
+      return {
+        handled: true,
+        nextClinicalState: clinicalState ?? null,
+        response:
+          `Llegar a la noche en ${glucose} indica que conviene cerrar el día sin agregar más carga de comida.\n` +
+          `Si ya cenaste, evita comer de nuevo. Si todavía necesitas cenar, por ahora omite carbohidratos y enfócate solo en proteína y grasas saludables.\n` +
+          `Mañana, con tu lectura en ayunas, podremos ver si la cena de hoy te ayudó o si hay algo que ajustar.\n` +
+          `Descansa, y cuando despiertes me compartes cómo amaneciste.`,
+      };
+    }
+  }
+
+  return { handled: false, nextClinicalState: clinicalState ?? null };
+}
 
 export function detectMomentFromText(text: string): Moment {
   const lower = text.toLowerCase();

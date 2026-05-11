@@ -16,6 +16,7 @@ import {
   isConfirmation,
   applyClinicalDecisionEngine,
   type ClinicalState,
+  type PendingFollowUpType,
 } from "@/app/lib/aidaRules";
 import { applyNutritionRules } from "@/app/lib/aidaNutritionRules";
 import { applyPhaseRules } from "@/app/lib/aidaPhaseRules";
@@ -330,9 +331,17 @@ export async function POST(req: Request) {
 
     const confirmation = isConfirmation(lastUserMsg);
     const detected = (detectMomentFromText(lastUserMsg) ?? "DESCONOCIDO") as Moment;
-    const moment: Moment =
-      detected === "AYUNO" || detected === "POSTCOMIDA" || detected === "NOCHE" ? detected : "DESCONOCIDO";
 
+    const pendingFollowUpTypeFromState =
+      ((await ensureUserState(userId)).pendingFollowUpType ?? null) as PendingFollowUpType;
+
+    const moment: Moment =
+      detected === "AYUNO" || detected === "POSTCOMIDA" || detected === "NOCHE"
+        ? detected
+        : pendingFollowUpTypeFromState === "POSTMEAL_WALK_RECHECK" && glucoseNow !== null
+          ? "POSTCOMIDA"
+          : "DESCONOCIDO";
+          
     const symptoms = extractSymptoms(lastUserMsg);
 
     // 1) Bypass de seguridad
@@ -560,12 +569,21 @@ if (wantsSummary) {
         previousGlucose,
         symptoms,
         clinicalState,
-        pendingFollowUpType: userState.pendingFollowUpType ?? null,
+        pendingFollowUpType: (userState.pendingFollowUpType ?? null) as PendingFollowUpType,
       });
 
       if (clinicalDecision.handled) {
         const followUpData =
-          clinicalDecision.nextClinicalState === "HYPO_ACTIVE"
+          clinicalDecision.resolvedFollowUpType === "POSTMEAL_WALK_RECHECK"
+            ? {
+                clinicalState: clinicalDecision.nextClinicalState,
+                lastEventType: "POSTMEAL_WALK_RESOLVED",
+                lastEventAt: new Date(),
+                pendingFollowUpType: null,
+                pendingFollowUpAt: null,
+                lastRecommendation: null,
+              }
+            : clinicalDecision.nextClinicalState === "HYPO_ACTIVE"
             ? {
                 clinicalState: "HYPO_ACTIVE",
                 lastEventType: "HYPOGLYCEMIA",
@@ -574,7 +592,7 @@ if (wantsSummary) {
                 pendingFollowUpAt: new Date(),
                 lastRecommendation: "Aplicar protocolo 15-15 y volver a medir en 15 minutos.",
               }
-            : clinicalDecision.nextClinicalState === "RECOVERING_FROM_HYPO"
+              : clinicalDecision.nextClinicalState === "RECOVERING_FROM_HYPO"
               ? {
                   clinicalState: "RECOVERING_FROM_HYPO",
                   lastEventType: "HYPOGLYCEMIA_RECOVERY",
@@ -584,9 +602,25 @@ if (wantsSummary) {
                   lastRecommendation:
                     "Comer algo con proteína y grasa para estabilizar y volver a medir en 30–60 minutos.",
                 }
-              : {
-                  clinicalState: clinicalDecision.nextClinicalState,
-                };
+                : moment === "POSTCOMIDA" && glucoseNow > 140 && glucoseNow <= 180
+                ? {
+                    clinicalState: null,
+                    lastEventType: "POSTMEAL_ELEVATED",
+                    lastEventAt: new Date(),
+                    pendingFollowUpType: "POSTMEAL_PLATE_REVIEW",
+                    pendingFollowUpAt: new Date(),
+                    lastRecommendation:
+                      "Caminar 10–15 minutos, tomar agua y revisar qué hubo en el plato para entender la respuesta de glucosa.",
+                  }
+                  
+                : {
+                    clinicalState: null,
+                    lastEventType: "HYPOGLYCEMIA_RESOLVED",
+                    lastEventAt: new Date(),
+                    pendingFollowUpType: null,
+                    pendingFollowUpAt: null,
+                    lastRecommendation: null,
+                  };
 
         await prisma.userState.update({
           where: { id: userId },
@@ -661,16 +695,31 @@ if (wantsSummary) {
     )}`;
 
     const situationDirective = buildSituationDirective(moment, confirmation, hasGlucoseNow);
+    const pendingFollowUpDirective =
+    userState.pendingFollowUpType === "POSTMEAL_PLATE_REVIEW" && glucoseNow === null
+      ? `Contexto activo: venimos de una lectura postcomida elevada y AIDA pidió revisar qué comió el usuario.
+El mensaje actual probablemente describe el plato que produjo esa respuesta.
+Responde sobre ESA comida:
+- identifica qué parte del plato pudo elevar más la glucosa;
+- reconoce lo que sí estuvo bien;
+- explica cómo ajustarlo en la próxima comida para lograr mejor balance;
+- NO cambies el tema a la glucosa en ayunas de mañana;
+- NO pidas otra lectura a menos que sea realmente necesario;
+- cierra de forma cercana y útil.`
+      : "";
 
-    const finalMessages: ChatMessage[] = [
-      { role: "system", content: systemPrompt },
-      { role: "system", content: memoryContext },
-      { role: "system", content: progressContext },
-      { role: "system", content: onboardingContext },
-      { role: "system", content: protocolContext },
-      { role: "system", content: situationDirective },
-      ...messagesFromClient.filter((m) => m.role !== "system").slice(-20),
-    ];
+      const finalMessages: ChatMessage[] = [
+        { role: "system", content: systemPrompt },
+        { role: "system", content: memoryContext },
+        { role: "system", content: progressContext },
+        { role: "system", content: onboardingContext },
+        { role: "system", content: protocolContext },
+        { role: "system", content: situationDirective },
+        ...(pendingFollowUpDirective
+          ? [{ role: "system" as const, content: pendingFollowUpDirective }]
+          : []),
+        ...messagesFromClient.filter((m) => m.role !== "system").slice(-20),
+      ];
 
     const resp = await openai.chat.completions.create({
       model: "gpt-4.1-mini",
