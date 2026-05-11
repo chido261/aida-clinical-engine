@@ -1,960 +1,272 @@
-# PROJECT_CONTEXT_AIDA.md
-
-**Estado Actual – 03 May 2026**  
-**Actualizado: AIDA funcional en producción + dominio `bajatuglucosa.com` conectado + Vercel/Neon operando + estrategia Local vs Cloud separada**
-
 ---
 
-## 1) Visión general del proyecto
+## 16) Actualización – Personalización, seguimiento y respuestas contextuales
 
-**AIDA (Artificial Intelligence Diabetes Assistant)** es un asistente conversacional educativo para personas con diabetes tipo 2 / prediabetes, estilo WhatsApp, con:
+**Actualizado: 10 May 2026**
 
-- Acompañamiento tipo coach profesional.
-- Seguimiento de lecturas de glucosa.
-- Estado clínico persistente post-hipoglucemia.
-- Resumen diario manual.
-- Trial de 7 días.
-- Límite de 50 mensajes/día en trial.
-- PWA instalable en celular.
-- Análisis de imágenes y PDFs.
-- Dictado por voz.
-- Versión cloud funcional en Vercel.
-- Base de datos PostgreSQL en Neon.
-- Dominio propio conectado: `bajatuglucosa.com`.
+Se avanzó en personalización, seguimiento persistente y calidad de respuesta conversacional en modo local, sobre la rama `dev`.
 
----
-
-## 2) Estado técnico actual
-
-Stack:
-
-- Next.js 16.1.6 con App Router.
-- Prisma 7.x.
-- SQLite local.
-- PostgreSQL cloud con Neon.
-- OpenAI SDK.
-- PWA con manifest y service worker.
-- GitHub repo: `https://github.com/chido261/aida-clinical-engine`
-- Ramas actuales:
-  - `main` = producción estable.
-  - `dev` = desarrollo local/pruebas.
-- Producción en Vercel.
-- Dominio comprado en Namecheap y conectado a Vercel.
-
-URLs actuales:
-
-```txt
-https://bajatuglucosa.com/chat
-https://aida-clinical-engine.vercel.app/chat
-```
-
-Dominio estratégico:
-
-```txt
-https://bajatuglucosa.com
-```
-
-Uso planeado:
-
-```txt
-https://bajatuglucosa.com        → página principal / carta de venta
-https://bajatuglucosa.com/app    → acceso a AIDA (pendiente crear redirect a /chat)
-https://bajatuglucosa.com/chat   → AIDA actualmente funcional
-```
-
-Últimos commits relevantes:
-
-```txt
-cd230c4 - Add PostgreSQL Prisma adapter for Vercel
-1dc9089 - Fix Prisma client initialization for cloud build
-bdfdccc - Add PostgreSQL migration to sync cloud schema
-5f90023 - Update AIDA project context before cloud setup
-f82576e - Add file analysis and mobile attachment menu
-b55f2ff - Add image preview and voice dictation
-```
-
-Build actual local:
-
-```bash
-npm run build
-```
-
-Resultado:
-
-```txt
-✅ Prisma generate correcto
-✅ TypeScript correcto
-✅ Next build correcto
-✅ /api/analyze-file correcto
-✅ /api/chat correcto
-✅ /chat correcto
-✅ Sin errores
-✅ working tree clean
-```
-
-Producción actual:
-
-```txt
-✅ Vercel Production: Ready
-✅ Dominio bajatuglucosa.com: Valid Configuration
-✅ AIDA responde en producción
-✅ Neon/PostgreSQL conectado correctamente
-✅ Imagen funciona
-✅ Micrófono funciona
-```
-
----
-
-## 3) Archivos principales actuales
-
-### Chat principal
-
-```txt
-app/chat/page.tsx
-```
-
-Funciones actuales:
-
-- Interfaz tipo chat.
-- Barra inferior minimalista estilo ChatGPT:
-  - Botón `+`
-  - Campo “Pregúntale a AIDA”
-  - Micrófono para dictado
-  - Botón enviar `↑`
-- Menú de adjuntos:
-  - Cámara
-  - Fotos
-  - Archivos
-- Vista previa de imagen antes de enviar.
-- Selección de PDF.
-- Auto-crecimiento del textarea conforme se dicta o escribe texto.
-- Dictado por voz funcional en Chrome Android, especialmente con HTTPS.
-- Envío real de imágenes/PDF a endpoint de análisis.
-
-### Endpoint análisis de archivos
-
-```txt
-app/api/analyze-file/route.ts
-```
-
-Funciona para:
-
-- Imágenes de etiquetas/productos.
-- PDFs de análisis de laboratorio.
-- Usa OpenAI Responses API.
-- Para imagen: envía `input_image` en base64.
-- Para PDF: sube archivo con `openai.files.create()` y lo analiza como `input_file`.
-- Límite actual: 10 MB.
-
-Objetivo del endpoint:
-
-- Si es etiqueta/producto:
-  - Detectar ingredientes que puedan afectar glucosa.
-  - Decir si conviene, limitar o evitar.
-  - Dar recomendación práctica.
-- Si es estudio de laboratorio:
-  - Dar primero buenas noticias.
-  - Luego puntos pendientes por trabajar.
-  - Explicar de forma educativa.
-  - Sugerir hábitos/seguimiento.
-  - No diagnosticar.
-  - No suspender medicamentos.
-
-### Prisma client
-
-```txt
-app/lib/prisma.ts
-```
-
-Estado actual:
-
-- Local SQLite usa:
-
-```txt
-@prisma/adapter-better-sqlite3
-```
-
-- Cloud PostgreSQL usa:
-
-```txt
-@prisma/adapter-pg
-pg
-```
-
-Código actual esperado:
-
-```ts
-// app/lib/prisma.ts
-import { PrismaClient } from "@prisma/client";
-import { PrismaBetterSqlite3 } from "@prisma/adapter-better-sqlite3";
-import { PrismaPg } from "@prisma/adapter-pg";
-import { APP_MODE, getDatabaseUrl } from "@/app/lib/runtimeConfig";
-
-const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient };
-
-function assertEnv(url: string) {
-  // Fail-fast en cloud
-  if (APP_MODE === "cloud") {
-    if (!url) throw new Error("DATABASE_URL missing (cloud)");
-    if (url.startsWith("file:")) {
-      throw new Error("DATABASE_URL cannot be sqlite in cloud");
-    }
-  }
-
-  // Fail-fast local
-  if (APP_MODE === "local") {
-    if (!url) throw new Error("DATABASE_URL missing (local)");
-    if (!url.startsWith("file:")) {
-      throw new Error("DATABASE_URL must be sqlite file: in local");
-    }
-  }
-}
-
-function makePrismaClient() {
-  const url = getDatabaseUrl();
-  assertEnv(url);
-
-  // Local sqlite
-  if (url.startsWith("file:")) {
-    const adapter = new PrismaBetterSqlite3({ url });
-    return new PrismaClient({ adapter });
-  }
-
-  // Cloud postgres
-  const adapter = new PrismaPg({ connectionString: url });
-  return new PrismaClient({ adapter });
-}
-
-export const prisma = globalForPrisma.prisma ?? makePrismaClient();
-
-if (process.env.NODE_ENV !== "production") {
-  globalForPrisma.prisma = prisma;
-}
-```
-
-### Runtime config
-
-```txt
-app/lib/runtimeConfig.ts
-```
-
-Estado:
-
-- `APP_MODE=local` para laptop.
-- `APP_MODE=cloud` para Vercel.
-- Protege para que cloud no use SQLite por error.
-
-### Prisma config
-
-```txt
-prisma.config.ts
-```
-
-Estado:
-
-- Usa `PRISMA_ENV=production` para seleccionar:
-
-```txt
-prisma/schema.postgres.prisma
-prisma/migrations_pg
-.env.production
-```
-
-- En local, sin `PRISMA_ENV=production`, usa:
-
-```txt
-prisma/schema.prisma
-prisma/migrations
-.env.local
-```
-
-### Schemas Prisma
-
-```txt
-prisma/schema.prisma              → SQLite local
-prisma/schema.postgres.prisma     → PostgreSQL cloud
-```
-
-Modelos actuales:
-
-```txt
-UserState
-Reading
-UsageDaily
-```
-
-### Migraciones PostgreSQL
-
-```txt
-prisma/migrations_pg/20260225132933_init_pg/migration.sql
-prisma/migrations_pg/20260503232059_sync_pg_schema/migration.sql
-```
-
-La migración `sync_pg_schema` agregó los campos faltantes:
-
-```txt
-clinicalState
-dailySummaryCount
-dailySummaryDate
-fullEndsAt
-fullStartedAt
-```
-
-### Device ID
-
-```txt
-app/lib/deviceId.ts
-```
-
-Ya fue corregido:
-
-- Usa `crypto.randomUUID()` si existe.
-- Si no existe, usa fallback.
-- Esto resolvió error en celular: `crypto.randomUUID is not a function`.
-
-### PWA
-
-```txt
-app/manifest.ts
-public/sw.js
-public/icon-192.png
-public/icon-512.png
-```
-
-Estado:
-
-- La app ya abre en celular.
-- Ya se puede instalar como aplicación.
-- Los íconos fueron reemplazados por una versión más profesional.
-- `display: "standalone"` ya está configurado.
-
----
-
-## 4) Funciones ya probadas
-
-### Local / celular
-
-Probado en celular vía red local:
-
-```txt
-http://192.168.50.212:3000/chat
-```
-
-También se probó con HTTPS mediante Cloudflare Tunnel para funciones como micrófono.
-
-Estado funcional local:
-
-```txt
-✅ Abre en celular
-✅ Se instala como PWA
-✅ Ícono actualizado
-✅ Chat funciona
-✅ Botón + funciona
-✅ Menú Cámara/Fotos/Archivos funciona
-✅ Selección de imagen funciona
-✅ Vista previa de imagen funciona
-✅ AIDA lee e interpreta imágenes
-✅ PDF se sube y se interpreta correctamente
-✅ Micrófono dicta texto
-✅ Textarea crece automáticamente
-```
-
-### Producción / dominio propio
-
-Probado en:
-
-```txt
-https://bajatuglucosa.com/chat
-```
-
-Estado funcional producción:
-
-```txt
-✅ Abre con dominio propio
-✅ Trial visible
-✅ Chat responde
-✅ Neon/PostgreSQL conectado
-✅ AIDA responde a lecturas de glucosa
-✅ Lee imágenes
-✅ Micrófono funciona
-✅ HTTPS activo por Vercel
-```
-
-Prueba realizada:
-
-```txt
-Hola, soy David. Hoy amanecí con glucosa de 145 en ayunas.
-```
-
-AIDA respondió correctamente:
-
-```txt
-En ayunas está elevado.
-Hoy enfócate en desayuno sin azúcar/harinas y revisemos la cena de ayer.
-Si te sientes bien, movimiento suave 10 min es opcional.
-```
-
----
-
-## 5) Estado conversacional / clínico ya implementado
-
-Archivo principal:
+### Archivos trabajados
 
 ```txt
 app/api/chat/route.ts
+app/api/chat-welcome/route.ts
+app/lib/aidaRules.ts
 ```
 
-Ya existe:
-
-- Detección de lectura de glucosa.
-- Detección de momento:
-  - AYUNO
-  - POSTCOMIDA
-  - NOCHE
-  - DESCONOCIDO
-- Regla: no asumir momento si el usuario no lo dice.
-- Intercept para hipoglucemia.
-- Estado clínico persistente:
-  - `HYPO_ACTIVE`
-  - `RECOVERING_FROM_HYPO`
-- Bypass de seguridad.
-- Resumen diario manual.
-- Reporte final de trial manual.
-- Rate limit trial 50 mensajes/día.
-- UI payload con:
-  - disclaimer
-  - mode
-  - modeLabel
-  - daysRemaining
-  - ctaText
-  - ctaUrl
-  - blocked
-
----
-
-## 6) Estado Trial / Local / Cloud
-
-Archivo clave:
+### Commit realizado
 
 ```txt
-app/lib/aidaMemory.ts
+0c13cf8 - Improve contextual follow-ups and glucose responses
 ```
 
-Estado actual:
+### Mejoras implementadas
 
-- `TRIAL_DAYS = 7`
-- `DAILY_LIMIT_TRIAL = 50`
-- `FULL_DAYS = 90`
-- `MAINTENANCE_DAYS = 30`
+#### 1. Saludo de reingreso con prioridad clínica
 
-Ya existe:
+Se mejoró `/api/chat-welcome` para que al abrir la app no dependa solo de la última lectura, sino que priorice seguimientos pendientes cuando existan.
 
-- `ensureUserState()`
-- `getTrialInfo()`
-- `getWindowInfo()`
-- `isTrialExpired()`
-
-Reglas:
-
-### Local
+Ahora puede recordar y saludar según:
 
 ```txt
-APP_MODE=local
-DATABASE_URL=file:./prisma/dev.db
+HYPO_RECHECK_15MIN
+HYPO_STABILITY_RECHECK
+POSTMEAL_WALK_RECHECK
 ```
 
-- Siempre funciona como `active`.
-- No aplica paywall.
-- No bloquea desarrollo.
-- Se usa para laptop/desarrollo/pruebas.
-- Usa SQLite local.
-
-### Cloud
+Ejemplos de reingreso:
 
 ```txt
-APP_MODE=cloud
-PRISMA_ENV=production
-DATABASE_URL=postgresql://... Neon
+Hace un rato registraste una glucosa baja y quedamos en volver a medir después del protocolo 15-15.
+Antes de seguir, dime cuánto marca tu glucosa ahora.
 ```
-
-- Aplica trial 7 días.
-- Aplica 50 mensajes/día.
-- Bloquea cuando trial termina.
-- Muestra CTA de pago o activación full.
-- Usa PostgreSQL/Neon, no SQLite.
-
----
-
-## 7) Infraestructura cloud actual
-
-### Vercel
-
-Proyecto:
 
 ```txt
-aida-clinical-engine
+Hace un rato subiste después de una glucosa baja. Quiero confirmar que sigas estable.
+Dime cómo te sientes y cuánto marca tu glucosa ahora.
 ```
-
-Producción:
 
 ```txt
-main
-```
-
-Estado:
-
-```txt
-✅ Production Ready
-```
-
-Dominio Vercel:
-
-```txt
-https://aida-clinical-engine.vercel.app/chat
-```
-
-Dominio propio:
-
-```txt
-https://bajatuglucosa.com/chat
-```
-
-Variables configuradas en Vercel:
-
-```txt
-APP_MODE=cloud
-PRISMA_ENV=production
-DATABASE_URL=postgresql://... Neon
-OPENAI_API_KEY=...
-NEXT_PUBLIC_VAPID_PUBLIC_KEY=...
-VAPID_PRIVATE_KEY=...
-VAPID_SUBJECT=mailto:...
-```
-
-Notas:
-
-- `APP_MODE` y `PRISMA_ENV` quedaron configuradas en Production and Preview.
-- Variables críticas actualizadas tras errores iniciales.
-- `DATABASE_URL` fue corregida para apuntar correctamente a Neon.
-
-### Neon
-
-Proyecto:
-
-```txt
-aida-production
-```
-
-Base:
-
-```txt
-neondb
-```
-
-Estado:
-
-```txt
-✅ Conexión validada
-✅ Migraciones aplicadas
-✅ Schema sincronizado
-```
-
-Problemas resueltos:
-
-1. Error inicial:
-
-```txt
-P1000 Authentication failed
-```
-
-Causa: credenciales viejas o inválidas en `.env.production`.
-
-Solución: copiar connection string nueva desde Neon.
-
-2. Drift detectado:
-
-```txt
-Your database schema is not in sync with your migration history
-```
-
-Solución:
-
-```powershell
-$env:PRISMA_ENV="production"; npx prisma migrate reset
-$env:PRISMA_ENV="production"; npx prisma migrate dev --name sync_pg_schema
-```
-
-3. Error Vercel/Prisma:
-
-```txt
-Using engine type "client" requires either "adapter" or "accelerateUrl"
-```
-
-Solución:
-
-```powershell
-npm install @prisma/adapter-pg pg
-npm install -D @types/pg
-```
-
-Y actualizar `app/lib/prisma.ts` para usar `PrismaPg` en cloud.
-
----
-
-## 8) Dominio y estrategia comercial
-
-Dominio comprado:
-
-```txt
-bajatuglucosa.com
-```
-
-Registrador:
-
-```txt
-Namecheap
-```
-
-Configuración DNS actual en Namecheap:
-
-```txt
-Type: A Record
-Host: @
-Value: 216.198.79.1
-TTL: Automatic
-```
-
-Registros eliminados en Namecheap:
-
-```txt
-CNAME Record    www    parkingpage.namecheap.com
-URL Redirect    @      http://www.bajatuglucosa...
-```
-
-Estado en Vercel:
-
-```txt
-bajatuglucosa.com → Valid Configuration
-```
-
-Estrategia comercial:
-
-```txt
-https://bajatuglucosa.com
-```
-
-Se usará como página principal o carta de venta.
-
-```txt
-https://bajatuglucosa.com/app
-```
-
-Se quiere usar como acceso directo a AIDA.
-
-Estado pendiente:
-
-```txt
-Crear redirect /app → /chat
-```
-
-Recomendación técnica para próximo paso:
-
-Modificar `next.config.ts` para agregar redirect:
-
-```ts
-import type { NextConfig } from "next";
-
-const nextConfig: NextConfig = {
-  devIndicators: false,
-  async redirects() {
-    return [
-      {
-        source: "/app",
-        destination: "/chat",
-        permanent: false,
-      },
-    ];
-  },
-};
-
-export default nextConfig;
+Hace un rato tu lectura postcomida quedó un poco alta y te recomendé caminar 10–15 minutos para ayudar a bajarla.
+¿Ya caminaste? Si ya te mediste de nuevo, dime cuánto marca ahora.
 ```
 
 ---
 
-## 9) Estrategia Local vs Cloud
+#### 2. Memoria persistente ampliada en `UserState`
 
-La nube y la laptop quedaron separadas así:
-
-### Laptop / desarrollo
+Ya se está usando seguimiento persistente con los campos:
 
 ```txt
-Rama: dev
-APP_MODE=local
-DATABASE_URL=file:./prisma/dev.db
+lastEventType
+lastEventAt
+pendingFollowUpType
+pendingFollowUpAt
+lastRecommendation
 ```
 
-Uso:
-
-- Desarrollar funciones nuevas.
-- Probar cambios.
-- Romper/corregir sin afectar usuarios reales.
-- Usar `npm run dev`.
-- Usar SQLite local.
-
-### Nube / producción
-
-```txt
-Rama: main
-APP_MODE=cloud
-PRISMA_ENV=production
-DATABASE_URL=Neon PostgreSQL
-```
-
-Uso:
-
-- Versión estable.
-- Usuarios reales prueban por 7 días.
-- Dominio propio.
-- No se actualiza automáticamente con cambios locales en `dev`.
-
-Flujo recomendado:
-
-```txt
-1. Trabajar cambios en rama dev.
-2. Probar en laptop.
-3. Hacer build local.
-4. Si todo está bien, commit en dev.
-5. Push a dev.
-6. Merge dev → main.
-7. Push a main.
-8. Vercel actualiza producción desde main.
-```
-
-Esto evita que cambios en laptop se publiquen automáticamente en nube.
+Esto permite que AIDA conserve contexto entre aperturas de la app.
 
 ---
 
-## 10) Comandos importantes usados
+#### 3. Seguimiento completo de hipoglucemia
 
-### Crear rama dev
+Flujo ya probado:
 
-```powershell
-git checkout -b dev
-git push -u origin dev
+```txt
+58 mg/dL  → HYPO_ACTIVE
+78 mg/dL  → RECOVERING_FROM_HYPO
+95 mg/dL  → cierre correcto del episodio
 ```
 
-### Probar build local
+Mejoras logradas:
 
-```powershell
-npm run build
-```
+* Si el usuario presenta hipo, se guarda:
 
-### Migraciones cloud
+  * `lastEventType: HYPOGLYCEMIA`
+  * `pendingFollowUpType: HYPO_RECHECK_15MIN`
 
-```powershell
-$env:PRISMA_ENV="production"; npx prisma migrate reset
-$env:PRISMA_ENV="production"; npx prisma migrate dev --name sync_pg_schema
-```
+* Si el usuario sube pero aún no está estable:
 
-### Regresar terminal a local después de usar producción
+  * `lastEventType: HYPOGLYCEMIA_RECOVERY`
+  * `pendingFollowUpType: HYPO_STABILITY_RECHECK`
 
-```powershell
-Remove-Item Env:\PRISMA_ENV
-$env:APP_MODE="local"
-```
+* Si confirma nueva lectura estable `>=90 mg/dL` después de recuperación:
 
-### Instalar adapter PostgreSQL
+  * se cierra correctamente el episodio;
+  * se limpia `pendingFollowUpType`;
+  * ya no reaparece el seguimiento al recargar.
 
-```powershell
-npm install @prisma/adapter-pg pg
-npm install -D @types/pg
-```
+Respuesta implementada al cierre:
 
-### Flujo dev → main
-
-```powershell
-git checkout dev
-npm run build
-git add .
-git commit -m "mensaje"
-git push origin dev
-
-git checkout main
-git pull origin main
-git merge dev
-git push origin main
-git status
+```txt
+Perfecto, 95 ya es una lectura estable después de la baja.
+Con esto cerramos el seguimiento de la hipoglucemia por ahora.
+Mantén una comida estable y evita dejar pasar muchas horas sin comer.
+Si vuelves a sentir temblor, sudor frío, debilidad o mareo, mídete de nuevo y me dices.
 ```
 
 ---
 
-## 11) Riesgos / puntos a cuidar
+#### 4. Mejor respuesta ante recuperación de hipo sin glucómetro
 
-1. No dejar `PRISMA_ENV=production` activo en terminal local cuando se quiera hacer build local con SQLite.
-2. En Vercel, `PRISMA_ENV=production` es obligatorio para usar `schema.postgres.prisma`.
-3. En Vercel, `APP_MODE=cloud` es obligatorio para activar lógica cloud/trial.
-4. `DATABASE_URL` en cloud debe ser PostgreSQL Neon, nunca `file:`.
-5. `DATABASE_URL` local debe ser SQLite `file:`.
-6. Si se actualiza Prisma, revisar compatibilidad de adapters.
-7. No correr `npm audit fix --force` sin revisar, porque puede romper dependencias.
-8. Si se cambia schema, actualizar tanto SQLite como PostgreSQL si aplica.
-9. Las migraciones PostgreSQL van en `prisma/migrations_pg`.
-10. No mezclar datos reales de usuarios con pruebas destructivas como `migrate reset`.
+Si el usuario está en recuperación y dice que:
+
+* no trae glucómetro;
+* se siente bien;
+* ya comió para estabilizarse;
+
+AIDA ya responde con contexto y no insiste de forma rígida.
 
 ---
 
-## 12) Próximo objetivo recomendado
+#### 5. Mejora de respuestas normales
 
-### Objetivo inmediato
+Se mejoraron respuestas determinísticas para:
 
-Crear acceso limpio:
+### Ayuno alto
 
-```txt
-https://bajatuglucosa.com/app
-```
-
-para que abra AIDA.
-
-Acción:
-
-- Modificar `next.config.ts`.
-- Agregar redirect `/app` → `/chat`.
-- Probar build local.
-- Commit en `dev`.
-- Merge a `main`.
-- Deploy automático en Vercel.
-- Probar:
+Ejemplo:
 
 ```txt
-https://bajatuglucosa.com/app
+Amanecer en 165 significa que hoy conviene empezar con un desayuno muy estable para no seguir empujando la glucosa hacia arriba.
+Hazlo con proteína + grasa + vegetales, sin pan, fruta, jugos ni harinas por ahora.
+También vale la pena revisar qué cenaste ayer, porque muchas veces el ayuno alto se empieza a construir desde la noche anterior.
+¿Quieres que te dé 3 opciones de desayuno para hoy?
 ```
 
-### Objetivo comercial posterior
+### Postcomida ligeramente alta
 
-Crear carta de venta en:
+Ejemplo:
 
 ```txt
-https://bajatuglucosa.com
+168 a las 2 horas después de comer está un poco por arriba de lo que buscamos.
+Lo más útil ahora es caminar 10–15 minutos y tomar agua para ayudar a que el músculo use parte de esa glucosa.
+Después podemos revisar qué hubo en ese plato, porque ahí suele estar la clave para que la siguiente comida responda mejor.
+¿Quieres decirme qué comiste y lo revisamos juntos?
 ```
 
-con CTA hacia:
+### Noche alta
+
+Ejemplo:
 
 ```txt
-https://bajatuglucosa.com/app
-```
-
-Promesa sugerida:
-
-```txt
-Aprende a bajar y estabilizar tu glucosa en 7 días con ayuda de AIDA, tu asistente educativo para diabetes tipo 2.
-```
-
-Tono recomendado:
-
-- Educativo.
-- Ético.
-- No prometer curación absoluta.
-- Evitar “garantizado”.
-- Enfocar en acompañamiento, alimentación, seguimiento y control.
-
----
-
-## 13) Checklist para siguiente sesión
-
-Al iniciar la siguiente sesión, verificar:
-
-```powershell
-git status
-git branch
-```
-
-Estado esperado:
-
-```txt
-On branch main o dev
-working tree clean
-```
-
-Si se va a trabajar código:
-
-```powershell
-git checkout dev
-```
-
-Primer archivo recomendado para modificar:
-
-```txt
-next.config.ts
-```
-
-Objetivo:
-
-```txt
-Agregar redirect /app → /chat
+Llegar a la noche en 135 indica que conviene cerrar el día sin agregar más carga de comida.
+Si ya cenaste, evita comer de nuevo. Si todavía necesitas cenar, por ahora omite carbohidratos y enfócate solo en proteína y grasas saludables.
+Mañana, con tu lectura en ayunas, podremos ver si la cena de hoy te ayudó o si hay algo que ajustar.
+Descansa, y cuando despiertes me compartes cómo amaneciste.
 ```
 
 ---
 
-## 14) Texto listo para iniciar el próximo chat
+#### 6. Seguimiento de postcomida alta con caminata
 
-Copiar y pegar esto al iniciar el próximo chat:
+Nuevo flujo probado:
 
 ```txt
-Vamos a continuar con AIDA.
+168 mg/dL 2h postcomida
+→ AIDA recomienda caminar 10–15 min
+→ al reingresar recuerda el seguimiento
+→ usuario reporta 135 después de caminar
+→ AIDA cierra el seguimiento
+```
 
-Estado actual:
-AIDA ya funciona en producción con Vercel + Neon PostgreSQL + dominio propio.
+Respuesta implementada al cierre:
 
-URL actual funcional:
-https://bajatuglucosa.com/chat
+```txt
+Perfecto, bajar de 168 a 135 después de caminar muestra que tu cuerpo sí respondió bien al movimiento.
+Estas experiencias ayudan a aprender qué le funciona a tu glucosa.
+En tu próxima comida, recuerda asegurar el balance del plato para buscar una respuesta más estable desde el inicio.
+Sabes que cuentas conmigo para cualquier duda.
+```
 
-Dominio comprado en Namecheap:
-bajatuglucosa.com
+También se corrigió que la re-medición posterior a una caminata postcomida ya se guarde como:
 
-DNS configurado:
-A Record @ → 216.198.79.1
+```txt
+POSTCOMIDA
+```
 
-Vercel:
-Production Ready
-Dominio bajatuglucosa.com Valid Configuration
+y no como:
 
-GitHub:
-Repo: chido261/aida-clinical-engine
-main = producción
-dev = desarrollo
-
-Último estado:
-Chat responde, imagen funciona y micrófono funciona en producción.
-
-Siguiente objetivo:
-Crear la ruta https://bajatuglucosa.com/app para abrir AIDA.
-Para eso quiero modificar next.config.ts y agregar redirect /app → /chat.
-
-Trabajemos paso a paso, un punto a la vez, sin saltarnos pruebas.
+```txt
+DESCONOCIDO
 ```
 
 ---
 
-## 15) Nota de actualización
+#### 7. Revisión contextual de plato después de postcomida alta
 
-El contexto anterior decía que la nube era el objetivo próximo. Eso ya quedó completado.
-
-Estado real actual:
+Se agregó contexto activo:
 
 ```txt
-✅ AIDA ya está en la nube
-✅ Vercel funciona
-✅ Neon funciona
-✅ Dominio propio funciona
-✅ bajatuglucosa.com conectado
-✅ /chat funciona en producción
-✅ imagen y micrófono probados
+POSTMEAL_PLATE_REVIEW
 ```
 
-Pendiente inmediato:
+Cuando AIDA pregunta qué comió el usuario después de una postcomida elevada y el usuario responde con alimentos, el prompt ahora entiende que debe:
+
+* revisar esa comida específica;
+* identificar qué parte pudo elevar más la glucosa;
+* reconocer lo que sí estuvo bien;
+* explicar cómo ajustar la siguiente comida;
+* no saltar de forma genérica a hablar del ayuno del día siguiente.
+
+Ejemplo probado:
 
 ```txt
-Crear /app → /chat
-Crear página principal / carta de venta en bajatuglucosa.com
+Comí pechuga de pollo, medio aguacate y una papa cocida.
+```
+
+AIDA ya respondió centrada en el plato y no se desvió al ayuno.
+
+---
+
+#### 8. Saludo de reingreso mejorado para noche anterior
+
+Si la última lectura fue de noche y el usuario abre AIDA a la mañana siguiente, queda preparado el saludo:
+
+```txt
+Ayer cerraste el día en 135 mg/dL antes de dormir.
+Cuando tengas tu lectura en ayunas de hoy, compártemela y vemos cómo respondió tu cuerpo durante la noche.
+```
+
+---
+
+### Pendientes acordados
+
+No se implementarán todavía las consultas de historial/progreso como:
+
+```txt
+¿Cuántos episodios de hipoglucemia has registrado en los últimos 10 días?
+¿Cuándo fue la última vez que registré una hipoglucemia?
+¿Qué días he estado por debajo de 100 en ayunas?
+¿Cuántos días llevo en niveles estables?
+```
+
+Razón:
+
+Estas consultas ya se relacionan con:
+
+* progresión clínica;
+* criterios de estabilidad;
+* cambio de fase;
+* protocolos de alimentos;
+* posible necesidad de tabla adicional de episodios/progreso.
+
+Se acordó posponerlas hasta definir formalmente:
+
+```txt
+protocolos por fase
+reglas para brincar al siguiente nivel
+criterios de estabilidad
+estructura de historial clínico
+```
+
+---
+
+### Próximo objetivo recomendado
+
+Al continuar:
+
+```txt
+Revisar protocolos de alimentos y criterios de cambio de fase antes de construir consultas de historial/progreso.
 ```
