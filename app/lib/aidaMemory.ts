@@ -1,5 +1,5 @@
 import { prisma } from "@/app/lib/prisma";
-import { isLocal } from "@/app/lib/runtimeConfig";
+import { shouldBypassLicense } from "@/app/lib/runtimeConfig";
 import { DateTime } from "luxon";
 
 /* =========================================
@@ -87,23 +87,25 @@ function normalizeStatus(s?: string | null): LicenseStatus {
 
 /**
  * Regla:
- * - LOCAL: siempre active (sin paywall)
+ * - LOCAL normal: siempre active, sin paywall.
+ * - LOCAL con AIDA_LICENSE_TEST_MODE=true: se comporta como nube para probar trial/expired/full.
  * - CLOUD:
- *   - si no existe: crear trial 7d
- *   - si active: validar ventana FULL 90d -> si venció => maintenance (30d) por defecto? NO (solo si pagó / activa maintenance)
- *       Por ahora: si FULL venció y NO está maintenance => expired
- *   - si maintenance: si venció => expired
- *   - si trial: si venció => expired
+ *   - si no existe: crear trial 7d.
+ *   - si active: validar ventana FULL 90d.
+ *   - si maintenance: validar ventana maintenance.
+ *   - si trial: si venció => expired.
  *
- * Nota: maintenance y active son estados que normalmente se asignan al pagar (en otro sprint).
- * Aquí solo hacemos expiración automática consistente.
+ * Nota:
+ * maintenance y active son estados que normalmente se asignan al pagar.
+ * Aquí solo hacemos creación y expiración automática consistente.
  */
 export async function ensureUserState(userId: string) {
   const existing = await prisma.userState.findUnique({ where: { id: userId } });
   const now = new Date();
 
-  // 🔧 LOCAL -> siempre activo
-  if (isLocal) {
+  // 🔧 LOCAL normal -> siempre activo
+  // 🧪 LOCAL con AIDA_LICENSE_TEST_MODE=true -> se comporta como nube
+  if (shouldBypassLicense) {
     if (!existing) {
       return prisma.userState.create({
         data: {
@@ -127,7 +129,7 @@ export async function ensureUserState(userId: string) {
     return existing;
   }
 
-  // 🌩️ CLOUD
+  // 🌩️ CLOUD o 🧪 LOCAL TEST MODE
 
   // 1) No existe -> Trial 7d
   if (!existing) {
@@ -144,7 +146,6 @@ export async function ensureUserState(userId: string) {
   const status = normalizeStatus(existing.licenseStatus);
 
   // 2) Completar fechas faltantes según status
-  // Trial: si faltan fechas, inicializar
   if (status === "trial" && (!existing.trialStartedAt || !existing.trialEndsAt)) {
     return prisma.userState.update({
       where: { id: userId },
@@ -156,7 +157,6 @@ export async function ensureUserState(userId: string) {
     });
   }
 
-  // Active: si faltan fechas FULL, inicializar (se usará cuando implementes pago)
   if (status === "active" && (!existing.fullStartedAt || !existing.fullEndsAt)) {
     return prisma.userState.update({
       where: { id: userId },
@@ -168,9 +168,7 @@ export async function ensureUserState(userId: string) {
     });
   }
 
-  // Maintenance: si faltan fechas, inicializar (se usará cuando implementes pago)
   if (status === "maintenance" && (!existing.fullStartedAt || !existing.fullEndsAt)) {
-    // Aquí usamos fullStartedAt/fullEndsAt como "maintenance window" por simplicidad
     return prisma.userState.update({
       where: { id: userId },
       data: {
@@ -181,10 +179,9 @@ export async function ensureUserState(userId: string) {
     });
   }
 
-  // 3) Expiración automática exacta (>=)
+  // 3) Expiración automática exacta
   const nowMs = now.getTime();
 
-  // Trial expira
   if (status === "trial") {
     if (existing.trialEndsAt && nowMs >= existing.trialEndsAt.getTime()) {
       return prisma.userState.update({
@@ -192,22 +189,21 @@ export async function ensureUserState(userId: string) {
         data: { licenseStatus: "expired" },
       });
     }
+
     return existing;
   }
 
-  // Full (active) expira cuando fullEndsAt se cumple
   if (status === "active" && existing.fullEndsAt) {
     if (nowMs >= existing.fullEndsAt.getTime()) {
-      // al vencer FULL => expired (maintenance es opcional y se activará por pago en otro sprint)
       return prisma.userState.update({
         where: { id: userId },
         data: { licenseStatus: "expired" },
       });
     }
+
     return existing;
   }
 
-  // Maintenance expira
   if (status === "maintenance" && existing.fullEndsAt) {
     if (nowMs >= existing.fullEndsAt.getTime()) {
       return prisma.userState.update({
@@ -215,6 +211,7 @@ export async function ensureUserState(userId: string) {
         data: { licenseStatus: "expired" },
       });
     }
+
     return existing;
   }
 
@@ -231,7 +228,7 @@ export function getTrialInfo(userState: {
   trialEndsAt: Date | null;
   licenseStatus: string;
 }) {
-  if (isLocal) {
+  if (shouldBypassLicense) {
     return {
       isTrial: false,
       isExpired: false,
@@ -288,7 +285,7 @@ export function getWindowInfo(userState: {
   fullStartedAt: Date | null;
   fullEndsAt: Date | null;
 }) {
-  if (isLocal) {
+  if (shouldBypassLicense) {
     return {
       mode: "LOCAL" as const,
       dayNumber: null as number | null,
@@ -298,6 +295,7 @@ export function getWindowInfo(userState: {
   }
 
   const status = normalizeStatus(userState.licenseStatus);
+
   if (status !== "active" && status !== "maintenance") {
     return {
       mode: status === "trial" ? ("TRIAL" as const) : ("EXPIRED" as const),
@@ -320,14 +318,12 @@ export function getWindowInfo(userState: {
   const start = DateTime.fromJSDate(userState.fullStartedAt).setZone(MX_TZ);
   const end = DateTime.fromJSDate(userState.fullEndsAt).setZone(MX_TZ);
 
-  const isExpired = now.toMillis() >= end.toMillis();
-
   const startDay = start.startOf("day");
   const nowDay = now.startOf("day");
   const dayNumber = Math.max(1, Math.floor(nowDay.diff(startDay, "days").days) + 1);
 
   let daysRemaining = 0;
-  if (!isExpired) {
+  if (now.toMillis() < end.toMillis()) {
     const diffDays = end.diff(now, "days").days;
     daysRemaining = Math.max(1, Math.ceil(diffDays));
   }
@@ -345,7 +341,7 @@ export function getWindowInfo(userState: {
 ========================================= */
 
 export function isTrialExpired(userState: { licenseStatus: string; trialEndsAt: Date | null }) {
-  if (isLocal) return false;
+  if (shouldBypassLicense) return false;
 
   const status = normalizeStatus(userState.licenseStatus);
   if (status === "active" || status === "maintenance") return false;
@@ -357,14 +353,16 @@ export function isTrialExpired(userState: { licenseStatus: string; trialEndsAt: 
 
 /**
  * Expired lock logic (retención):
- * - Si expired: mantenemos datos 7 días, luego (en otro sprint) borrarías user + readings
- * - Aquí solo devolvemos si todavía está en "ventana de retención"
+ * - Si expired: mantenemos datos 7 días.
+ * - Luego, en otro sprint, podemos borrar user + readings.
+ * - Aquí solo devolvemos si todavía está en ventana de retención.
  */
 export function getExpiredRetentionInfo(userState: {
   licenseStatus: string;
   updatedAt: Date;
 }) {
   const status = normalizeStatus(userState.licenseStatus);
+
   if (status !== "expired") {
     return { isExpired: false, retentionDaysLeft: null as number | null };
   }

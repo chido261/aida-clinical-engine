@@ -71,3 +71,21 @@ model UsageDaily {
 
   @@unique([userId, dateLocal])
 }
+
+model ActivationRequest {
+  id        Int      @id @default(autoincrement())
+  deviceId  String
+  name      String
+  phone     String
+  plan      String   // mensual | 3-meses | anual
+  price     Int      // 500 | 1500 | 3000
+  duration  Int      // días: 30 | 90 | 365
+  status    String   @default("pending") // pending | paid | activated | cancelled
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([deviceId])
+  @@index([phone])
+  @@index([status])
+}

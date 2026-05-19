@@ -199,7 +199,8 @@ export default function ChatPage() {
     autoResizeTextarea();
   }, [input]);
 
-  const chatLocked = appMode === "cloud" && (ui?.blocked === true || !!paywall);
+  const licenseModeActive = ui?.mode !== "LOCAL";
+  const chatLocked = licenseModeActive && (ui?.blocked === true || !!paywall);
 
   const canSend = useMemo(() => {
     return (
@@ -323,24 +324,13 @@ if (file.type.startsWith("image/")) {
 
         if (data?.ui) setUi(data.ui as UiPayload);
 
-        if (appMode === "local") {
-          setMessages((prev) => [
-            ...prev,
-            {
-              role: "assistant",
-              content:
-                "⚠️ (DEV) El backend respondió 402, pero en LOCAL ignoramos el paywall para seguir desarrollando.",
-            },
-          ]);
-          return;
-        }
-
+        
         const pw: Paywall = data?.paywall
           ? {
               title: String(data.paywall.title ?? "Tu prueba gratuita terminó"),
               message: String(
                 data.paywall.message ??
-                  "Gracias por usar nuestra versión de prueba de AIDA. Para continuar usando la versión completa por 1 año realiza tu pago en el siguiente botón."
+                  "Gracias por usar la versión de prueba de AIDA. Para continuar, activa la versión completa y elige la modalidad de pago que mejor se adapte a ti."
               ),
               ctaText: String(data.paywall.ctaText ?? "Pagar 1 año"),
               ctaUrl: String(data.paywall.ctaUrl ?? "/pago"),
@@ -348,8 +338,8 @@ if (file.type.startsWith("image/")) {
           : {
               title: "Tu prueba gratuita terminó",
               message:
-                "Gracias por usar nuestra versión de prueba de AIDA. Para continuar usando la versión completa por 1 año realiza tu pago en el siguiente botón.",
-              ctaText: "Pagar 1 año",
+                "Gracias por usar nuestra versión de prueba de AIDA. Para continuar usando activa la versión completa, realiza tu pago en el siguiente botón.",
+              ctaText: "Activar versión completa",
               ctaUrl: "/pago",
             };
 
@@ -360,7 +350,7 @@ if (file.type.startsWith("image/")) {
           {
             role: "assistant",
             content:
-              "Tu prueba gratuita terminó. Para continuar con la versión completa, realiza tu pago desde el botón que te muestro.",
+              "Tu prueba gratuita terminó. Para continuar, activa la versión completa y elige una modalidad de pago.",
           },
         ]);
 
@@ -472,7 +462,7 @@ if (file.type.startsWith("image/")) {
     "AIDA es un asistente educativo. No sustituye la valoración de un profesional de la salud. En caso de urgencias o síntomas severos: acude a atención médica.";
 
   const uiMode = (ui?.mode ?? "").toUpperCase();
-  const isTrialBanner = appMode === "cloud" && uiMode === "TRIAL" && !chatLocked;
+  const isTrialBanner = licenseModeActive && uiMode === "TRIAL" && !chatLocked;
   const trialCtaText = ui?.ctaText ?? "Activa versión FULL";
   const trialCtaUrl = ui?.ctaUrl ?? "/pago";
 
@@ -869,22 +859,64 @@ if (fileInputRef.current) fileInputRef.current.value = "";
         </p>
       )}
 
-      <div style={{ marginTop: 10, fontSize: 12, opacity: 0.75 }}>
-        {disclaimer}
-
-        {appMode === "cloud" && ui?.ctaUrl && ui?.ctaText && !chatLocked ? (
-          <>
-            {" "}
-            <a href={ui.ctaUrl} style={{ fontWeight: 700, textDecoration: "underline" }}>
-              {ui.ctaText}
-            </a>
-          </>
-        ) : null}
+{chatLocked && ui?.ctaUrl && ui?.ctaText ? (
+  <div
+    style={{
+      marginTop: 12,
+      border: "1px solid #e5e7eb",
+      background: "#fff7ed",
+      borderRadius: 14,
+      padding: 14,
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "space-between",
+      gap: 12,
+    }}
+  >
+    <div style={{ fontSize: 14, lineHeight: 1.35 }}>
+      <div style={{ fontWeight: 800 }}>Tu prueba gratuita terminó</div>
+      <div style={{ opacity: 0.85 }}>
+        Activa la versión completa para continuar usando AIDA.
       </div>
+    </div>
+
+    <a
+      href={ui.ctaUrl}
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: "10px 12px",
+        borderRadius: 10,
+        border: "1px solid #e5e7eb",
+        background: "black",
+        color: "white",
+        fontWeight: 800,
+        textDecoration: "none",
+        whiteSpace: "nowrap",
+      }}
+    >
+      {ui.ctaText}
+    </a>
+  </div>
+) : null}
+
+<div style={{ marginTop: 10, fontSize: 12, opacity: 0.75 }}>
+  {disclaimer}
+
+  {licenseModeActive && ui?.ctaUrl && ui?.ctaText && !chatLocked ? (
+    <>
+      {" "}
+      <a href={ui.ctaUrl} style={{ fontWeight: 700, textDecoration: "underline" }}>
+        {ui.ctaText}
+      </a>
+    </>
+  ) : null}
+</div>
 
       <PushInit userId={deviceId} />
 
-      {appMode === "cloud" && paywall && (
+      {licenseModeActive && paywall && (
         <div
           style={{
             position: "fixed",
@@ -952,7 +984,7 @@ if (fileInputRef.current) fileInputRef.current.value = "";
             </div>
 
             <div style={{ marginTop: 12, fontSize: 12, opacity: 0.7 }}>
-              Si cambias de dispositivo, después agregaremos un flujo de revocación de licencia.
+              Tu licencia se activará en el dispositivo y número de celular que registres.
             </div>
           </div>
         </div>

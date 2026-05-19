@@ -29,12 +29,13 @@ import {
   ensureUserState,
   isTrialExpired,
   getTrialInfo,
+  getWindowInfo,
   saveReading,
   getLastReading,
   getRecentReadings,
 } from "@/app/lib/aidaMemory";
 
-import { isLocal } from "@/app/lib/runtimeConfig";
+import { shouldBypassLicense } from "@/app/lib/runtimeConfig";
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
@@ -83,8 +84,9 @@ function getLocalDateISO(timeZone: string) {
 function buildUI(userState?: any, opts?: { blocked?: boolean }) {
   const blocked = Boolean(opts?.blocked);
 
-  // LOCAL (dev): no paywall, pero sí mostramos modo
-  if (isLocal) {
+  // LOCAL normal: sin paywall
+  // LOCAL con AIDA_LICENSE_TEST_MODE=true: se comporta como nube
+  if (shouldBypassLicense) {
     return {
       disclaimer: EDUCATIONAL_DISCLAIMER,
       mode: "LOCAL",
@@ -99,7 +101,6 @@ function buildUI(userState?: any, opts?: { blocked?: boolean }) {
 
   const status = (userState?.licenseStatus ?? "trial") as string;
 
-  // Trial
   if (status === "trial") {
     const info = getTrialInfo(userState);
     const daysRemaining = info.daysRemaining ?? null;
@@ -111,9 +112,7 @@ function buildUI(userState?: any, opts?: { blocked?: boolean }) {
         daysRemaining != null
           ? `Modo: Prueba (${daysRemaining} día(s) restantes)`
           : "Modo: Prueba",
-      // compat: lo viejo sigue existiendo
       daysLeft: daysRemaining,
-      // nuevo
       daysRemaining,
       blocked: false,
       ctaText: "Activar versión completa",
@@ -121,7 +120,6 @@ function buildUI(userState?: any, opts?: { blocked?: boolean }) {
     };
   }
 
-  // Expired
   if (status === "expired") {
     return {
       disclaimer: EDUCATIONAL_DISCLAIMER,
@@ -130,40 +128,49 @@ function buildUI(userState?: any, opts?: { blocked?: boolean }) {
       daysLeft: 0,
       daysRemaining: 0,
       blocked: true,
-      ctaText: "Pagar 1 año",
+      ctaText: "Activar versión completa",
       ctaUrl: process.env.AIDA_BILLING_URL ?? "/pago",
     };
   }
 
-  // Active = Full (por ahora)
   if (status === "active") {
+    const info = getWindowInfo(userState);
+    const daysRemaining = info.daysRemaining ?? null;
+  
     return {
       disclaimer: EDUCATIONAL_DISCLAIMER,
       mode: "FULL",
-      modeLabel: "Modo: Paquete completo",
-      daysLeft: null,
-      daysRemaining: null,
+      modeLabel:
+        daysRemaining != null
+          ? `Modo: Versión completa (${daysRemaining} día(s) restantes)`
+          : "Modo: Versión completa",
+      daysLeft: daysRemaining,
+      daysRemaining,
       blocked,
       ctaText: null,
       ctaUrl: null,
     };
   }
 
-  // Future: maintenance
   if (status === "maintenance") {
+    const info = getWindowInfo(userState);
+    const daysRemaining = info.daysRemaining ?? null;
+  
     return {
       disclaimer: EDUCATIONAL_DISCLAIMER,
       mode: "MAINTENANCE",
-      modeLabel: "Modo: Mantenimiento",
-      daysLeft: null,
-      daysRemaining: null,
+      modeLabel:
+        daysRemaining != null
+          ? `Modo: Mantenimiento (${daysRemaining} día(s) restantes)`
+          : "Modo: Mantenimiento",
+      daysLeft: daysRemaining,
+      daysRemaining,
       blocked,
       ctaText: "Administrar suscripción",
       ctaUrl: process.env.AIDA_BILLING_URL ?? "/pago",
     };
   }
 
-  // Fallback
   return {
     disclaimer: EDUCATIONAL_DISCLAIMER,
     mode: status.toUpperCase(),
@@ -442,8 +449,9 @@ export async function POST(req: Request) {
       });
     }
 
-    // ✅ LOCAL: nunca paywall
-    if (!isLocal && isTrialExpired(userState)) {
+    // ✅ LOCAL normal: nunca paywall
+    // 🧪 LOCAL con AIDA_LICENSE_TEST_MODE=true: sí permite probar paywall
+    if (!shouldBypassLicense && isTrialExpired(userState)) {
       const uiExpired = buildUI({ ...userState, licenseStatus: "expired" }, { blocked: true });
 
       return jsonERR(
@@ -453,9 +461,9 @@ export async function POST(req: Request) {
           paywall: {
             title: "Tu prueba gratuita terminó",
             message:
-              "Gracias por usar nuestra versión de prueba de AIDA. Para continuar usando la versión completa por 1 año realiza tu pago en el siguiente botón.",
-            ctaText: "Pagar 1 año",
-            ctaUrl: process.env.AIDA_BILLING_URL ?? "/pago",
+             "Gracias por usar la versión de prueba de AIDA. Para continuar, activa la versión completa y elige la modalidad de pago que mejor se adapte a ti.",
+          ctaText: "Activar versión completa",
+          ctaUrl: process.env.AIDA_BILLING_URL ?? "/pago",
           },
           ui: uiExpired,
         },
@@ -465,7 +473,7 @@ export async function POST(req: Request) {
 
     // 3) Rate limit SOLO trial (50/día, reinicia por dailyMsgDate)
     const todayLocal = getLocalDateISO(MX_TZ);
-    const isTrial = isLocal ? false : userState.licenseStatus === "trial";
+    const isTrial = shouldBypassLicense ? false : userState.licenseStatus === "trial";
 
     const LIMIT_PER_DAY_TRIAL = 50;
     const currentCount = userState.dailyMsgDate === todayLocal ? (userState.dailyMsgCount ?? 0) : 0;
