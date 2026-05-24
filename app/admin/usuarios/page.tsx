@@ -15,12 +15,6 @@ type AdminUser = {
   totalMsgCount: number;
   dailyMsgDate: string | null;
   dailyMsgCount: number | null;
-  baselineA1c: number | null;
-  baselineAvgGlucose: number | null;
-  baselineSetAt: string | null;
-  clinicalState: string | null;
-  pendingFollowUpType: string | null;
-  pendingFollowUpAt: string | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -193,16 +187,7 @@ export default function AdminUsuariosPage() {
             </p>
 
             <form onSubmit={handleAdminLogin} style={{ marginTop: 18 }}>
-              <label
-                htmlFor="adminKey"
-                style={{
-                  display: "block",
-                  fontSize: 14,
-                  fontWeight: 800,
-                  color: "#374151",
-                  marginBottom: 6,
-                }}
-              >
+              <label htmlFor="adminKey" style={labelStyle}>
                 Clave admin
               </label>
 
@@ -212,47 +197,16 @@ export default function AdminUsuariosPage() {
                 value={adminKey}
                 onChange={(event) => setAdminKey(event.target.value)}
                 placeholder="Escribe tu clave"
-                style={{
-                  width: "100%",
-                  boxSizing: "border-box",
-                  border: "1px solid #d1d5db",
-                  borderRadius: 12,
-                  padding: "12px 14px",
-                  fontSize: 16,
-                  outline: "none",
-                }}
+                style={inputStyle}
               />
 
-              {error ? (
-                <div
-                  style={{
-                    marginTop: 12,
-                    border: "1px solid #fecaca",
-                    background: "#fef2f2",
-                    borderRadius: 12,
-                    padding: 12,
-                    color: "#991b1b",
-                    fontWeight: 700,
-                    fontSize: 14,
-                  }}
-                >
-                  {error}
-                </div>
-              ) : null}
+              {error ? <div style={errorStyle}>{error}</div> : null}
 
               <button
                 type="submit"
                 disabled={isLoading}
                 style={{
-                  width: "100%",
-                  marginTop: 14,
-                  border: "1px solid #111827",
-                  background: "#111827",
-                  color: "white",
-                  borderRadius: 12,
-                  padding: "12px 14px",
-                  fontSize: 15,
-                  fontWeight: 900,
+                  ...primaryLargeButtonStyle,
                   cursor: isLoading ? "not-allowed" : "pointer",
                 }}
               >
@@ -267,40 +221,27 @@ export default function AdminUsuariosPage() {
 
   return (
     <main style={pageStyle}>
-      <section style={{ maxWidth: 1250, margin: "0 auto" }}>
+      <section style={{ maxWidth: 1180, margin: "0 auto" }}>
         <div style={{ marginBottom: 18 }}>
-          <a
-            href="/admin/activaciones"
-            style={{
-              display: "inline-flex",
-              color: "#111827",
-              textDecoration: "none",
-              fontSize: 14,
-              fontWeight: 700,
-              marginBottom: 16,
-            }}
-          >
-            ← Ver activaciones
-          </a>
+          <div style={topNavStyle}>
+            <a href="/admin/activaciones" style={topLinkStyle}>
+              ← Ver activaciones
+            </a>
+
+            <a href="/pago" style={topLinkStyle}>
+              Ver página de pagos
+            </a>
+          </div>
 
           <div style={cardStyle}>
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "flex-start",
-                gap: 12,
-                flexWrap: "wrap",
-              }}
-            >
+            <div style={headerFlexStyle}>
               <div>
                 <div style={badgeStyle}>Panel admin</div>
 
                 <h1 style={titleStyle}>Usuarios de AIDA</h1>
 
                 <p style={paragraphStyle}>
-                  Aquí puedes revisar usuarios registrados, estado de licencia,
-                  uso del chat, fechas y seguimiento clínico básico.
+                  Vista operativa de usuarios, estado de licencia y uso general.
                 </p>
               </div>
 
@@ -315,14 +256,7 @@ export default function AdminUsuariosPage() {
           </div>
         </div>
 
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-            gap: 12,
-            marginBottom: 16,
-          }}
-        >
+        <div style={metricsGridStyle}>
           <div style={smallCardStyle}>
             <div style={metricLabelStyle}>Total usuarios</div>
             <div style={metricValueStyle}>{users.length}</div>
@@ -344,25 +278,14 @@ export default function AdminUsuariosPage() {
           </div>
         </div>
 
-        <div
-          style={{
-            background: "white",
-            border: "1px solid #e5e7eb",
-            borderRadius: 18,
-            overflow: "hidden",
-          }}
-        >
-          <div
-            style={{
-              padding: 14,
-              borderBottom: "1px solid #e5e7eb",
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              gap: 12,
-            }}
-          >
-            <div style={{ fontWeight: 900 }}>Últimos usuarios</div>
+        <section style={tableWrapperStyle}>
+          <div style={tableHeaderStyle}>
+            <div>
+              <div style={{ fontWeight: 900 }}>Listado de usuarios</div>
+              <div style={{ color: "#6b7280", fontSize: 13, marginTop: 2 }}>
+                Mostrando hasta 200 registros recientes
+              </div>
+            </div>
 
             <button
               type="button"
@@ -374,50 +297,24 @@ export default function AdminUsuariosPage() {
             </button>
           </div>
 
-          {error ? (
-            <div
-              style={{
-                margin: 14,
-                border: "1px solid #fecaca",
-                background: "#fef2f2",
-                borderRadius: 12,
-                padding: 12,
-                color: "#991b1b",
-                fontWeight: 700,
-              }}
-            >
-              {error}
-            </div>
-          ) : null}
+          {error ? <div style={errorStyle}>{error}</div> : null}
 
           {isLoading ? (
-            <div style={{ padding: 18, color: "#6b7280" }}>
-              Cargando usuarios...
-            </div>
+            <div style={emptyStyle}>Cargando usuarios...</div>
           ) : users.length === 0 ? (
-            <div style={{ padding: 18, color: "#6b7280" }}>
-              Todavía no hay usuarios registrados.
-            </div>
+            <div style={emptyStyle}>Todavía no hay usuarios registrados.</div>
           ) : (
             <div style={{ overflowX: "auto" }}>
-              <table
-                style={{
-                  width: "100%",
-                  borderCollapse: "collapse",
-                  fontSize: 14,
-                }}
-              >
+              <table style={tableStyle}>
                 <thead>
                   <tr style={{ background: "#f9fafb" }}>
                     <th style={thStyle}>Usuario</th>
                     <th style={thStyle}>Licencia</th>
                     <th style={thStyle}>Celular</th>
-                    <th style={thStyle}>Trial</th>
-                    <th style={thStyle}>Versión completa</th>
-                    <th style={thStyle}>Uso</th>
-                    <th style={thStyle}>Baseline</th>
-                    <th style={thStyle}>Seguimiento</th>
-                    <th style={thStyle}>Última actividad</th>
+                    <th style={thStyle}>Trial vence</th>
+                    <th style={thStyle}>Plan vence</th>
+                    <th style={thStyle}>Mensajes</th>
+                    <th style={thStyle}>Último uso</th>
                   </tr>
                 </thead>
 
@@ -428,7 +325,7 @@ export default function AdminUsuariosPage() {
                         <div style={{ fontWeight: 900 }}>
                           {user.id.slice(0, 8)}...
                         </div>
-                        <div style={mutedStyle}>{user.id}</div>
+                        <div style={deviceIdStyle}>{user.id}</div>
                       </td>
 
                       <td style={tdStyle}>
@@ -436,9 +333,10 @@ export default function AdminUsuariosPage() {
                           style={{
                             display: "inline-flex",
                             borderRadius: 999,
-                            padding: "5px 8px",
+                            padding: "5px 9px",
                             fontSize: 12,
                             fontWeight: 900,
+                            whiteSpace: "nowrap",
                             ...getLicenseBadgeStyle(user.licenseStatus),
                           }}
                         >
@@ -448,67 +346,24 @@ export default function AdminUsuariosPage() {
 
                       <td style={tdStyle}>{user.phoneE164 || "—"}</td>
 
-                      <td style={tdStyle}>
-                        <div>
-                          <strong>Inicio:</strong> {formatDate(user.trialStartedAt)}
-                        </div>
-                        <div>
-                          <strong>Fin:</strong> {formatDate(user.trialEndsAt)}
-                        </div>
-                      </td>
+                      <td style={tdStyle}>{formatDate(user.trialEndsAt)}</td>
 
-                      <td style={tdStyle}>
-                        <div>
-                          <strong>Inicio:</strong> {formatDate(user.fullStartedAt)}
-                        </div>
-                        <div>
-                          <strong>Fin:</strong> {formatDate(user.fullEndsAt)}
-                        </div>
-                      </td>
+                      <td style={tdStyle}>{formatDate(user.fullEndsAt)}</td>
 
                       <td style={tdStyle}>
                         <div>
                           <strong>Total:</strong> {user.totalMsgCount ?? 0}
                         </div>
-                        <div>
-                          <strong>Hoy:</strong>{" "}
-                          {user.dailyMsgCount ?? 0}
+                        <div style={{ color: "#6b7280", marginTop: 3 }}>
+                          Hoy: {user.dailyMsgCount ?? 0}
                           {user.dailyMsgDate ? ` / ${user.dailyMsgDate}` : ""}
                         </div>
                       </td>
 
                       <td style={tdStyle}>
-                        <div>
-                          <strong>A1c:</strong>{" "}
-                          {user.baselineA1c != null ? user.baselineA1c : "—"}
-                        </div>
-                        <div>
-                          <strong>Promedio:</strong>{" "}
-                          {user.baselineAvgGlucose != null
-                            ? `${user.baselineAvgGlucose} mg/dL`
-                            : "—"}
-                        </div>
-                      </td>
-
-                      <td style={tdStyle}>
-                        <div>
-                          <strong>Clínico:</strong>{" "}
-                          {user.clinicalState || "—"}
-                        </div>
-                        <div>
-                          <strong>Pendiente:</strong>{" "}
-                          {user.pendingFollowUpType || "—"}
-                        </div>
-                      </td>
-
-                      <td style={tdStyle}>
-                        <div>
-                          <strong>Último mensaje:</strong>{" "}
-                          {formatDate(user.lastMsgAt)}
-                        </div>
-                        <div>
-                          <strong>Actualizado:</strong>{" "}
-                          {formatDate(user.updatedAt)}
+                        <div>{formatDate(user.lastMsgAt)}</div>
+                        <div style={{ color: "#6b7280", marginTop: 3 }}>
+                          Actualizado: {formatDate(user.updatedAt)}
                         </div>
                       </td>
                     </tr>
@@ -517,7 +372,7 @@ export default function AdminUsuariosPage() {
               </table>
             </div>
           )}
-        </div>
+        </section>
       </section>
     </main>
   );
@@ -569,6 +424,66 @@ const paragraphStyle: React.CSSProperties = {
   lineHeight: 1.5,
 };
 
+const labelStyle: React.CSSProperties = {
+  display: "block",
+  fontSize: 14,
+  fontWeight: 800,
+  color: "#374151",
+  marginBottom: 6,
+};
+
+const inputStyle: React.CSSProperties = {
+  width: "100%",
+  boxSizing: "border-box",
+  border: "1px solid #d1d5db",
+  borderRadius: 12,
+  padding: "12px 14px",
+  fontSize: 16,
+  outline: "none",
+};
+
+const primaryLargeButtonStyle: React.CSSProperties = {
+  width: "100%",
+  marginTop: 14,
+  border: "1px solid #111827",
+  background: "#111827",
+  color: "white",
+  borderRadius: 12,
+  padding: "12px 14px",
+  fontSize: 15,
+  fontWeight: 900,
+};
+
+const topNavStyle: React.CSSProperties = {
+  display: "flex",
+  gap: 14,
+  flexWrap: "wrap",
+  marginBottom: 16,
+};
+
+const topLinkStyle: React.CSSProperties = {
+  display: "inline-flex",
+  color: "#111827",
+  textDecoration: "none",
+  fontSize: 14,
+  fontWeight: 800,
+};
+
+const headerFlexStyle: React.CSSProperties = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "flex-start",
+  gap: 12,
+  flexWrap: "wrap",
+};
+
+const metricsGridStyle: React.CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))",
+  gap: 12,
+  marginBottom: 16,
+};
+
 const metricLabelStyle: React.CSSProperties = {
   fontSize: 13,
   color: "#6b7280",
@@ -579,6 +494,28 @@ const metricValueStyle: React.CSSProperties = {
   fontSize: 28,
   fontWeight: 900,
   marginTop: 4,
+};
+
+const tableWrapperStyle: React.CSSProperties = {
+  background: "white",
+  border: "1px solid #e5e7eb",
+  borderRadius: 18,
+  overflow: "hidden",
+};
+
+const tableHeaderStyle: React.CSSProperties = {
+  padding: 16,
+  borderBottom: "1px solid #e5e7eb",
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  gap: 12,
+};
+
+const tableStyle: React.CSSProperties = {
+  width: "100%",
+  borderCollapse: "collapse",
+  fontSize: 14,
 };
 
 const thStyle: React.CSSProperties = {
@@ -597,11 +534,11 @@ const tdStyle: React.CSSProperties = {
   whiteSpace: "nowrap",
 };
 
-const mutedStyle: React.CSSProperties = {
+const deviceIdStyle: React.CSSProperties = {
   marginTop: 4,
   color: "#6b7280",
   fontSize: 12,
-  maxWidth: 190,
+  maxWidth: 180,
   overflow: "hidden",
   textOverflow: "ellipsis",
 };
@@ -626,4 +563,19 @@ const dangerButtonStyle: React.CSSProperties = {
   fontSize: 12,
   fontWeight: 900,
   cursor: "pointer",
+};
+
+const errorStyle: React.CSSProperties = {
+  margin: 14,
+  border: "1px solid #fecaca",
+  background: "#fef2f2",
+  borderRadius: 12,
+  padding: 12,
+  color: "#991b1b",
+  fontWeight: 700,
+};
+
+const emptyStyle: React.CSSProperties = {
+  padding: 18,
+  color: "#6b7280",
 };
