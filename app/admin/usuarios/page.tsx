@@ -83,6 +83,7 @@ export default function AdminUsuariosPage() {
   const [isAuthorized, setIsAuthorized] = useState(false);
   const [adminKey, setAdminKey] = useState("");
   const [error, setError] = useState("");
+  const [updatingUserId, setUpdatingUserId] = useState("");
 
   const totalActive = useMemo(
     () => users.filter((user) => user.licenseStatus === "active").length,
@@ -160,6 +161,53 @@ export default function AdminUsuariosPage() {
     setError("");
   }
 
+  async function extendLicense(user: AdminUser, days: number) {
+    const confirmText =
+      days === 30
+        ? `¿Extender 30 días la licencia de ${user.id.slice(0, 8)}...?`
+        : days === 90
+          ? `¿Extender 90 días la licencia de ${user.id.slice(0, 8)}...?`
+          : `¿Extender 365 días la licencia de ${user.id.slice(0, 8)}...?`;
+
+    const ok = window.confirm(confirmText);
+    if (!ok) return;
+
+    setError("");
+    setUpdatingUserId(user.id);
+
+    try {
+      const res = await fetch("/api/admin/users/extend-license", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...getAdminHeaders(),
+        },
+        body: JSON.stringify({
+          userId: user.id,
+          days,
+        }),
+      });
+
+      const data = await res.json().catch(() => null);
+
+      if (!res.ok) {
+        if (res.status === 401) {
+          clearAdminKey();
+          setIsAuthorized(false);
+          throw new Error("Clave incorrecta o acceso no autorizado.");
+        }
+
+        throw new Error(data?.error || "No se pudo extender la licencia.");
+      }
+
+      await loadUsers();
+    } catch (err: any) {
+      setError(err?.message || "Error al extender licencia.");
+    } finally {
+      setUpdatingUserId("");
+    }
+  }
+
   useEffect(() => {
     const savedKey = getSavedAdminKey();
 
@@ -221,7 +269,7 @@ export default function AdminUsuariosPage() {
 
   return (
     <main style={pageStyle}>
-      <section style={{ maxWidth: 1180, margin: "0 auto" }}>
+      <section style={{ maxWidth: 1240, margin: "0 auto" }}>
         <div style={{ marginBottom: 18 }}>
           <div style={topNavStyle}>
             <a href="/admin/activaciones" style={topLinkStyle}>
@@ -315,59 +363,118 @@ export default function AdminUsuariosPage() {
                     <th style={thStyle}>Plan vence</th>
                     <th style={thStyle}>Mensajes</th>
                     <th style={thStyle}>Último uso</th>
+                    <th style={thStyle}>Acciones</th>
                   </tr>
                 </thead>
 
                 <tbody>
-                  {users.map((user) => (
-                    <tr key={user.id} style={{ borderTop: "1px solid #e5e7eb" }}>
-                      <td style={tdStyle}>
-                        <div style={{ fontWeight: 900 }}>
-                          {user.id.slice(0, 8)}...
-                        </div>
-                        <div style={deviceIdStyle}>{user.id}</div>
-                      </td>
+                  {users.map((user) => {
+                    const isUpdating = updatingUserId === user.id;
 
-                      <td style={tdStyle}>
-                        <span
-                          style={{
-                            display: "inline-flex",
-                            borderRadius: 999,
-                            padding: "5px 9px",
-                            fontSize: 12,
-                            fontWeight: 900,
-                            whiteSpace: "nowrap",
-                            ...getLicenseBadgeStyle(user.licenseStatus),
-                          }}
-                        >
-                          {user.licenseLabel}
-                        </span>
-                      </td>
+                    return (
+                      <tr
+                        key={user.id}
+                        style={{ borderTop: "1px solid #e5e7eb" }}
+                      >
+                        <td style={tdStyle}>
+                          <div style={{ fontWeight: 900 }}>
+                            {user.id.slice(0, 8)}...
+                          </div>
+                          <div style={deviceIdStyle}>{user.id}</div>
+                        </td>
 
-                      <td style={tdStyle}>{user.phoneE164 || "—"}</td>
+                        <td style={tdStyle}>
+                          <span
+                            style={{
+                              display: "inline-flex",
+                              borderRadius: 999,
+                              padding: "5px 9px",
+                              fontSize: 12,
+                              fontWeight: 900,
+                              whiteSpace: "nowrap",
+                              ...getLicenseBadgeStyle(user.licenseStatus),
+                            }}
+                          >
+                            {user.licenseLabel}
+                          </span>
+                        </td>
 
-                      <td style={tdStyle}>{formatDate(user.trialEndsAt)}</td>
+                        <td style={tdStyle}>{user.phoneE164 || "—"}</td>
 
-                      <td style={tdStyle}>{formatDate(user.fullEndsAt)}</td>
+                        <td style={tdStyle}>{formatDate(user.trialEndsAt)}</td>
 
-                      <td style={tdStyle}>
-                        <div>
-                          <strong>Total:</strong> {user.totalMsgCount ?? 0}
-                        </div>
-                        <div style={{ color: "#6b7280", marginTop: 3 }}>
-                          Hoy: {user.dailyMsgCount ?? 0}
-                          {user.dailyMsgDate ? ` / ${user.dailyMsgDate}` : ""}
-                        </div>
-                      </td>
+                        <td style={tdStyle}>{formatDate(user.fullEndsAt)}</td>
 
-                      <td style={tdStyle}>
-                        <div>{formatDate(user.lastMsgAt)}</div>
-                        <div style={{ color: "#6b7280", marginTop: 3 }}>
-                          Actualizado: {formatDate(user.updatedAt)}
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
+                        <td style={tdStyle}>
+                          <div>
+                            <strong>Total:</strong> {user.totalMsgCount ?? 0}
+                          </div>
+                          <div style={{ color: "#6b7280", marginTop: 3 }}>
+                            Hoy: {user.dailyMsgCount ?? 0}
+                            {user.dailyMsgDate ? ` / ${user.dailyMsgDate}` : ""}
+                          </div>
+                        </td>
+
+                        <td style={tdStyle}>
+                          <div>{formatDate(user.lastMsgAt)}</div>
+                          <div style={{ color: "#6b7280", marginTop: 3 }}>
+                            Actualizado: {formatDate(user.updatedAt)}
+                          </div>
+                        </td>
+
+                        <td style={tdStyle}>
+                          <div
+                            style={{
+                              display: "flex",
+                              gap: 6,
+                              flexWrap: "wrap",
+                              minWidth: 190,
+                            }}
+                          >
+                            <button
+                              type="button"
+                              onClick={() => extendLicense(user, 30)}
+                              disabled={isUpdating}
+                              style={smallActionButtonStyle}
+                            >
+                              +30 días
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => extendLicense(user, 90)}
+                              disabled={isUpdating}
+                              style={smallActionButtonStyle}
+                            >
+                              +90 días
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => extendLicense(user, 365)}
+                              disabled={isUpdating}
+                              style={smallPrimaryButtonStyle}
+                            >
+                              +365 días
+                            </button>
+
+                            {isUpdating ? (
+                              <div
+                                style={{
+                                  color: "#6b7280",
+                                  fontSize: 12,
+                                  fontWeight: 800,
+                                  width: "100%",
+                                }}
+                              >
+                                Actualizando...
+                              </div>
+                            ) : null}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -547,6 +654,28 @@ const actionButtonStyle: React.CSSProperties = {
   border: "1px solid #e5e7eb",
   background: "white",
   color: "#111827",
+  borderRadius: 10,
+  padding: "7px 9px",
+  fontSize: 12,
+  fontWeight: 900,
+  cursor: "pointer",
+};
+
+const smallActionButtonStyle: React.CSSProperties = {
+  border: "1px solid #e5e7eb",
+  background: "white",
+  color: "#111827",
+  borderRadius: 10,
+  padding: "7px 9px",
+  fontSize: 12,
+  fontWeight: 900,
+  cursor: "pointer",
+};
+
+const smallPrimaryButtonStyle: React.CSSProperties = {
+  border: "1px solid #111827",
+  background: "#111827",
+  color: "white",
   borderRadius: 10,
   padding: "7px 9px",
   fontSize: 12,
