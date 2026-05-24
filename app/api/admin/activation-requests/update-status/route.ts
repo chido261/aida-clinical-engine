@@ -30,8 +30,30 @@ function jsonERR(payload: any, status: number) {
   return NextResponse.json(payload, { status });
 }
 
+function isAuthorizedAdmin(req: Request) {
+  const adminKey = process.env.AIDA_ADMIN_KEY;
+
+  if (!adminKey) {
+    return false;
+  }
+
+  const providedKey = req.headers.get("x-aida-admin-key");
+
+  return providedKey === adminKey;
+}
+
 export async function POST(req: Request) {
   try {
+    if (!isAuthorizedAdmin(req)) {
+      return jsonERR(
+        {
+          ok: false,
+          error: "No autorizado",
+        },
+        401
+      );
+    }
+
     const body = (await req.json()) as Body;
 
     const id = Number(body.id);

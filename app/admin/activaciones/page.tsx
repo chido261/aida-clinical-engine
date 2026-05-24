@@ -15,6 +15,8 @@ type ActivationRequest = {
   updatedAt: string;
 };
 
+const ADMIN_KEY_STORAGE = "aida_admin_key_v1";
+
 function formatMoney(value: number) {
   return new Intl.NumberFormat("es-MX", {
     style: "currency",
@@ -51,7 +53,9 @@ function getPlanLabel(plan: string) {
 
 export default function AdminActivacionesPage() {
   const [requests, setRequests] = useState<ActivationRequest[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(false);
+  const [isAuthorized, setIsAuthorized] = useState(false);
+  const [adminKey, setAdminKey] = useState("");
   const [error, setError] = useState("");
 
   const totalPending = useMemo(
@@ -64,6 +68,82 @@ export default function AdminActivacionesPage() {
     [requests]
   );
 
+  function getSavedAdminKey() {
+    if (typeof window === "undefined") return "";
+    return window.localStorage.getItem(ADMIN_KEY_STORAGE) ?? "";
+  }
+
+  function saveAdminKey(value: string) {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem(ADMIN_KEY_STORAGE, value);
+  }
+
+  function clearAdminKey() {
+    if (typeof window === "undefined") return;
+    window.localStorage.removeItem(ADMIN_KEY_STORAGE);
+  }
+
+  function getAdminHeaders(keyOverride?: string) {
+    const key = keyOverride ?? adminKey;
+
+    return {
+      "x-aida-admin-key": key,
+    };
+  }
+
+  async function loadRequests(keyOverride?: string) {
+    setIsLoading(true);
+    setError("");
+
+    try {
+      const res = await fetch("/api/admin/activation-requests", {
+        cache: "no-store",
+        headers: getAdminHeaders(keyOverride),
+      });
+
+      const data = await res.json().catch(() => null);
+
+      if (!res.ok) {
+        if (res.status === 401) {
+          clearAdminKey();
+          setIsAuthorized(false);
+          throw new Error("Clave incorrecta o acceso no autorizado.");
+        }
+
+        throw new Error(data?.error || "No se pudieron cargar las solicitudes.");
+      }
+
+      setRequests(data?.activationRequests ?? []);
+      setIsAuthorized(true);
+    } catch (err: any) {
+      setError(err?.message || "Error al cargar solicitudes.");
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
+  async function handleAdminLogin(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    const cleanKey = adminKey.trim();
+
+    if (!cleanKey) {
+      setError("Escribe la clave de administrador.");
+      return;
+    }
+
+    saveAdminKey(cleanKey);
+    await loadRequests(cleanKey);
+  }
+
+  function handleLogout() {
+    clearAdminKey();
+    setAdminKey("");
+    setRequests([]);
+    setIsAuthorized(false);
+    setError("");
+  }
+
   async function updateRequestStatus(id: number, status: string) {
     const confirmText =
       status === "paid"
@@ -73,73 +153,144 @@ export default function AdminActivacionesPage() {
           : status === "cancelled"
             ? "¿Cancelar esta solicitud?"
             : "¿Cambiar estado?";
-  
+
     const ok = window.confirm(confirmText);
     if (!ok) return;
-  
+
     setError("");
-  
+
     try {
       const res = await fetch("/api/admin/activation-requests/update-status", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          ...getAdminHeaders(),
         },
         body: JSON.stringify({
           id,
           status,
         }),
       });
-  
+
       const data = await res.json().catch(() => null);
-  
+
       if (!res.ok) {
+        if (res.status === 401) {
+          clearAdminKey();
+          setIsAuthorized(false);
+          throw new Error("Clave incorrecta o acceso no autorizado.");
+        }
+
         throw new Error(data?.error || "No se pudo actualizar la solicitud.");
       }
-  
+
       await loadRequests();
     } catch (err: any) {
       setError(err?.message || "Error al actualizar solicitud.");
     }
   }
 
-  async function loadRequests() {
-    setIsLoading(true);
-    setError("");
-
-    try {
-      const res = await fetch("/api/admin/activation-requests", {
-        cache: "no-store",
-      });
-
-      const data = await res.json().catch(() => null);
-
-      if (!res.ok) {
-        throw new Error(data?.error || "No se pudieron cargar las solicitudes.");
-      }
-
-      setRequests(data?.activationRequests ?? []);
-    } catch (err: any) {
-      setError(err?.message || "Error al cargar solicitudes.");
-    } finally {
-      setIsLoading(false);
-    }
-  }
-
   useEffect(() => {
-    loadRequests();
+    const savedKey = getSavedAdminKey();
+
+    if (!savedKey) {
+      setIsAuthorized(false);
+      return;
+    }
+
+    setAdminKey(savedKey);
+    loadRequests(savedKey);
   }, []);
 
+  if (!isAuthorized) {
+    return (
+      <main style={pageStyle}>
+        <section style={{ maxWidth: 460, margin: "0 auto" }}>
+          <div style={cardStyle}>
+            <div style={badgeStyle}>Panel admin</div>
+
+            <h1 style={titleStyle}>Acceso protegido</h1>
+
+            <p style={paragraphStyle}>
+              Escribe tu clave de administrador para revisar y activar
+              solicitudes de AIDA.
+            </p>
+
+            <form onSubmit={handleAdminLogin} style={{ marginTop: 18 }}>
+              <label
+                htmlFor="adminKey"
+                style={{
+                  display: "block",
+                  fontSize: 14,
+                  fontWeight: 800,
+                  color: "#374151",
+                  marginBottom: 6,
+                }}
+              >
+                Clave admin
+              </label>
+
+              <input
+                id="adminKey"
+                type="password"
+                value={adminKey}
+                onChange={(event) => setAdminKey(event.target.value)}
+                placeholder="Escribe tu clave"
+                style={{
+                  width: "100%",
+                  boxSizing: "border-box",
+                  border: "1px solid #d1d5db",
+                  borderRadius: 12,
+                  padding: "12px 14px",
+                  fontSize: 16,
+                  outline: "none",
+                }}
+              />
+
+              {error ? (
+                <div
+                  style={{
+                    marginTop: 12,
+                    border: "1px solid #fecaca",
+                    background: "#fef2f2",
+                    borderRadius: 12,
+                    padding: 12,
+                    color: "#991b1b",
+                    fontWeight: 700,
+                    fontSize: 14,
+                  }}
+                >
+                  {error}
+                </div>
+              ) : null}
+
+              <button
+                type="submit"
+                disabled={isLoading}
+                style={{
+                  width: "100%",
+                  marginTop: 14,
+                  border: "1px solid #111827",
+                  background: "#111827",
+                  color: "white",
+                  borderRadius: 12,
+                  padding: "12px 14px",
+                  fontSize: 15,
+                  fontWeight: 900,
+                  cursor: isLoading ? "not-allowed" : "pointer",
+                }}
+              >
+                {isLoading ? "Verificando..." : "Entrar al panel"}
+              </button>
+            </form>
+          </div>
+        </section>
+      </main>
+    );
+  }
+
   return (
-    <main
-      style={{
-        minHeight: "100vh",
-        background: "#f9fafb",
-        padding: 24,
-        fontFamily:
-          'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
-      }}
-    >
+    <main style={pageStyle}>
       <section style={{ maxWidth: 1100, margin: "0 auto" }}>
         <div style={{ marginBottom: 18 }}>
           <a
@@ -156,51 +307,35 @@ export default function AdminActivacionesPage() {
             ← Volver a pagos
           </a>
 
-          <div
-            style={{
-              background: "white",
-              border: "1px solid #e5e7eb",
-              borderRadius: 18,
-              padding: 22,
-            }}
-          >
+          <div style={cardStyle}>
             <div
               style={{
-                display: "inline-flex",
-                background: "#111827",
-                color: "white",
-                borderRadius: 999,
-                padding: "6px 10px",
-                fontSize: 13,
-                fontWeight: 800,
-                marginBottom: 12,
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "flex-start",
+                gap: 12,
+                flexWrap: "wrap",
               }}
             >
-              Panel admin
+              <div>
+                <div style={badgeStyle}>Panel admin</div>
+
+                <h1 style={titleStyle}>Solicitudes de activación</h1>
+
+                <p style={paragraphStyle}>
+                  Aquí puedes revisar solicitudes, marcar pagos, activar accesos
+                  o cancelar registros.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={handleLogout}
+                style={dangerButtonStyle}
+              >
+                Cerrar acceso
+              </button>
             </div>
-
-            <h1
-              style={{
-                margin: "0 0 8px",
-                fontSize: 30,
-                color: "#111827",
-              }}
-            >
-              Solicitudes de activación
-            </h1>
-
-            <p
-              style={{
-                margin: 0,
-                color: "#4b5563",
-                fontSize: 16,
-                lineHeight: 1.5,
-              }}
-            >
-              Aquí podrás revisar las solicitudes generadas desde la página de
-              activación. Por ahora es solo lectura; después agregaremos botones
-              para marcar pagado, activar acceso o cancelar.
-            </p>
           </div>
         </div>
 
@@ -212,52 +347,19 @@ export default function AdminActivacionesPage() {
             marginBottom: 16,
           }}
         >
-          <div
-            style={{
-              background: "white",
-              border: "1px solid #e5e7eb",
-              borderRadius: 16,
-              padding: 16,
-            }}
-          >
-            <div style={{ fontSize: 13, color: "#6b7280", fontWeight: 800 }}>
-              Total solicitudes
-            </div>
-            <div style={{ fontSize: 28, fontWeight: 900, marginTop: 4 }}>
-              {requests.length}
-            </div>
+          <div style={smallCardStyle}>
+            <div style={metricLabelStyle}>Total solicitudes</div>
+            <div style={metricValueStyle}>{requests.length}</div>
           </div>
 
-          <div
-            style={{
-              background: "white",
-              border: "1px solid #e5e7eb",
-              borderRadius: 16,
-              padding: 16,
-            }}
-          >
-            <div style={{ fontSize: 13, color: "#6b7280", fontWeight: 800 }}>
-              Pendientes
-            </div>
-            <div style={{ fontSize: 28, fontWeight: 900, marginTop: 4 }}>
-              {totalPending}
-            </div>
+          <div style={smallCardStyle}>
+            <div style={metricLabelStyle}>Pendientes</div>
+            <div style={metricValueStyle}>{totalPending}</div>
           </div>
 
-          <div
-            style={{
-              background: "white",
-              border: "1px solid #e5e7eb",
-              borderRadius: 16,
-              padding: 16,
-            }}
-          >
-            <div style={{ fontSize: 13, color: "#6b7280", fontWeight: 800 }}>
-              Activadas
-            </div>
-            <div style={{ fontSize: 28, fontWeight: 900, marginTop: 4 }}>
-              {totalActivated}
-            </div>
+          <div style={smallCardStyle}>
+            <div style={metricLabelStyle}>Activadas</div>
+            <div style={metricValueStyle}>{totalActivated}</div>
           </div>
         </div>
 
@@ -283,16 +385,9 @@ export default function AdminActivacionesPage() {
 
             <button
               type="button"
-              onClick={loadRequests}
+              onClick={() => loadRequests()}
               disabled={isLoading}
-              style={{
-                border: "1px solid #e5e7eb",
-                background: "white",
-                borderRadius: 10,
-                padding: "8px 10px",
-                fontWeight: 800,
-                cursor: isLoading ? "not-allowed" : "pointer",
-              }}
+              style={actionButtonStyle}
             >
               {isLoading ? "Cargando..." : "Actualizar"}
             </button>
@@ -347,7 +442,10 @@ export default function AdminActivacionesPage() {
 
                 <tbody>
                   {requests.map((request) => (
-                    <tr key={request.id} style={{ borderTop: "1px solid #e5e7eb" }}>
+                    <tr
+                      key={request.id}
+                      style={{ borderTop: "1px solid #e5e7eb" }}
+                    >
                       <td style={tdStyle}>#{request.id}</td>
                       <td style={tdStyle}>{request.name}</td>
                       <td style={tdStyle}>{request.phone}</td>
@@ -385,56 +483,70 @@ export default function AdminActivacionesPage() {
                       </td>
                       <td style={tdStyle}>{formatDate(request.createdAt)}</td>
                       <td style={tdStyle}>
-  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-    {request.status === "pending" ? (
-      <>
-        <button
-          type="button"
-          onClick={() => updateRequestStatus(request.id, "paid")}
-          style={actionButtonStyle}
-        >
-          Marcar pagado
-        </button>
+                        <div
+                          style={{ display: "flex", gap: 8, flexWrap: "wrap" }}
+                        >
+                          {request.status === "pending" ? (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  updateRequestStatus(request.id, "paid")
+                                }
+                                style={actionButtonStyle}
+                              >
+                                Marcar pagado
+                              </button>
 
-        <button
-          type="button"
-          onClick={() => updateRequestStatus(request.id, "cancelled")}
-          style={dangerButtonStyle}
-        >
-          Cancelar
-        </button>
-      </>
-    ) : null}
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  updateRequestStatus(request.id, "cancelled")
+                                }
+                                style={dangerButtonStyle}
+                              >
+                                Cancelar
+                              </button>
+                            </>
+                          ) : null}
 
-    {request.status === "paid" ? (
-      <>
-        <button
-          type="button"
-          onClick={() => updateRequestStatus(request.id, "activated")}
-          style={primaryButtonStyle}
-        >
-          Activar acceso
-        </button>
+                          {request.status === "paid" ? (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  updateRequestStatus(request.id, "activated")
+                                }
+                                style={primaryButtonStyle}
+                              >
+                                Activar acceso
+                              </button>
 
-        <button
-          type="button"
-          onClick={() => updateRequestStatus(request.id, "cancelled")}
-          style={dangerButtonStyle}
-        >
-          Cancelar
-        </button>
-      </>
-    ) : null}
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  updateRequestStatus(request.id, "cancelled")
+                                }
+                                style={dangerButtonStyle}
+                              >
+                                Cancelar
+                              </button>
+                            </>
+                          ) : null}
 
-    {request.status === "activated" ? (
-      <span style={{ color: "#166534", fontWeight: 900 }}>Activo</span>
-    ) : null}
+                          {request.status === "activated" ? (
+                            <span style={{ color: "#166534", fontWeight: 900 }}>
+                              Activo
+                            </span>
+                          ) : null}
 
-    {request.status === "cancelled" ? (
-      <span style={{ color: "#991b1b", fontWeight: 900 }}>Cancelado</span>
-    ) : null}
-  </div>
-</td>
+                          {request.status === "cancelled" ? (
+                            <span style={{ color: "#991b1b", fontWeight: 900 }}>
+                              Cancelado
+                            </span>
+                          ) : null}
+                        </div>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -446,6 +558,64 @@ export default function AdminActivacionesPage() {
     </main>
   );
 }
+
+const pageStyle: React.CSSProperties = {
+  minHeight: "100vh",
+  background: "#f9fafb",
+  padding: 24,
+  fontFamily:
+    'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+};
+
+const cardStyle: React.CSSProperties = {
+  background: "white",
+  border: "1px solid #e5e7eb",
+  borderRadius: 18,
+  padding: 22,
+};
+
+const smallCardStyle: React.CSSProperties = {
+  background: "white",
+  border: "1px solid #e5e7eb",
+  borderRadius: 16,
+  padding: 16,
+};
+
+const badgeStyle: React.CSSProperties = {
+  display: "inline-flex",
+  background: "#111827",
+  color: "white",
+  borderRadius: 999,
+  padding: "6px 10px",
+  fontSize: 13,
+  fontWeight: 800,
+  marginBottom: 12,
+};
+
+const titleStyle: React.CSSProperties = {
+  margin: "0 0 8px",
+  fontSize: 30,
+  color: "#111827",
+};
+
+const paragraphStyle: React.CSSProperties = {
+  margin: 0,
+  color: "#4b5563",
+  fontSize: 16,
+  lineHeight: 1.5,
+};
+
+const metricLabelStyle: React.CSSProperties = {
+  fontSize: 13,
+  color: "#6b7280",
+  fontWeight: 800,
+};
+
+const metricValueStyle: React.CSSProperties = {
+  fontSize: 28,
+  fontWeight: 900,
+  marginTop: 4,
+};
 
 const thStyle: React.CSSProperties = {
   textAlign: "left",

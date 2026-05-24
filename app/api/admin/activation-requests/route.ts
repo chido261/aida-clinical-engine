@@ -13,8 +13,30 @@ function jsonERR(payload: any, status: number) {
   return NextResponse.json(payload, { status });
 }
 
-export async function GET() {
+function isAuthorizedAdmin(req: Request) {
+  const adminKey = process.env.AIDA_ADMIN_KEY;
+
+  if (!adminKey) {
+    return false;
+  }
+
+  const providedKey = req.headers.get("x-aida-admin-key");
+
+  return providedKey === adminKey;
+}
+
+export async function GET(req: Request) {
   try {
+    if (!isAuthorizedAdmin(req)) {
+      return jsonERR(
+        {
+          ok: false,
+          error: "No autorizado",
+        },
+        401
+      );
+    }
+
     const requests = await prisma.activationRequest.findMany({
       orderBy: {
         createdAt: "desc",
