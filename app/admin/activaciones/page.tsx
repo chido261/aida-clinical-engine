@@ -292,20 +292,43 @@ export default function AdminActivacionesPage() {
   return (
     <main style={pageStyle}>
       <section style={{ maxWidth: 1100, margin: "0 auto" }}>
-        <div style={{ marginBottom: 18 }}>
-          <a
-            href="/pago"
+      <div style={{ marginBottom: 18 }}>
+          <div
             style={{
-              display: "inline-flex",
-              color: "#111827",
-              textDecoration: "none",
-              fontSize: 14,
-              fontWeight: 700,
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              gap: 12,
+              flexWrap: "wrap",
               marginBottom: 16,
             }}
           >
-            ← Volver a pagos
-          </a>
+            <a
+              href="/pago"
+              style={{
+                display: "inline-flex",
+                color: "#111827",
+                textDecoration: "none",
+                fontSize: 14,
+                fontWeight: 700,
+              }}
+            >
+              ← Volver a pagos
+            </a>
+
+            <a
+              href="/admin/usuarios"
+              style={{
+                display: "inline-flex",
+                color: "#111827",
+                textDecoration: "none",
+                fontSize: 14,
+                fontWeight: 900,
+              }}
+            >
+              Ver usuarios →
+            </a>
+          </div>
 
           <div style={cardStyle}>
             <div
