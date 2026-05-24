@@ -19,6 +19,8 @@ type AdminUser = {
   updatedAt: string;
 };
 
+type LicenseAction = "cancel-license" | "reset-trial";
+
 const ADMIN_KEY_STORAGE = "aida_admin_key_v1";
 
 function formatDate(value: string | null) {
@@ -208,6 +210,51 @@ export default function AdminUsuariosPage() {
     }
   }
 
+  async function updateLicense(user: AdminUser, action: LicenseAction) {
+    const confirmText =
+      action === "cancel-license"
+        ? `¿Cancelar la licencia de ${user.id.slice(0, 8)}...? El usuario perderá acceso completo.`
+        : `¿Reiniciar trial de ${user.id.slice(0, 8)}...? El usuario volverá a prueba gratuita de 7 días.`;
+
+    const ok = window.confirm(confirmText);
+    if (!ok) return;
+
+    setError("");
+    setUpdatingUserId(user.id);
+
+    try {
+      const res = await fetch("/api/admin/users/update-license", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...getAdminHeaders(),
+        },
+        body: JSON.stringify({
+          userId: user.id,
+          action,
+        }),
+      });
+
+      const data = await res.json().catch(() => null);
+
+      if (!res.ok) {
+        if (res.status === 401) {
+          clearAdminKey();
+          setIsAuthorized(false);
+          throw new Error("Clave incorrecta o acceso no autorizado.");
+        }
+
+        throw new Error(data?.error || "No se pudo actualizar la licencia.");
+      }
+
+      await loadUsers();
+    } catch (err: any) {
+      setError(err?.message || "Error al actualizar licencia.");
+    } finally {
+      setUpdatingUserId("");
+    }
+  }
+
   useEffect(() => {
     const savedKey = getSavedAdminKey();
 
@@ -269,7 +316,7 @@ export default function AdminUsuariosPage() {
 
   return (
     <main style={pageStyle}>
-      <section style={{ maxWidth: 1240, margin: "0 auto" }}>
+      <section style={{ maxWidth: 1280, margin: "0 auto" }}>
         <div style={{ marginBottom: 18 }}>
           <div style={topNavStyle}>
             <a href="/admin/activaciones" style={topLinkStyle}>
@@ -423,14 +470,7 @@ export default function AdminUsuariosPage() {
                         </td>
 
                         <td style={tdStyle}>
-                          <div
-                            style={{
-                              display: "flex",
-                              gap: 6,
-                              flexWrap: "wrap",
-                              minWidth: 190,
-                            }}
-                          >
+                          <div style={actionsCellStyle}>
                             <button
                               type="button"
                               onClick={() => extendLicense(user, 30)}
@@ -458,15 +498,28 @@ export default function AdminUsuariosPage() {
                               +365 días
                             </button>
 
+                            <button
+                              type="button"
+                              onClick={() => updateLicense(user, "reset-trial")}
+                              disabled={isUpdating}
+                              style={smallWarningButtonStyle}
+                            >
+                              Reiniciar trial
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() =>
+                                updateLicense(user, "cancel-license")
+                              }
+                              disabled={isUpdating}
+                              style={smallDangerButtonStyle}
+                            >
+                              Cancelar
+                            </button>
+
                             {isUpdating ? (
-                              <div
-                                style={{
-                                  color: "#6b7280",
-                                  fontSize: 12,
-                                  fontWeight: 800,
-                                  width: "100%",
-                                }}
-                              >
+                              <div style={updatingTextStyle}>
                                 Actualizando...
                               </div>
                             ) : null}
@@ -650,6 +703,13 @@ const deviceIdStyle: React.CSSProperties = {
   textOverflow: "ellipsis",
 };
 
+const actionsCellStyle: React.CSSProperties = {
+  display: "flex",
+  gap: 6,
+  flexWrap: "wrap",
+  minWidth: 260,
+};
+
 const actionButtonStyle: React.CSSProperties = {
   border: "1px solid #e5e7eb",
   background: "white",
@@ -683,6 +743,28 @@ const smallPrimaryButtonStyle: React.CSSProperties = {
   cursor: "pointer",
 };
 
+const smallWarningButtonStyle: React.CSSProperties = {
+  border: "1px solid #f59e0b",
+  background: "#fffbeb",
+  color: "#92400e",
+  borderRadius: 10,
+  padding: "7px 9px",
+  fontSize: 12,
+  fontWeight: 900,
+  cursor: "pointer",
+};
+
+const smallDangerButtonStyle: React.CSSProperties = {
+  border: "1px solid #fecaca",
+  background: "#fef2f2",
+  color: "#991b1b",
+  borderRadius: 10,
+  padding: "7px 9px",
+  fontSize: 12,
+  fontWeight: 900,
+  cursor: "pointer",
+};
+
 const dangerButtonStyle: React.CSSProperties = {
   border: "1px solid #fecaca",
   background: "#fef2f2",
@@ -692,6 +774,13 @@ const dangerButtonStyle: React.CSSProperties = {
   fontSize: 12,
   fontWeight: 900,
   cursor: "pointer",
+};
+
+const updatingTextStyle: React.CSSProperties = {
+  color: "#6b7280",
+  fontSize: 12,
+  fontWeight: 800,
+  width: "100%",
 };
 
 const errorStyle: React.CSSProperties = {
