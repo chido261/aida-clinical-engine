@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { Suspense, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { getDeviceId } from "@/app/lib/deviceId";
 
@@ -44,6 +44,44 @@ function normalizePlan(value: string | null): PlanKey {
 }
 
 export default function PagoActivarPage() {
+  return (
+    <Suspense fallback={<PagoActivarFallback />}>
+      <PagoActivarContent />
+    </Suspense>
+  );
+}
+
+function PagoActivarFallback() {
+  return (
+    <main
+      style={{
+        minHeight: "100vh",
+        background: "#f9fafb",
+        padding: 24,
+        fontFamily:
+          'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+      }}
+    >
+      <section style={{ maxWidth: 760, margin: "0 auto" }}>
+        <div
+          style={{
+            background: "white",
+            border: "1px solid #e5e7eb",
+            borderRadius: 18,
+            padding: 24,
+            boxShadow: "0 12px 35px rgba(0,0,0,0.06)",
+            color: "#4b5563",
+            fontWeight: 800,
+          }}
+        >
+          Cargando activación...
+        </div>
+      </section>
+    </main>
+  );
+}
+
+function PagoActivarContent() {
   const searchParams = useSearchParams();
   const selectedPlan = normalizePlan(searchParams.get("plan"));
   const plan = PLAN_INFO[selectedPlan];
@@ -61,15 +99,15 @@ export default function PagoActivarPage() {
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-  
+
     if (!canSubmit || isSubmitting) return;
-  
+
     setIsSubmitting(true);
     setError("");
-  
+
     try {
       const deviceId = getDeviceId();
-  
+
       const res = await fetch("/api/activation-request", {
         method: "POST",
         headers: {
@@ -82,13 +120,13 @@ export default function PagoActivarPage() {
           plan: selectedPlan,
         }),
       });
-  
+
       const data = await res.json().catch(() => null);
-  
+
       if (!res.ok) {
         throw new Error(data?.error || "No se pudo guardar la solicitud.");
       }
-  
+
       setRequestId(data?.activationRequest?.id ?? null);
       setSubmitted(true);
     } catch (err: any) {
@@ -283,21 +321,21 @@ export default function PagoActivarPage() {
               </div>
 
               {error ? (
-  <div
-    style={{
-      marginTop: 16,
-      border: "1px solid #fecaca",
-      background: "#fef2f2",
-      borderRadius: 12,
-      padding: 12,
-      color: "#991b1b",
-      fontSize: 14,
-      fontWeight: 700,
-    }}
-  >
-    {error}
-  </div>
-) : null}
+                <div
+                  style={{
+                    marginTop: 16,
+                    border: "1px solid #fecaca",
+                    background: "#fef2f2",
+                    borderRadius: 12,
+                    padding: 12,
+                    color: "#991b1b",
+                    fontSize: 14,
+                    fontWeight: 700,
+                  }}
+                >
+                  {error}
+                </div>
+              ) : null}
 
               <button
                 type="submit"
@@ -315,7 +353,9 @@ export default function PagoActivarPage() {
                   cursor: canSubmit && !isSubmitting ? "pointer" : "not-allowed",
                 }}
               >
-                {isSubmitting ? "Guardando solicitud..." : "Continuar con activación"}
+                {isSubmitting
+                  ? "Guardando solicitud..."
+                  : "Continuar con activación"}
               </button>
             </form>
           ) : (
@@ -348,10 +388,10 @@ export default function PagoActivarPage() {
                   <strong>Plan:</strong> {plan.label} — {plan.price}
                 </div>
                 {requestId ? (
-  <div>
-    <strong>Folio:</strong> #{requestId}
-  </div>
-) : null}
+                  <div>
+                    <strong>Folio:</strong> #{requestId}
+                  </div>
+                ) : null}
               </div>
 
               <p style={{ margin: "14px 0 0" }}>
@@ -361,26 +401,26 @@ export default function PagoActivarPage() {
             </div>
           )}
 
-<a
-  href="/pago"
-  style={{
-    marginTop: 14,
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    width: "100%",
-    borderRadius: 14,
-    padding: "12px 16px",
-    background: "white",
-    color: "#111827",
-    border: "1px solid #e5e7eb",
-    textDecoration: "none",
-    fontWeight: 800,
-    fontSize: 15,
-  }}
->
-  Volver a planes
-</a>
+          <a
+            href="/pago"
+            style={{
+              marginTop: 14,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              width: "100%",
+              borderRadius: 14,
+              padding: "12px 16px",
+              background: "white",
+              color: "#111827",
+              border: "1px solid #e5e7eb",
+              textDecoration: "none",
+              fontWeight: 800,
+              fontSize: 15,
+            }}
+          >
+            Volver a planes
+          </a>
         </div>
       </section>
     </main>

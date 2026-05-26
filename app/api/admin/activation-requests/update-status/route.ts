@@ -109,12 +109,16 @@ export async function POST(req: Request) {
             licenseStatus: "active",
             fullStartedAt: now,
             fullEndsAt: addDaysExact(now, existing.duration),
+            activePlan: existing.plan,
+            activePlanSource: "activation-request",
             phoneE164: existing.phone,
           },
           update: {
             licenseStatus: "active",
             fullStartedAt: now,
             fullEndsAt: addDaysExact(now, existing.duration),
+            activePlan: existing.plan,
+            activePlanSource: "activation-request",
             phoneE164: existing.phone,
           },
         });
