@@ -124,6 +124,47 @@ export default function ChatPage() {
   }, []);
 
   useEffect(() => {
+    if (!deviceId) return;
+  
+    let cancelled = false;
+  
+    async function loadUserStatus() {
+      try {
+        const res = await fetch("/api/user-status", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            deviceId,
+          }),
+        });
+  
+        const data = await safeReadJson(res);
+  
+        if (!res.ok) {
+          throw new Error(
+            (typeof data?.error === "string" && data.error) ||
+              "No pude cargar el estado del usuario."
+          );
+        }
+  
+        if (cancelled) return;
+  
+        if (data?.ui) {
+          setUi(data.ui as UiPayload);
+        }
+      } catch (e) {
+        console.error(e);
+      }
+    }
+  
+    loadUserStatus();
+  
+    return () => {
+      cancelled = true;
+    };
+  }, [deviceId]);
+
+  useEffect(() => {
     const data = safeParse<OnboardingData>(localStorage.getItem(LS_KEY));
     setOnboarding(data);
   }, []);
