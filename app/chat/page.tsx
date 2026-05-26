@@ -105,6 +105,7 @@ export default function ChatPage() {
   const [paywall, setPaywall] = useState<Paywall | null>(null);
   const [appMode, setAppMode] = useState<"local" | "cloud">("local");
   const [ui, setUi] = useState<UiPayload | null>(null);
+  const [isLoadingUserStatus, setIsLoadingUserStatus] = useState(true);
 
   useEffect(() => {
     (async () => {
@@ -150,6 +151,7 @@ export default function ChatPage() {
         if (cancelled) return;
   
         if (data?.ui) {
+          console.log("AIDA USER STATUS UI:", data.ui);
           setUi(data.ui as UiPayload);
         }
       } catch (e) {
@@ -495,9 +497,12 @@ if (file.type.startsWith("image/")) {
     }
   }
 
-  const planLabel = ui?.modeLabel
-  ? ui.modeLabel.replace(/^Modo:\s*/i, "")
-  : "Estado del plan";
+  const planLabel =
+  ui?.modeLabel && ui.modeLabel.trim().length > 0
+    ? ui.modeLabel.replace(/^Modo:\s*/i, "")
+    : deviceId
+      ? "Cargando plan..."
+      : "Estado del plan";
 
   const disclaimer =
     ui?.disclaimer ??
