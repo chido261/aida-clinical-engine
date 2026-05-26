@@ -106,6 +106,9 @@ export async function POST(req: Request) {
         licenseStatus: "active",
         fullStartedAt: existing.fullStartedAt ?? now,
         fullEndsAt: newFullEndsAt,
+        activePlan:
+  days === 30 ? "manual-30" : days === 90 ? "manual-90" : "manual-365",
+activePlanSource: "manual-extension",
       },
     });
 
