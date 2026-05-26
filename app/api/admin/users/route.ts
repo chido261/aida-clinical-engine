@@ -63,6 +63,8 @@ export async function GET(req: Request) {
         trialEndsAt: user.trialEndsAt,
         fullStartedAt: user.fullStartedAt,
         fullEndsAt: user.fullEndsAt,
+        activePlan: user.activePlan,
+        activePlanSource: user.activePlanSource,
         lastMsgAt: user.lastMsgAt,
         totalMsgCount: user.totalMsgCount,
         dailyMsgDate: user.dailyMsgDate,

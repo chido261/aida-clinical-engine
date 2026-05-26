@@ -11,6 +11,8 @@ type AdminUser = {
   trialEndsAt: string | null;
   fullStartedAt: string | null;
   fullEndsAt: string | null;
+  activePlan: string | null;
+  activePlanSource: string | null;
   lastMsgAt: string | null;
   totalMsgCount: number;
   dailyMsgDate: string | null;
@@ -77,6 +79,14 @@ function getLicenseBadgeStyle(status: string): React.CSSProperties {
     background: "#fef3c7",
     color: "#92400e",
   };
+}
+
+function getPlanLabel(plan: string | null) {
+  if (plan === "mensual") return "Mensual";
+  if (plan === "3-meses") return "3 meses";
+  if (plan === "anual") return "Anual";
+  if (plan === "manual") return "Manual";
+  return "—";
 }
 
 export default function AdminUsuariosPage() {
@@ -406,6 +416,7 @@ export default function AdminUsuariosPage() {
                     <th style={thStyle}>Usuario</th>
                     <th style={thStyle}>Licencia</th>
                     <th style={thStyle}>Celular</th>
+                    <th style={thStyle}>Plan</th>
                     <th style={thStyle}>Trial vence</th>
                     <th style={thStyle}>Plan vence</th>
                     <th style={thStyle}>Mensajes</th>
@@ -431,22 +442,29 @@ export default function AdminUsuariosPage() {
                         </td>
 
                         <td style={tdStyle}>
-                          <span
-                            style={{
-                              display: "inline-flex",
-                              borderRadius: 999,
-                              padding: "5px 9px",
-                              fontSize: 12,
-                              fontWeight: 900,
-                              whiteSpace: "nowrap",
-                              ...getLicenseBadgeStyle(user.licenseStatus),
-                            }}
-                          >
-                            {user.licenseLabel}
-                          </span>
-                        </td>
+  <span
+    style={{
+      display: "inline-flex",
+      borderRadius: 999,
+      padding: "5px 9px",
+      fontSize: 12,
+      fontWeight: 900,
+      whiteSpace: "nowrap",
+      ...getLicenseBadgeStyle(user.licenseStatus),
+    }}
+  >
+    {user.licenseLabel}
+  </span>
+</td>
 
-                        <td style={tdStyle}>{user.phoneE164 || "—"}</td>
+<td style={tdStyle}>
+  <div style={{ fontWeight: 900 }}>{getPlanLabel(user.activePlan)}</div>
+  <div style={{ color: "#6b7280", marginTop: 3, fontSize: 12 }}>
+    {user.activePlanSource || "—"}
+  </div>
+</td>
+
+<td style={tdStyle}>{user.phoneE164 || "—"}</td>
 
                         <td style={tdStyle}>{formatDate(user.trialEndsAt)}</td>
 
