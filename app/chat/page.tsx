@@ -151,7 +151,6 @@ export default function ChatPage() {
         if (cancelled) return;
   
         if (data?.ui) {
-          console.log("AIDA USER STATUS UI:", data.ui);
           setUi(data.ui as UiPayload);
         }
       } catch (e) {
