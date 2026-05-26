@@ -454,8 +454,9 @@ if (file.type.startsWith("image/")) {
     }
   }
 
-  const modeLabel =
-    ui?.modeLabel ?? (appMode === "local" ? "Modo: Desarrollo (Local)" : "Modo: —");
+  const planLabel = ui?.modeLabel
+  ? ui.modeLabel.replace(/^Modo:\s*/i, "")
+  : "Estado del plan";
 
   const disclaimer =
     ui?.disclaimer ??
@@ -489,7 +490,7 @@ if (file.type.startsWith("image/")) {
             fontWeight: 600,
           }}
         >
-          {modeLabel}
+          {planLabel}
         </div>
       </div>
 

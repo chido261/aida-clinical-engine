@@ -106,6 +106,8 @@ export async function POST(req: Request) {
             data: {
               licenseStatus: "expired",
               fullEndsAt: now,
+              activePlan: null,
+              activePlanSource: null,
             },
           })
         : await prisma.userState.update({
@@ -118,6 +120,8 @@ export async function POST(req: Request) {
               trialEndsAt: addDaysExact(now, TRIAL_DAYS),
               fullStartedAt: null,
               fullEndsAt: null,
+              activePlan: null,
+              activePlanSource: null,
               dailyMsgDate: null,
               dailyMsgCount: 0,
             },
@@ -133,6 +137,8 @@ export async function POST(req: Request) {
         trialEndsAt: updatedUser.trialEndsAt,
         fullStartedAt: updatedUser.fullStartedAt,
         fullEndsAt: updatedUser.fullEndsAt,
+        activePlan: updatedUser.activePlan,
+        activePlanSource: updatedUser.activePlanSource,
         phoneE164: updatedUser.phoneE164,
         totalMsgCount: updatedUser.totalMsgCount,
         lastMsgAt: updatedUser.lastMsgAt,
