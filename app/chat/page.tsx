@@ -323,8 +323,11 @@ if (file.type.startsWith("image/")) {
     try {
       if (fileToSend) {
         const formData = new FormData();
-        formData.append("file", fileToSend);
-        formData.append("message", text || "Analiza este archivo.");
+formData.append("file", fileToSend);
+formData.append("message", text || "Analiza este archivo.");
+formData.append("deviceId", deviceId);
+formData.append("onboarding", JSON.stringify(onboarding));
+formData.append("messages", JSON.stringify(nextMessages));
 
         const res = await fetch("/api/analyze-file", {
           method: "POST",
