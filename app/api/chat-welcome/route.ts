@@ -162,12 +162,14 @@ function buildReturnWelcome(params: {
   const reading = `${lastReading.glucose} mg/dL`;
 
   const moment =
-    lastReading.moment === "AYUNO"
-      ? "en ayunas"
-      : lastReading.moment === "POSTCOMIDA"
-        ? "postcomida"
-        : lastReading.moment === "NOCHE"
-          ? "antes de dormir"
+  lastReading.moment === "AYUNO"
+    ? "en ayunas"
+    : lastReading.moment === "POSTCOMIDA"
+      ? "postcomida"
+      : lastReading.moment === "NOCHE"
+        ? "antes de dormir"
+        : lastReading.moment === "RECUPERACION_HIPO"
+          ? "después de recuperarte de una hipoglucemia"
           : "";
 
   const readingWithMoment = moment ? `${reading} ${moment}` : reading;

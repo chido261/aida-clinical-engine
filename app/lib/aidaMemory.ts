@@ -33,10 +33,6 @@ function addDaysExact(date: Date, days: number) {
   return new Date(date.getTime() + days * 24 * 60 * 60 * 1000);
 }
 
-function toMxDateString(dt: DateTime) {
-  return dt.toFormat("yyyy-LL-dd"); // YYYY-MM-DD
-}
-
 /* =========================================
    LECTURAS
 ========================================= */
@@ -71,6 +67,22 @@ export async function getRecentReadings(userId: string, limit = 5) {
     where: { userId },
     orderBy: { createdAt: "desc" },
     take: limit,
+  });
+}
+
+export async function updateLastReadingMoment(params: {
+  userId: string;
+  moment: string;
+}) {
+  const { userId, moment } = params;
+
+  const last = await getLastReading(userId);
+
+  if (!last) return null;
+
+  return prisma.reading.update({
+    where: { id: last.id },
+    data: { moment },
   });
 }
 

@@ -33,6 +33,7 @@ import {
   saveReading,
   getLastReading,
   getRecentReadings,
+  updateLastReadingMoment,
 } from "@/app/lib/aidaMemory";
 
 import { shouldBypassLicense } from "@/app/lib/runtimeConfig";
@@ -397,20 +398,40 @@ export async function POST(req: Request) {
     const clinicalState = (userState.clinicalState ?? null) as ClinicalState;
     const uiBase = buildUI(userState);
 
-    // 2.1) Intercept clínico determinístico (si NO hay glucosa ahora)
-    if (glucoseNow === null && clinicalState === "HYPO_ACTIVE") {
-      return jsonOK({
-        ok: true,
-        bypass: false,
-        clinicalIntercept: true,
-        reply:
-          `Antes de continuar: hace rato tuviste una hipoglucemia.\n` +
-          `1) ¿Ya tomaste 15 g de carbohidrato rápido?\n` +
-          `2) ¿Ya te re-mediste? (dime el número)\n` +
-          `Si tienes confusión, desmayo o te sientes peor: urgencias. 🚑`,
-        ui: uiBase,
-      });
-    }
+    // 2.1) Intercept clínico determinístico para hipoglucemia activa
+    const asksLastReading =
+  /(última medición|ultima medicion|última lectura|ultima lectura|última glucosa|ultima glucosa|último nivel|ultimo nivel|último registro|ultimo registro|cuál fue mi última|cual fue mi ultima|cuál fue mi ultima|cual fue mi última|qué fue lo último|que fue lo ultimo|cuánto fue mi última|cuanto fue mi ultima|cuánto fue mi ultima|cuanto fue mi última|de cuánto fue mi última|de cuanto fue mi ultima|sabes de cuánto fue|sabes de cuanto fue|de cuánto fue mi medición|de cuanto fue mi medicion|de cuánto fue mi glucosa|de cuanto fue mi glucosa|en cuánto estaba|en cuanto estaba|cuánto traía|cuanto traia|cuánto tenía|cuanto tenia)/i.test(
+    lastUserMsg
+  );
+
+if (glucoseNow === null && clinicalState === "HYPO_ACTIVE") {
+const last = await getLastReading(userId);
+
+if (asksLastReading && last) {
+  return jsonOK({
+    ok: true,
+    bypass: false,
+    clinicalIntercept: true,
+    reply:
+      `Tu última lectura registrada fue ${last.glucose} mg/dL.\n\n` +
+      `Como venimos de una hipoglucemia, lo importante ahora es confirmar si ya subió a rango seguro.\n\n` +
+      `Dime cuánto marca tu glucosa ahora.`,
+    ui: uiBase,
+  });
+}
+
+return jsonOK({
+  ok: true,
+  bypass: false,
+  clinicalIntercept: true,
+  reply:
+    `Antes de continuar: hace rato tuviste una hipoglucemia.\n` +
+    `1) ¿Ya tomaste 15 g de carbohidrato rápido?\n` +
+    `2) ¿Ya te re-mediste? (dime el número)\n` +
+    `Si tienes confusión, desmayo o te sientes peor: urgencias. 🚑`,
+  ui: uiBase,
+});
+}
 
     if (glucoseNow === null && clinicalState === "RECOVERING_FROM_HYPO") {
       const cannotMeasureNow = saysCannotMeasureNow(lastUserMsg);
@@ -524,15 +545,79 @@ export async function POST(req: Request) {
     const lastBeforeSave = glucoseNow !== null ? await getLastReading(userId) : null;
     const previousGlucose = lastBeforeSave?.glucose ?? null;
 
+    // 4.6) Si el usuario aclara el momento de la última lectura, actualizarla
+const mentionsHypoRecoveryContext =
+/(protocolo|hipoglucemia|hipo|glucosa baja|azúcar baja|azucar baja|después de la baja|despues de la baja|tras la baja|después del protocolo|despues del protocolo|apliqué protocolo|aplique protocolo)/i.test(
+  lastUserMsg
+);
+
+if (
+glucoseNow === null &&
+(detected !== "DESCONOCIDO" || mentionsHypoRecoveryContext)
+) {
+const lastReadingToUpdate = await getLastReading(userId);
+
+if (lastReadingToUpdate && lastReadingToUpdate.moment === "DESCONOCIDO") {
+  const correctedMoment = mentionsHypoRecoveryContext
+    ? "RECUPERACION_HIPO"
+    : detected;
+
+  await updateLastReadingMoment({
+    userId,
+    moment: correctedMoment,
+  });
+
+  const momentLabel =
+    correctedMoment === "RECUPERACION_HIPO"
+      ? "después de recuperarte de una hipoglucemia"
+      : correctedMoment === "POSTCOMIDA"
+        ? "después de comer"
+        : correctedMoment === "AYUNO"
+          ? "en ayunas"
+          : "antes de dormir";
+
+  return jsonOK({
+    ok: true,
+    reply:
+      `Listo, actualicé tu última lectura de ${lastReadingToUpdate.glucose} mg/dL como ${momentLabel}.\n\n` +
+      `Gracias por aclararlo. Esto ayuda a interpretar mejor tu patrón.`,
+    bypass: false,
+    ui: uiBase,
+  });
+}
+}
+
     // 5) Guardar lectura normal (si hay número)
-    if (glucoseNow !== null) {
-      await saveReading({
-        userId,
-        glucose: glucoseNow,
-        moment,
-        symptoms,
-      });
-    }
+if (glucoseNow !== null) {
+  await saveReading({
+    userId,
+    glucose: glucoseNow,
+    moment,
+    symptoms,
+  });
+
+  // Si venimos de hipoglucemia y la nueva lectura ya está en rango seguro,
+  // cerramos el seguimiento antes de cualquier otra regla.
+  if (
+    glucoseNow >= 90 &&
+    (clinicalState === "HYPO_ACTIVE" ||
+      clinicalState === "RECOVERING_FROM_HYPO" ||
+      userState.pendingFollowUpType === "HYPO_RECHECK_15MIN" ||
+      userState.pendingFollowUpType === "HYPO_STABILITY_RECHECK")
+  ) {
+    await prisma.userState.update({
+      where: { id: userId },
+      data: {
+        clinicalState: null,
+        lastEventType: "HYPOGLYCEMIA_RESOLVED",
+        lastEventAt: new Date(),
+        pendingFollowUpType: null,
+        pendingFollowUpAt: null,
+        lastRecommendation: null,
+      },
+    });
+  }
+}
 
 // 5.5) Reportes manuales
 const wantsTrialFinalReport =
@@ -601,15 +686,24 @@ if (wantsSummary) {
                 lastRecommendation: "Aplicar protocolo 15-15 y volver a medir en 15 minutos.",
               }
               : clinicalDecision.nextClinicalState === "RECOVERING_FROM_HYPO"
-              ? {
-                  clinicalState: "RECOVERING_FROM_HYPO",
-                  lastEventType: "HYPOGLYCEMIA_RECOVERY",
-                  lastEventAt: new Date(),
-                  pendingFollowUpType: "HYPO_STABILITY_RECHECK",
-                  pendingFollowUpAt: new Date(),
-                  lastRecommendation:
-                    "Comer algo con proteína y grasa para estabilizar y volver a medir en 30–60 minutos.",
-                }
+? glucoseNow >= 90
+  ? {
+      clinicalState: null,
+      lastEventType: "HYPOGLYCEMIA_RESOLVED",
+      lastEventAt: new Date(),
+      pendingFollowUpType: null,
+      pendingFollowUpAt: null,
+      lastRecommendation: null,
+    }
+  : {
+      clinicalState: "RECOVERING_FROM_HYPO",
+      lastEventType: "HYPOGLYCEMIA_RECOVERY",
+      lastEventAt: new Date(),
+      pendingFollowUpType: "HYPO_STABILITY_RECHECK",
+      pendingFollowUpAt: new Date(),
+      lastRecommendation:
+        "Comer algo con proteína y grasa para estabilizar y volver a medir en 30–60 minutos.",
+    }
                 : moment === "POSTCOMIDA" && glucoseNow > 140 && glucoseNow <= 180
                 ? {
                     clinicalState: null,
