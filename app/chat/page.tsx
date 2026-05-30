@@ -86,6 +86,54 @@ function getFileKind(file: File | null) {
   return "Archivo";
 }
 
+async function normalizeImageFile(file: File): Promise<File> {
+  if (!file.type.startsWith("image/")) return file;
+
+  const imageUrl = URL.createObjectURL(file);
+
+  try {
+    const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const image = new Image();
+
+      image.onload = () => resolve(image);
+      image.onerror = () => reject(new Error("No se pudo cargar la imagen."));
+      image.src = imageUrl;
+    });
+
+    const maxSize = 1600;
+    const scale = Math.min(1, maxSize / Math.max(img.width, img.height));
+
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, Math.round(img.width * scale));
+    canvas.height = Math.max(1, Math.round(img.height * scale));
+
+    const ctx = canvas.getContext("2d");
+
+    if (!ctx) {
+      return file;
+    }
+
+    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+    const blob = await new Promise<Blob | null>((resolve) => {
+      canvas.toBlob(resolve, "image/jpeg", 0.86);
+    });
+
+    if (!blob) {
+      return file;
+    }
+
+    const baseName = file.name.replace(/\.[^/.]+$/, "") || "imagen";
+
+    return new File([blob], `${baseName}.jpg`, {
+      type: "image/jpeg",
+      lastModified: Date.now(),
+    });
+  } finally {
+    URL.revokeObjectURL(imageUrl);
+  }
+}
+
 export default function ChatPage() {
   const [onboarding, setOnboarding] = useState<OnboardingData | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -301,7 +349,7 @@ if (file.type.startsWith("image/")) {
 
     if ((!text && !selectedFile) || isSending || !deviceId || !onboarding || chatLocked) return;
 
-    const fileToSend = selectedFile;
+    const fileToSend = selectedFile ? await normalizeImageFile(selectedFile) : null;
 
     const userContent = fileToSend
       ? `${text || "Analiza este archivo."}\n\n[${getFileKind(fileToSend)}: ${fileToSend.name}]`
