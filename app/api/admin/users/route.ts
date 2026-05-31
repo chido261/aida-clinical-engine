@@ -52,32 +52,92 @@ export async function GET(req: Request) {
       take: 200,
     });
 
+    const deviceIds = users.map((user) => user.id);
+
+    const activeSessions = await prisma.deviceSession.findMany({
+      where: {
+        deviceId: {
+          in: deviceIds,
+        },
+        active: true,
+      },
+      orderBy: {
+        createdAt: "desc",
+      },
+    });
+
+    const activationCodeIds = activeSessions.map(
+      (session) => session.activationCodeId
+    );
+
+    const activationCodes = activationCodeIds.length
+      ? await prisma.activationCode.findMany({
+          where: {
+            id: {
+              in: activationCodeIds,
+            },
+          },
+        })
+      : [];
+
+    const sessionByDeviceId = new Map(
+      activeSessions.map((session) => [session.deviceId, session])
+    );
+
+    const codeById = new Map(
+      activationCodes.map((activationCode) => [
+        activationCode.id,
+        activationCode,
+      ])
+    );
+
     return jsonOK({
       ok: true,
-      users: users.map((user) => ({
-        id: user.id,
-        licenseStatus: user.licenseStatus,
-        licenseLabel: getLicenseLabel(user.licenseStatus),
-        phoneE164: user.phoneE164,
-        trialStartedAt: user.trialStartedAt,
-        trialEndsAt: user.trialEndsAt,
-        fullStartedAt: user.fullStartedAt,
-        fullEndsAt: user.fullEndsAt,
-        activePlan: user.activePlan,
-        activePlanSource: user.activePlanSource,
-        lastMsgAt: user.lastMsgAt,
-        totalMsgCount: user.totalMsgCount,
-        dailyMsgDate: user.dailyMsgDate,
-        dailyMsgCount: user.dailyMsgCount,
-        baselineA1c: user.baselineA1c,
-        baselineAvgGlucose: user.baselineAvgGlucose,
-        baselineSetAt: user.baselineSetAt,
-        clinicalState: user.clinicalState,
-        pendingFollowUpType: user.pendingFollowUpType,
-        pendingFollowUpAt: user.pendingFollowUpAt,
-        createdAt: user.createdAt,
-        updatedAt: user.updatedAt,
-      })),
+      users: users.map((user) => {
+        const activeSession = sessionByDeviceId.get(user.id) ?? null;
+        const activationCode = activeSession
+          ? codeById.get(activeSession.activationCodeId) ?? null
+          : null;
+
+        return {
+          id: user.id,
+          licenseStatus: user.licenseStatus,
+          licenseLabel: getLicenseLabel(user.licenseStatus),
+          phoneE164: user.phoneE164,
+          trialStartedAt: user.trialStartedAt,
+          trialEndsAt: user.trialEndsAt,
+          fullStartedAt: user.fullStartedAt,
+          fullEndsAt: user.fullEndsAt,
+          activePlan: user.activePlan,
+          activePlanSource: user.activePlanSource,
+          lastMsgAt: user.lastMsgAt,
+          totalMsgCount: user.totalMsgCount,
+          dailyMsgDate: user.dailyMsgDate,
+          dailyMsgCount: user.dailyMsgCount,
+          baselineA1c: user.baselineA1c,
+          baselineAvgGlucose: user.baselineAvgGlucose,
+          baselineSetAt: user.baselineSetAt,
+          clinicalState: user.clinicalState,
+          pendingFollowUpType: user.pendingFollowUpType,
+          pendingFollowUpAt: user.pendingFollowUpAt,
+          createdAt: user.createdAt,
+          updatedAt: user.updatedAt,
+
+          activationCodeId: activationCode?.id ?? null,
+          activationCode: activationCode?.code ?? null,
+          activationStatus: activationCode?.status ?? null,
+          activationPhoneE164: activationCode?.phoneE164 ?? null,
+          activationActivatedAt: activationCode?.activatedAt ?? null,
+          activationCreatedAt: activationCode?.createdAt ?? null,
+          activationFullStartedAt: activationCode?.fullStartedAt ?? null,
+          activationFullEndsAt: activationCode?.fullEndsAt ?? null,
+          activationCurrentDeviceId: activationCode?.currentDeviceId ?? null,
+
+          deviceSessionActive: activeSession?.active ?? false,
+          deviceSessionCreatedAt: activeSession?.createdAt ?? null,
+          deviceSessionDisabledAt: activeSession?.disabledAt ?? null,
+        };
+      }),
     });
   } catch (err: any) {
     console.error("API /api/admin/users ERROR:", err);
