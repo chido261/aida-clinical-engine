@@ -45,7 +45,9 @@ export async function GET(req: Request) {
       take: 100,
     });
 
-    const phonesE164 = requests.map((request) => normalizePhoneE164(request.phone));
+    const phonesE164 = Array.from(
+      new Set(requests.map((request) => normalizePhoneE164(request.phone)))
+    ).filter(Boolean);
 
     const activationCodes = await prisma.activationCode.findMany({
       where: {
@@ -86,6 +88,16 @@ export async function GET(req: Request) {
       activeSessions.map((session) => [session.activationCodeId, session])
     );
 
+    const requestCountByPhone = new Map<string, number>();
+
+    for (const request of requests) {
+      const phoneE164 = normalizePhoneE164(request.phone);
+      requestCountByPhone.set(
+        phoneE164,
+        (requestCountByPhone.get(phoneE164) ?? 0) + 1
+      );
+    }
+
     return jsonOK({
       ok: true,
       activationRequests: requests.map((request) => {
@@ -94,6 +106,29 @@ export async function GET(req: Request) {
         const activeSession = activationCode
           ? sessionByCodeId.get(activationCode.id) ?? null
           : null;
+
+        const sameDevice =
+          Boolean(activationCode?.currentDeviceId) &&
+          activationCode?.currentDeviceId === request.deviceId;
+
+        const hasRepeatedPhone = (requestCountByPhone.get(phoneE164) ?? 0) > 1;
+
+        const activationRelation = activationCode
+          ? sameDevice
+            ? "same_request"
+            : "phone_current_code"
+          : "none";
+
+        const isRenewalLike =
+          Boolean(activationCode) &&
+          hasRepeatedPhone &&
+          request.status === "activated";
+
+        const activationNotice = activationCode
+          ? sameDevice
+            ? "Esta solicitud coincide con el dispositivo activo de la clave."
+            : "Esta fila es una solicitud histórica. Se muestra la clave activa actual de este teléfono."
+          : "Este teléfono todavía no tiene una clave activa registrada.";
 
         return {
           id: request.id,
@@ -120,6 +155,11 @@ export async function GET(req: Request) {
           deviceSessionActive: activeSession?.active ?? false,
           deviceSessionCreatedAt: activeSession?.createdAt ?? null,
           deviceSessionDisabledAt: activeSession?.disabledAt ?? null,
+
+          activationRelation,
+          isRenewalLike,
+          activationNotice,
+          hasRepeatedPhone,
         };
       }),
     });

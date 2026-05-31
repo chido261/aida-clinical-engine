@@ -25,6 +25,10 @@ type ActivationRequest = {
   deviceSessionActive: boolean;
   deviceSessionCreatedAt: string | null;
   deviceSessionDisabledAt: string | null;
+  activationRelation: "same_request" | "phone_current_code" | "none";
+  isRenewalLike: boolean;
+  activationNotice: string;
+  hasRepeatedPhone: boolean;
 };
 
 const ADMIN_KEY_STORAGE = "aida_admin_key_v1";
@@ -63,6 +67,18 @@ function getPlanLabel(plan: string) {
   if (plan === "3-meses") return "3 meses";
   if (plan === "anual") return "Anual";
   return plan;
+}
+
+function getRelationLabel(request: ActivationRequest) {
+  if (request.activationRelation === "same_request") {
+    return "Coincide con el dispositivo activo.";
+  }
+
+  if (request.activationRelation === "phone_current_code") {
+    return "Solicitud histórica: muestra la clave actual del teléfono.";
+  }
+
+  return "Sin clave activa vinculada.";
 }
 
 export default function AdminActivacionesPage() {
@@ -306,7 +322,7 @@ export default function AdminActivacionesPage() {
   return (
     <main style={pageStyle}>
       <section style={{ maxWidth: 1100, margin: "0 auto" }}>
-      <div style={{ marginBottom: 18 }}>
+        <div style={{ marginBottom: 18 }}>
           <div
             style={{
               display: "flex",
@@ -457,26 +473,26 @@ export default function AdminActivacionesPage() {
           ) : (
             <div style={{ overflowX: "auto" }}>
               <table
-  style={{
-    width: "100%",
-    minWidth: 1500,
-    borderCollapse: "collapse",
-    fontSize: 14,
-  }}
->
+                style={{
+                  width: "100%",
+                  minWidth: 1600,
+                  borderCollapse: "collapse",
+                  fontSize: 14,
+                }}
+              >
                 <thead>
                   <tr style={{ background: "#f9fafb" }}>
-                  <th style={thStyle}>Folio</th>
-<th style={thStyle}>Nombre</th>
-<th style={thStyle}>Celular</th>
-<th style={thStyle}>Plan</th>
-<th style={thStyle}>Clave</th>
-<th style={thStyle}>Dispositivo</th>
-<th style={thStyle}>Activación</th>
-<th style={thStyle}>Vigencia</th>
-<th style={thStyle}>Estado</th>
-<th style={thStyle}>Fecha</th>
-<th style={thStyle}>Acciones</th>
+                    <th style={thStyle}>Folio</th>
+                    <th style={thStyle}>Nombre</th>
+                    <th style={thStyle}>Celular</th>
+                    <th style={thStyle}>Plan</th>
+                    <th style={thStyle}>Clave</th>
+                    <th style={thStyle}>Dispositivo</th>
+                    <th style={thStyle}>Activación</th>
+                    <th style={thStyle}>Vigencia</th>
+                    <th style={thStyle}>Estado</th>
+                    <th style={thStyle}>Fecha</th>
+                    <th style={thStyle}>Acciones</th>
                   </tr>
                 </thead>
 
@@ -487,65 +503,153 @@ export default function AdminActivacionesPage() {
                       style={{ borderTop: "1px solid #e5e7eb" }}
                     >
                       <td style={tdStyle}>#{request.id}</td>
+
                       <td style={tdStyle}>{request.name}</td>
+
                       <td style={tdStyle}>
-  <div>{request.phone}</div>
-  <div style={{ color: "#6b7280", marginTop: 3, fontSize: 12 }}>
-    {request.phoneE164}
-  </div>
-</td>
+                        <div>{request.phone}</div>
 
-<td style={tdStyle}>
-  <div style={{ fontWeight: 900 }}>{getPlanLabel(request.plan)}</div>
-  <div style={{ color: "#6b7280", marginTop: 3, fontSize: 12 }}>
-    {formatMoney(request.price)} · {request.duration} días
-  </div>
-</td>
+                        <div
+                          style={{
+                            color: "#6b7280",
+                            marginTop: 3,
+                            fontSize: 12,
+                          }}
+                        >
+                          {request.phoneE164}
+                        </div>
 
-<td style={tdStyle}>
-  <div style={{ fontWeight: 900 }}>
-    {request.activationCode || "—"}
-  </div>
-  <div style={{ color: "#6b7280", marginTop: 3, fontSize: 12 }}>
-    {request.activationStatus ? `Estado: ${request.activationStatus}` : "Sin clave"}
-  </div>
-</td>
+                        {request.hasRepeatedPhone ? (
+                          <div
+                            style={{
+                              display: "inline-flex",
+                              marginTop: 6,
+                              borderRadius: 999,
+                              padding: "4px 7px",
+                              background: "#fef3c7",
+                              color: "#92400e",
+                              fontSize: 11,
+                              fontWeight: 900,
+                            }}
+                          >
+                            Teléfono repetido
+                          </div>
+                        ) : null}
+                      </td>
 
-<td style={tdStyle}>
-  <div style={{ fontWeight: 900 }}>
-    {request.deviceSessionActive ? "Activo" : "—"}
-  </div>
-  <div
-    style={{
-      color: "#6b7280",
-      marginTop: 3,
-      fontSize: 12,
-      maxWidth: 180,
-      overflow: "hidden",
-      textOverflow: "ellipsis",
-    }}
-  >
-    {request.activationCurrentDeviceId || "Sin dispositivo"}
-  </div>
-</td>
+                      <td style={tdStyle}>
+                        <div style={{ fontWeight: 900 }}>
+                          {getPlanLabel(request.plan)}
+                        </div>
 
-<td style={tdStyle}>
-  <div>
-    <strong>Activada:</strong> {formatDate(request.activationActivatedAt)}
-  </div>
-  <div style={{ color: "#6b7280", marginTop: 3 }}>
-    Vinculada: {formatDate(request.deviceSessionCreatedAt)}
-  </div>
-</td>
+                        <div
+                          style={{
+                            color: "#6b7280",
+                            marginTop: 3,
+                            fontSize: 12,
+                          }}
+                        >
+                          {formatMoney(request.price)} · {request.duration} días
+                        </div>
 
-<td style={tdStyle}>
-  <div>
-    <strong>Inicio:</strong> {formatDate(request.activationFullStartedAt)}
-  </div>
-  <div style={{ color: "#6b7280", marginTop: 3 }}>
-    Vence: {formatDate(request.activationFullEndsAt)}
-  </div>
-</td>
+                        {request.isRenewalLike ? (
+                          <div
+                            style={{
+                              display: "inline-flex",
+                              marginTop: 6,
+                              borderRadius: 999,
+                              padding: "4px 7px",
+                              background: "#ecfdf5",
+                              color: "#065f46",
+                              fontSize: 11,
+                              fontWeight: 900,
+                            }}
+                          >
+                            Renovación / historial
+                          </div>
+                        ) : null}
+                      </td>
+
+                      <td style={tdStyle}>
+                        <div style={{ fontWeight: 900 }}>
+                          {request.activationCode || "—"}
+                        </div>
+
+                        <div
+                          style={{
+                            color: "#6b7280",
+                            marginTop: 3,
+                            fontSize: 12,
+                          }}
+                        >
+                          {request.activationStatus
+                            ? `Estado: ${request.activationStatus}`
+                            : "Sin clave"}
+                        </div>
+
+                        <div
+                          style={{
+                            marginTop: 6,
+                            color:
+                              request.activationRelation === "same_request"
+                                ? "#166534"
+                                : request.activationRelation ===
+                                    "phone_current_code"
+                                  ? "#92400e"
+                                  : "#6b7280",
+                            fontSize: 12,
+                            fontWeight: 800,
+                            maxWidth: 230,
+                            lineHeight: 1.35,
+                            whiteSpace: "normal",
+                          }}
+                        >
+                          {getRelationLabel(request)}
+                        </div>
+                      </td>
+
+                      <td style={tdStyle}>
+                        <div style={{ fontWeight: 900 }}>
+                          {request.deviceSessionActive ? "Activo" : "—"}
+                        </div>
+
+                        <div
+                          style={{
+                            color: "#6b7280",
+                            marginTop: 3,
+                            fontSize: 12,
+                            maxWidth: 180,
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                          }}
+                        >
+                          {request.activationCurrentDeviceId ||
+                            "Sin dispositivo"}
+                        </div>
+                      </td>
+
+                      <td style={tdStyle}>
+                        <div>
+                          <strong>Activada:</strong>{" "}
+                          {formatDate(request.activationActivatedAt)}
+                        </div>
+
+                        <div style={{ color: "#6b7280", marginTop: 3 }}>
+                          Vinculada: {formatDate(request.deviceSessionCreatedAt)}
+                        </div>
+                      </td>
+
+                      <td style={tdStyle}>
+                        <div>
+                          <strong>Inicio:</strong>{" "}
+                          {formatDate(request.activationFullStartedAt)}
+                        </div>
+
+                        <div style={{ color: "#6b7280", marginTop: 3 }}>
+                          Vence: {formatDate(request.activationFullEndsAt)}
+                        </div>
+                      </td>
+
                       <td style={tdStyle}>
                         <span
                           style={{
@@ -575,7 +679,9 @@ export default function AdminActivacionesPage() {
                           {getStatusLabel(request.status)}
                         </span>
                       </td>
+
                       <td style={tdStyle}>{formatDate(request.createdAt)}</td>
+
                       <td style={tdStyle}>
                         <div
                           style={{ display: "flex", gap: 8, flexWrap: "wrap" }}
