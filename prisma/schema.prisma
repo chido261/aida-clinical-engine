@@ -27,15 +27,15 @@ model UserState {
   // trial
   trialStartedAt DateTime?
   trialEndsAt    DateTime?
-  licenseStatus  String   @default("trial") // trial | active | expired
+  licenseStatus  String   @default("trial") // trial | active | maintenance | expired
 
   // full / licencia activa
   fullStartedAt DateTime?
   fullEndsAt    DateTime?
   activePlan       String? // mensual | 3-meses | anual | manual
-  activePlanSource String? // activation-request | manual-extension | promo | admin
+  activePlanSource String? // payment | activation-code | activation-request | manual-extension | promo | admin
 
-  // OTP / licencia (siguiente sprint)
+  // OTP / licencia
   phoneE164       String?  // +52...
   phoneVerifiedAt DateTime?
 
@@ -52,6 +52,9 @@ model UserState {
   // resumen diario (1 vez por día)
   dailySummaryDate  String?
   dailySummaryCount Int?
+
+  @@index([phoneE164])
+  @@index([licenseStatus])
 }
 
 model Reading {
@@ -61,6 +64,9 @@ model Reading {
   moment    String
   symptoms  String?
   createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([createdAt])
 }
 
 model UsageDaily {
@@ -68,10 +74,11 @@ model UsageDaily {
   userId        String
   dateLocal     String   // YYYY-MM-DD (America/Mexico_City)
   count         Int      @default(0)
-  licenseStatus String   // trial | active
+  licenseStatus String   // trial | active | maintenance | expired
   updatedAt     DateTime @updatedAt
 
   @@unique([userId, dateLocal])
+  @@index([userId])
 }
 
 model ActivationRequest {
@@ -90,4 +97,70 @@ model ActivationRequest {
   @@index([deviceId])
   @@index([phone])
   @@index([status])
+}
+
+model Payment {
+  id                Int       @id @default(autoincrement())
+  provider          String    // mercadopago
+  providerPaymentId String?
+  providerRef       String?   // preferenceId, externalReference u otro identificador
+  status            String    @default("created") // created | pending | approved | rejected | cancelled | refunded
+  amount            Int
+  currency          String    @default("MXN")
+  plan              String    // mensual | 3-meses | anual
+  durationDays      Int
+  phoneE164         String
+  deviceId          String?
+  activationCodeId  Int?
+
+  rawPayload        String?
+
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  approvedAt        DateTime?
+
+  @@index([provider])
+  @@index([providerPaymentId])
+  @@index([providerRef])
+  @@index([status])
+  @@index([phoneE164])
+  @@index([activationCodeId])
+}
+
+model ActivationCode {
+  id              Int       @id @default(autoincrement())
+  code            String    @unique
+  phoneE164       String
+  plan            String    // mensual | 3-meses | anual
+  status          String    @default("active") // active | expired | cancelled
+  currentDeviceId String?
+  createdBy       String    @default("payment") // payment | admin | manual
+  lastPaymentId   Int?
+
+  fullStartedAt   DateTime?
+  fullEndsAt      DateTime?
+
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  activatedAt     DateTime?
+
+  @@index([phoneE164])
+  @@index([status])
+  @@index([currentDeviceId])
+  @@index([lastPaymentId])
+}
+
+model DeviceSession {
+  id               Int       @id @default(autoincrement())
+  phoneE164        String
+  deviceId         String
+  activationCodeId Int
+  active           Boolean   @default(true)
+  createdAt        DateTime  @default(now())
+  disabledAt       DateTime?
+
+  @@index([phoneE164])
+  @@index([deviceId])
+  @@index([activationCodeId])
+  @@index([active])
 }
