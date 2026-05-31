@@ -19,6 +19,18 @@ type AdminUser = {
   dailyMsgCount: number | null;
   createdAt: string;
   updatedAt: string;
+  activationCodeId: number | null;
+  activationCode: string | null;
+  activationStatus: string | null;
+  activationPhoneE164: string | null;
+  activationActivatedAt: string | null;
+  activationCreatedAt: string | null;
+  activationFullStartedAt: string | null;
+  activationFullEndsAt: string | null;
+  activationCurrentDeviceId: string | null;
+  deviceSessionActive: boolean;
+  deviceSessionCreatedAt: string | null;
+  deviceSessionDisabledAt: string | null;
 };
 
 type LicenseAction = "cancel-license" | "reset-trial";
@@ -93,6 +105,8 @@ function getPlanLabel(plan: string | null) {
 }
 
 function getPlanSourceLabel(source: string | null) {
+  if (source === "activation-code") return "Clave de activación";
+  if (source === "payment") return "Pago automático";
   if (source === "activation-request") return "Solicitud";
   if (source === "manual-extension") return "Extensión manual";
   if (source === "promo") return "Promoción";
@@ -424,15 +438,18 @@ export default function AdminUsuariosPage() {
               <table style={tableStyle}>
                 <thead>
                   <tr style={{ background: "#f9fafb" }}>
-                    <th style={thStyle}>Usuario</th>
-                    <th style={thStyle}>Licencia</th>
-                    <th style={thStyle}>Plan</th>
-                    <th style={thStyle}>Celular</th>
-                    <th style={thStyle}>Trial vence</th>
-                    <th style={thStyle}>Plan vence</th>
-                    <th style={thStyle}>Mensajes</th>
-                    <th style={thStyle}>Último uso</th>
-                    <th style={thStyle}>Acciones</th>
+                  <th style={thStyle}>Usuario</th>
+<th style={thStyle}>Licencia</th>
+<th style={thStyle}>Plan</th>
+<th style={thStyle}>Celular</th>
+<th style={thStyle}>Clave</th>
+<th style={thStyle}>Dispositivo activo</th>
+<th style={thStyle}>Activación</th>
+<th style={thStyle}>Trial vence</th>
+<th style={thStyle}>Plan vence</th>
+<th style={thStyle}>Mensajes</th>
+<th style={thStyle}>Último uso</th>
+<th style={thStyle}>Acciones</th>
                   </tr>
                 </thead>
 
@@ -478,6 +495,31 @@ export default function AdminUsuariosPage() {
                         </td>
 
                         <td style={tdStyle}>{user.phoneE164 || "—"}</td>
+
+                        <td style={tdStyle}>
+  <div style={{ fontWeight: 900 }}>{user.activationCode || "—"}</div>
+  <div style={{ color: "#6b7280", marginTop: 3, fontSize: 12 }}>
+    {user.activationStatus ? `Estado: ${user.activationStatus}` : "Sin clave"}
+  </div>
+</td>
+
+<td style={tdStyle}>
+  <div style={{ fontWeight: 900 }}>
+    {user.deviceSessionActive ? "Activo" : "—"}
+  </div>
+  <div style={deviceIdStyle}>
+    {user.activationCurrentDeviceId || "Sin dispositivo vinculado"}
+  </div>
+</td>
+
+<td style={tdStyle}>
+  <div>
+    <strong>Activada:</strong> {formatDate(user.activationActivatedAt)}
+  </div>
+  <div style={{ color: "#6b7280", marginTop: 3 }}>
+    Vinculada: {formatDate(user.deviceSessionCreatedAt)}
+  </div>
+</td>
 
                         <td style={tdStyle}>{formatDate(user.trialEndsAt)}</td>
 
@@ -707,7 +749,7 @@ const tableHeaderStyle: React.CSSProperties = {
 
 const tableStyle: React.CSSProperties = {
   width: "100%",
-  minWidth: 1240,
+  minWidth: 1700,
   borderCollapse: "collapse",
   fontSize: 14,
 };
