@@ -4,43 +4,44 @@ import { Suspense, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { getDeviceId } from "@/app/lib/deviceId";
 
-type PlanKey = "mensual" | "3-meses" | "anual";
+type VerifyResponse =
+  | {
+      ok: true;
+      status: "activated";
+      message: string;
+      code: string;
+      plan: string;
+      fullEndsAt: string | null;
+    }
+  | {
+      ok: false;
+      status:
+        | "invalid_code"
+        | "phone_mismatch"
+        | "inactive_code"
+        | "expired_code"
+        | "device_transfer_required";
+      message: string;
+      maskedPhone?: string;
+    };
 
-const PLAN_INFO: Record<
-  PlanKey,
-  {
-    label: string;
-    price: string;
-    duration: string;
-    badge: string;
+function normalizePlan(value: string | null) {
+  if (value === "mensual") return "mensual";
+  if (value === "3-meses") return "3 meses";
+  if (value === "anual") return "anual";
+  return "AIDA";
+}
+
+function formatDate(value: string | null) {
+  if (!value) return "No disponible";
+
+  try {
+    return new Intl.DateTimeFormat("es-MX", {
+      dateStyle: "long",
+    }).format(new Date(value));
+  } catch {
+    return "No disponible";
   }
-> = {
-  mensual: {
-    label: "Plan mensual",
-    price: "$500 MXN",
-    duration: "30 días",
-    badge: "Plan flexible",
-  },
-  "3-meses": {
-    label: "Plan 3 meses",
-    price: "$1,500 MXN",
-    duration: "90 días",
-    badge: "Plan recomendado",
-  },
-  anual: {
-    label: "Plan anual",
-    price: "$3,000 MXN",
-    duration: "12 meses",
-    badge: "Mayor ahorro",
-  },
-};
-
-function normalizePlan(value: string | null): PlanKey {
-  if (value === "mensual" || value === "3-meses" || value === "anual") {
-    return value;
-  }
-
-  return "3-meses";
 }
 
 export default function PagoActivarPage() {
@@ -83,57 +84,81 @@ function PagoActivarFallback() {
 
 function PagoActivarContent() {
   const searchParams = useSearchParams();
-  const selectedPlan = normalizePlan(searchParams.get("plan"));
-  const plan = PLAN_INFO[selectedPlan];
+  const selectedPlanLabel = normalizePlan(searchParams.get("plan"));
 
-  const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
-  const [submitted, setSubmitted] = useState(false);
+  const [code, setCode] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [forceTransfer, setForceTransfer] = useState(false);
   const [error, setError] = useState("");
-  const [requestId, setRequestId] = useState<number | null>(null);
+  const [warning, setWarning] = useState("");
+  const [success, setSuccess] = useState<Extract<VerifyResponse, { ok: true }> | null>(
+    null
+  );
 
   const canSubmit = useMemo(() => {
-    return name.trim().length >= 3 && phone.trim().length >= 10;
-  }, [name, phone]);
+    return phone.trim().length >= 10 && code.trim().length >= 8;
+  }, [phone, code]);
 
-  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-
+  async function submitActivation(nextForceTransfer = false) {
     if (!canSubmit || isSubmitting) return;
 
     setIsSubmitting(true);
     setError("");
+    setWarning("");
+    setSuccess(null);
 
     try {
       const deviceId = getDeviceId();
 
-      const res = await fetch("/api/activation-request", {
+      const res = await fetch("/api/activation/verify-code", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          deviceId,
-          name,
           phone,
-          plan: selectedPlan,
+          code,
+          deviceId,
+          forceTransfer: nextForceTransfer,
         }),
       });
 
-      const data = await res.json().catch(() => null);
+      const data = (await res.json().catch(() => null)) as VerifyResponse | null;
 
       if (!res.ok) {
-        throw new Error(data?.error || "No se pudo guardar la solicitud.");
+        throw new Error(
+          (data as any)?.error || "No se pudo validar la clave de activación."
+        );
       }
 
-      setRequestId(data?.activationRequest?.id ?? null);
-      setSubmitted(true);
+      if (!data) {
+        throw new Error("Respuesta inválida del servidor.");
+      }
+
+      if (data.ok) {
+        setSuccess(data);
+        setForceTransfer(false);
+        return;
+      }
+
+      if (data.status === "device_transfer_required") {
+        setWarning(data.message);
+        setForceTransfer(true);
+        return;
+      }
+
+      setError(data.message || "No se pudo activar la clave.");
     } catch (err: any) {
-      setError(err?.message || "Ocurrió un error al guardar la solicitud.");
+      setError(err?.message || "Ocurrió un error al activar la clave.");
     } finally {
       setIsSubmitting(false);
     }
+  }
+
+  function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    submitActivation(false);
   }
 
   return (
@@ -148,7 +173,7 @@ function PagoActivarContent() {
     >
       <section style={{ maxWidth: 760, margin: "0 auto" }}>
         <a
-          href={`/pago/${selectedPlan === "3-meses" ? "3-meses" : selectedPlan}`}
+          href="/pago"
           style={{
             display: "inline-flex",
             alignItems: "center",
@@ -159,7 +184,7 @@ function PagoActivarContent() {
             marginBottom: 18,
           }}
         >
-          ← Volver al plan
+          ← Volver a planes
         </a>
 
         <div
@@ -183,7 +208,7 @@ function PagoActivarContent() {
               marginBottom: 14,
             }}
           >
-            Solicitud de activación
+            Activación de acceso
           </div>
 
           <h1
@@ -194,7 +219,7 @@ function PagoActivarContent() {
               color: "#111827",
             }}
           >
-            Activa tu acceso a AIDA
+            Activa tu clave de AIDA
           </h1>
 
           <p
@@ -205,9 +230,9 @@ function PagoActivarContent() {
               margin: "0 0 22px",
             }}
           >
-            Registra tus datos para preparar tu activación. Después conectaremos
-            este flujo con pago automático y código único ligado a tu número de
-            celular.
+            Ingresa el celular con el que realizaste tu pago y la clave de
+            activación que recibiste. Esta clave quedará vinculada a este
+            dispositivo.
           </p>
 
           <div
@@ -219,74 +244,17 @@ function PagoActivarContent() {
               marginBottom: 22,
             }}
           >
-            <div
-              style={{
-                display: "inline-flex",
-                border: "1px solid #e5e7eb",
-                borderRadius: 999,
-                padding: "5px 9px",
-                fontSize: 12,
-                fontWeight: 800,
-                background: "white",
-                marginBottom: 10,
-              }}
-            >
-              {plan.badge}
+            <div style={{ fontSize: 13, fontWeight: 800, color: "#6b7280" }}>
+              Plan seleccionado
             </div>
-
             <div style={{ fontSize: 20, fontWeight: 900, color: "#111827" }}>
-              {plan.label}
-            </div>
-
-            <div
-              style={{
-                marginTop: 8,
-                display: "grid",
-                gap: 4,
-                color: "#4b5563",
-                fontSize: 15,
-              }}
-            >
-              <div>
-                <strong style={{ color: "#111827" }}>Precio:</strong>{" "}
-                {plan.price}
-              </div>
-              <div>
-                <strong style={{ color: "#111827" }}>Duración:</strong>{" "}
-                {plan.duration}
-              </div>
+              {selectedPlanLabel}
             </div>
           </div>
 
-          {!submitted ? (
+          {!success ? (
             <form onSubmit={handleSubmit}>
               <div style={{ display: "grid", gap: 14 }}>
-                <label style={{ display: "grid", gap: 6 }}>
-                  <span
-                    style={{
-                      fontSize: 14,
-                      fontWeight: 800,
-                      color: "#111827",
-                    }}
-                  >
-                    Nombre completo
-                  </span>
-
-                  <input
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    placeholder="Ej. David Rodríguez"
-                    style={{
-                      width: "100%",
-                      border: "1px solid #d1d5db",
-                      borderRadius: 12,
-                      padding: "12px 14px",
-                      fontSize: 16,
-                      outline: "none",
-                    }}
-                  />
-                </label>
-
                 <label style={{ display: "grid", gap: 6 }}>
                   <span
                     style={{
@@ -300,7 +268,11 @@ function PagoActivarContent() {
 
                   <input
                     value={phone}
-                    onChange={(e) => setPhone(e.target.value)}
+                    onChange={(e) => {
+                      setPhone(e.target.value);
+                      setForceTransfer(false);
+                      setWarning("");
+                    }}
                     placeholder="Ej. 4531234567"
                     inputMode="tel"
                     style={{
@@ -312,13 +284,58 @@ function PagoActivarContent() {
                       outline: "none",
                     }}
                   />
+                </label>
 
-                  <span style={{ fontSize: 12, color: "#6b7280" }}>
-                    Más adelante este número servirá para validar tu acceso y
-                    recibir tu código de activación.
+                <label style={{ display: "grid", gap: 6 }}>
+                  <span
+                    style={{
+                      fontSize: 14,
+                      fontWeight: 800,
+                      color: "#111827",
+                    }}
+                  >
+                    Clave de activación
                   </span>
+
+                  <input
+                    value={code}
+                    onChange={(e) => {
+                      setCode(e.target.value.toUpperCase());
+                      setForceTransfer(false);
+                      setWarning("");
+                    }}
+                    placeholder="Ej. AIDA-7K82-MP4Q"
+                    autoCapitalize="characters"
+                    style={{
+                      width: "100%",
+                      border: "1px solid #d1d5db",
+                      borderRadius: 12,
+                      padding: "12px 14px",
+                      fontSize: 16,
+                      outline: "none",
+                      textTransform: "uppercase",
+                    }}
+                  />
                 </label>
               </div>
+
+              {warning ? (
+                <div
+                  style={{
+                    marginTop: 16,
+                    border: "1px solid #fed7aa",
+                    background: "#fff7ed",
+                    borderRadius: 12,
+                    padding: 12,
+                    color: "#9a3412",
+                    fontSize: 14,
+                    fontWeight: 700,
+                    lineHeight: 1.45,
+                  }}
+                >
+                  {warning}
+                </div>
+              ) : null}
 
               {error ? (
                 <div
@@ -337,26 +354,73 @@ function PagoActivarContent() {
                 </div>
               ) : null}
 
-              <button
-                type="submit"
-                disabled={!canSubmit || isSubmitting}
-                style={{
-                  marginTop: 20,
-                  width: "100%",
-                  border: "none",
-                  borderRadius: 14,
-                  padding: "14px 16px",
-                  background: canSubmit && !isSubmitting ? "#111827" : "#d1d5db",
-                  color: "white",
-                  fontWeight: 900,
-                  fontSize: 16,
-                  cursor: canSubmit && !isSubmitting ? "pointer" : "not-allowed",
-                }}
-              >
-                {isSubmitting
-                  ? "Guardando solicitud..."
-                  : "Continuar con activación"}
-              </button>
+              {!forceTransfer ? (
+                <button
+                  type="submit"
+                  disabled={!canSubmit || isSubmitting}
+                  style={{
+                    marginTop: 20,
+                    width: "100%",
+                    border: "none",
+                    borderRadius: 14,
+                    padding: "14px 16px",
+                    background:
+                      canSubmit && !isSubmitting ? "#111827" : "#d1d5db",
+                    color: "white",
+                    fontWeight: 900,
+                    fontSize: 16,
+                    cursor:
+                      canSubmit && !isSubmitting ? "pointer" : "not-allowed",
+                  }}
+                >
+                  {isSubmitting ? "Validando clave..." : "Activar acceso"}
+                </button>
+              ) : (
+                <div style={{ display: "grid", gap: 10, marginTop: 20 }}>
+                  <button
+                    type="button"
+                    disabled={isSubmitting}
+                    onClick={() => submitActivation(true)}
+                    style={{
+                      width: "100%",
+                      border: "none",
+                      borderRadius: 14,
+                      padding: "14px 16px",
+                      background: "#111827",
+                      color: "white",
+                      fontWeight: 900,
+                      fontSize: 16,
+                      cursor: isSubmitting ? "not-allowed" : "pointer",
+                    }}
+                  >
+                    {isSubmitting
+                      ? "Activando en este dispositivo..."
+                      : "Sí, activar aquí y desactivar el anterior"}
+                  </button>
+
+                  <button
+                    type="button"
+                    disabled={isSubmitting}
+                    onClick={() => {
+                      setForceTransfer(false);
+                      setWarning("");
+                    }}
+                    style={{
+                      width: "100%",
+                      borderRadius: 14,
+                      padding: "12px 16px",
+                      background: "white",
+                      color: "#111827",
+                      border: "1px solid #e5e7eb",
+                      fontWeight: 800,
+                      fontSize: 15,
+                      cursor: isSubmitting ? "not-allowed" : "pointer",
+                    }}
+                  >
+                    Cancelar
+                  </button>
+                </div>
+              )}
             </form>
           ) : (
             <div
@@ -370,34 +434,42 @@ function PagoActivarContent() {
               }}
             >
               <div style={{ fontSize: 20, fontWeight: 900, marginBottom: 8 }}>
-                Solicitud preparada
+                Acceso activado correctamente
               </div>
 
               <p style={{ margin: "0 0 10px" }}>
-                Ya tenemos los datos para activar el acceso:
+                Tu clave quedó vinculada a este dispositivo.
               </p>
 
               <div style={{ display: "grid", gap: 4, fontSize: 15 }}>
                 <div>
-                  <strong>Nombre:</strong> {name}
+                  <strong>Plan:</strong> {success.plan}
                 </div>
                 <div>
-                  <strong>Celular:</strong> {phone}
+                  <strong>Vigencia:</strong> {formatDate(success.fullEndsAt)}
                 </div>
-                <div>
-                  <strong>Plan:</strong> {plan.label} — {plan.price}
-                </div>
-                {requestId ? (
-                  <div>
-                    <strong>Folio:</strong> #{requestId}
-                  </div>
-                ) : null}
               </div>
 
-              <p style={{ margin: "14px 0 0" }}>
-                En el siguiente paso conectaremos esta solicitud con el pago y
-                la generación automática del código de activación.
-              </p>
+              <a
+                href="/chat"
+                style={{
+                  marginTop: 16,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  width: "100%",
+                  borderRadius: 14,
+                  padding: "12px 16px",
+                  background: "#111827",
+                  color: "white",
+                  border: "none",
+                  textDecoration: "none",
+                  fontWeight: 900,
+                  fontSize: 15,
+                }}
+              >
+                Ir al chat
+              </a>
             </div>
           )}
 
