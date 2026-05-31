@@ -68,6 +68,18 @@ export async function generateUniqueActivationCode() {
   throw new Error("No se pudo generar una clave única de activación.");
 }
 
+function getLatestValidDate(dates: Array<Date | null | undefined>, fallback: Date) {
+  const validDates = dates.filter(
+    (date): date is Date => !!date && date.getTime() > fallback.getTime()
+  );
+
+  if (validDates.length === 0) return fallback;
+
+  return validDates.reduce((latest, current) =>
+    current.getTime() > latest.getTime() ? current : latest
+  );
+}
+
 export async function createOrRenewActivationCode(params: {
   phone: string;
   planId: AidaPlanId;
@@ -87,7 +99,6 @@ export async function createOrRenewActivationCode(params: {
   }
 
   const now = new Date();
-  const fullEndsAt = addPlanDays(now, plan.durationDays);
 
   const existingActiveCode = await prisma.activationCode.findFirst({
     where: {
@@ -100,19 +111,50 @@ export async function createOrRenewActivationCode(params: {
   });
 
   if (existingActiveCode) {
-    return prisma.activationCode.update({
+    const currentUserState = existingActiveCode.currentDeviceId
+      ? await prisma.userState.findUnique({
+          where: { id: existingActiveCode.currentDeviceId },
+        })
+      : null;
+
+    const renewalBaseDate = getLatestValidDate(
+      [existingActiveCode.fullEndsAt, currentUserState?.fullEndsAt],
+      now
+    );
+
+    const renewedFullEndsAt = addPlanDays(renewalBaseDate, plan.durationDays);
+
+    const updatedCode = await prisma.activationCode.update({
       where: { id: existingActiveCode.id },
       data: {
         plan: plan.id,
-        fullStartedAt: now,
-        fullEndsAt,
+        fullStartedAt: existingActiveCode.fullStartedAt ?? currentUserState?.fullStartedAt ?? now,
+        fullEndsAt: renewedFullEndsAt,
         lastPaymentId: paymentId,
         status: "active",
       },
     });
+
+    if (updatedCode.currentDeviceId) {
+      await prisma.userState.update({
+        where: { id: updatedCode.currentDeviceId },
+        data: {
+          phoneE164,
+          phoneVerifiedAt: new Date(),
+          licenseStatus: "active",
+          fullStartedAt: updatedCode.fullStartedAt,
+          fullEndsAt: updatedCode.fullEndsAt,
+          activePlan: updatedCode.plan,
+          activePlanSource: "payment",
+        },
+      });
+    }
+
+    return updatedCode;
   }
 
   const code = await generateUniqueActivationCode();
+  const fullEndsAt = addPlanDays(now, plan.durationDays);
 
   return prisma.activationCode.create({
     data: {
