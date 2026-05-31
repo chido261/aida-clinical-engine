@@ -4,6 +4,7 @@ export const runtime = "nodejs";
 
 import { NextResponse } from "next/server";
 import { prisma } from "@/app/lib/prisma";
+import { normalizePhoneE164 } from "@/app/lib/aidaActivation";
 
 function jsonOK(payload: any) {
   return NextResponse.json(payload);
@@ -44,20 +45,83 @@ export async function GET(req: Request) {
       take: 100,
     });
 
+    const phonesE164 = requests.map((request) => normalizePhoneE164(request.phone));
+
+    const activationCodes = await prisma.activationCode.findMany({
+      where: {
+        phoneE164: {
+          in: phonesE164,
+        },
+      },
+      orderBy: {
+        createdAt: "desc",
+      },
+    });
+
+    const activationCodeIds = activationCodes.map((code) => code.id);
+
+    const activeSessions = activationCodeIds.length
+      ? await prisma.deviceSession.findMany({
+          where: {
+            activationCodeId: {
+              in: activationCodeIds,
+            },
+            active: true,
+          },
+          orderBy: {
+            createdAt: "desc",
+          },
+        })
+      : [];
+
+    const codeByPhone = new Map<string, (typeof activationCodes)[number]>();
+
+    for (const code of activationCodes) {
+      if (!codeByPhone.has(code.phoneE164)) {
+        codeByPhone.set(code.phoneE164, code);
+      }
+    }
+
+    const sessionByCodeId = new Map(
+      activeSessions.map((session) => [session.activationCodeId, session])
+    );
+
     return jsonOK({
       ok: true,
-      activationRequests: requests.map((request) => ({
-        id: request.id,
-        deviceId: request.deviceId,
-        name: request.name,
-        phone: request.phone,
-        plan: request.plan,
-        price: request.price,
-        duration: request.duration,
-        status: request.status,
-        createdAt: request.createdAt,
-        updatedAt: request.updatedAt,
-      })),
+      activationRequests: requests.map((request) => {
+        const phoneE164 = normalizePhoneE164(request.phone);
+        const activationCode = codeByPhone.get(phoneE164) ?? null;
+        const activeSession = activationCode
+          ? sessionByCodeId.get(activationCode.id) ?? null
+          : null;
+
+        return {
+          id: request.id,
+          deviceId: request.deviceId,
+          name: request.name,
+          phone: request.phone,
+          phoneE164,
+          plan: request.plan,
+          price: request.price,
+          duration: request.duration,
+          status: request.status,
+          createdAt: request.createdAt,
+          updatedAt: request.updatedAt,
+
+          activationCodeId: activationCode?.id ?? null,
+          activationCode: activationCode?.code ?? null,
+          activationStatus: activationCode?.status ?? null,
+          activationActivatedAt: activationCode?.activatedAt ?? null,
+          activationCreatedAt: activationCode?.createdAt ?? null,
+          activationFullStartedAt: activationCode?.fullStartedAt ?? null,
+          activationFullEndsAt: activationCode?.fullEndsAt ?? null,
+          activationCurrentDeviceId: activationCode?.currentDeviceId ?? null,
+
+          deviceSessionActive: activeSession?.active ?? false,
+          deviceSessionCreatedAt: activeSession?.createdAt ?? null,
+          deviceSessionDisabledAt: activeSession?.disabledAt ?? null,
+        };
+      }),
     });
   } catch (err: any) {
     console.error("API /api/admin/activation-requests ERROR:", err);
