@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { getDeviceId } from "@/app/lib/deviceId";
 
@@ -25,6 +25,28 @@ type VerifyResponse =
       maskedPhone?: string;
     };
 
+type PaymentStatusResponse =
+  | {
+      ok: true;
+      payment: {
+        id: number;
+        status: string;
+        plan: string;
+        amount: number;
+        currency: string;
+        durationDays: number;
+        phoneMasked: string | null;
+        approvedAt: string | null;
+        createdAt: string;
+        activationCode: string | null;
+        activationFullEndsAt: string | null;
+      };
+    }
+  | {
+      ok: false;
+      error: string;
+    };
+
 function normalizePlan(value: string | null) {
   if (value === "mensual") return "mensual";
   if (value === "3-meses") return "3 meses";
@@ -42,6 +64,14 @@ function formatDate(value: string | null) {
   } catch {
     return "No disponible";
   }
+}
+
+function formatMoneyCents(value: number, currency = "MXN") {
+  return new Intl.NumberFormat("es-MX", {
+    style: "currency",
+    currency,
+    maximumFractionDigits: 0,
+  }).format(value / 100);
 }
 
 export default function PagoActivarPage() {
@@ -85,20 +115,88 @@ function PagoActivarFallback() {
 function PagoActivarContent() {
   const searchParams = useSearchParams();
   const selectedPlanLabel = normalizePlan(searchParams.get("plan"));
+  const paymentId = searchParams.get("paymentId");
 
   const [phone, setPhone] = useState("");
   const [code, setCode] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isLoadingPayment, setIsLoadingPayment] = useState(false);
   const [forceTransfer, setForceTransfer] = useState(false);
   const [error, setError] = useState("");
+  const [paymentError, setPaymentError] = useState("");
   const [warning, setWarning] = useState("");
+  const [payment, setPayment] = useState<
+    Extract<PaymentStatusResponse, { ok: true }>["payment"] | null
+  >(null);
   const [success, setSuccess] = useState<Extract<VerifyResponse, { ok: true }> | null>(
     null
   );
 
+  const effectivePlanLabel = payment?.plan
+    ? normalizePlan(payment.plan)
+    : selectedPlanLabel;
+
+  const effectiveCode = payment?.activationCode ?? code;
+
   const canSubmit = useMemo(() => {
-    return phone.trim().length >= 10 && code.trim().length >= 8;
-  }, [phone, code]);
+    return phone.trim().length >= 10 && effectiveCode.trim().length >= 8;
+  }, [phone, effectiveCode]);
+
+  useEffect(() => {
+    if (!paymentId) return;
+
+    let cancelled = false;
+
+    async function loadPaymentStatus() {
+      setIsLoadingPayment(true);
+      setPaymentError("");
+
+      try {
+        const res = await fetch(`/api/payments/status?paymentId=${paymentId}`, {
+          cache: "no-store",
+        });
+
+        const data = (await res.json().catch(() => null)) as
+          | PaymentStatusResponse
+          | null;
+
+        if (!res.ok) {
+          throw new Error(
+            (data as any)?.error || "No se pudo consultar el estado del pago."
+          );
+        }
+
+        if (!data) {
+          throw new Error("Respuesta inválida del servidor.");
+        }
+
+        if (!data.ok) {
+          throw new Error(data.error || "No se pudo consultar el pago.");
+        }
+
+        if (cancelled) return;
+
+        setPayment(data.payment);
+
+        if (data.payment.activationCode) {
+          setCode(data.payment.activationCode);
+        }
+      } catch (err: any) {
+        if (cancelled) return;
+        setPaymentError(err?.message || "No se pudo consultar el pago.");
+      } finally {
+        if (!cancelled) {
+          setIsLoadingPayment(false);
+        }
+      }
+    }
+
+    loadPaymentStatus();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [paymentId]);
 
   async function submitActivation(nextForceTransfer = false) {
     if (!canSubmit || isSubmitting) return;
@@ -118,7 +216,7 @@ function PagoActivarContent() {
         },
         body: JSON.stringify({
           phone,
-          code,
+          code: effectiveCode,
           deviceId,
           forceTransfer: nextForceTransfer,
         }),
@@ -230,10 +328,73 @@ function PagoActivarContent() {
               margin: "0 0 22px",
             }}
           >
-            Ingresa el celular con el que realizaste tu pago y la clave de
-            activación que recibiste. Esta clave quedará vinculada a este
-            dispositivo.
+            Ingresa el celular con el que realizaste tu pago. Si tu pago ya fue
+            aprobado, aquí verás tu clave de activación.
           </p>
+
+          {paymentId ? (
+            <div
+              style={{
+                border: "1px solid #bbf7d0",
+                background: "#f0fdf4",
+                borderRadius: 16,
+                padding: 16,
+                marginBottom: 18,
+                color: "#14532d",
+              }}
+            >
+              <div style={{ fontSize: 14, fontWeight: 900, marginBottom: 8 }}>
+                Estado del pago
+              </div>
+
+              {isLoadingPayment ? (
+                <div style={{ fontWeight: 800 }}>Consultando pago...</div>
+              ) : paymentError ? (
+                <div style={{ color: "#991b1b", fontWeight: 800 }}>
+                  {paymentError}
+                </div>
+              ) : payment ? (
+                <div style={{ display: "grid", gap: 6, fontSize: 15 }}>
+                  <div>
+                    <strong>Pago:</strong> #{payment.id}
+                  </div>
+                  <div>
+                    <strong>Estado:</strong>{" "}
+                    {payment.status === "approved" ? "Aprobado" : payment.status}
+                  </div>
+                  <div>
+                    <strong>Monto:</strong>{" "}
+                    {formatMoneyCents(payment.amount, payment.currency)}
+                  </div>
+                  <div>
+                    <strong>Celular:</strong> {payment.phoneMasked ?? "—"}
+                  </div>
+                  <div>
+                    <strong>Clave:</strong>{" "}
+                    <span
+                      style={{
+                        display: "inline-flex",
+                        marginTop: 6,
+                        background: "white",
+                        border: "1px solid #86efac",
+                        borderRadius: 12,
+                        padding: "8px 10px",
+                        fontSize: 20,
+                        fontWeight: 900,
+                        letterSpacing: "0.04em",
+                      }}
+                    >
+                      {payment.activationCode ?? "Procesando..."}
+                    </span>
+                  </div>
+                  <div>
+                    <strong>Vence:</strong>{" "}
+                    {formatDate(payment.activationFullEndsAt)}
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
 
           <div
             style={{
@@ -248,7 +409,7 @@ function PagoActivarContent() {
               Plan seleccionado
             </div>
             <div style={{ fontSize: 20, fontWeight: 900, color: "#111827" }}>
-              {selectedPlanLabel}
+              {effectivePlanLabel}
             </div>
           </div>
 
@@ -298,7 +459,7 @@ function PagoActivarContent() {
                   </span>
 
                   <input
-                    value={code}
+                    value={effectiveCode}
                     onChange={(e) => {
                       setCode(e.target.value.toUpperCase());
                       setForceTransfer(false);
@@ -306,6 +467,7 @@ function PagoActivarContent() {
                     }}
                     placeholder="Ej. AIDA-7K82-MP4Q"
                     autoCapitalize="characters"
+                    readOnly={Boolean(payment?.activationCode)}
                     style={{
                       width: "100%",
                       border: "1px solid #d1d5db",
@@ -314,6 +476,7 @@ function PagoActivarContent() {
                       fontSize: 16,
                       outline: "none",
                       textTransform: "uppercase",
+                      background: payment?.activationCode ? "#f9fafb" : "white",
                     }}
                   />
                 </label>
