@@ -2,6 +2,7 @@
 
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { getDeviceId } from "@/app/lib/deviceId";
 
 const STORAGE_KEY = "glucosa_onboarding_v1";
 
@@ -9,13 +10,74 @@ export default function HomeGate() {
   const router = useRouter();
 
   useEffect(() => {
-    try {
-      const existing = localStorage.getItem(STORAGE_KEY);
-      if (existing) router.replace("/chat");
-      else router.replace("/onboarding");
-    } catch {
-      router.replace("/onboarding");
+    let cancelled = false;
+
+    async function checkOnboarding() {
+      try {
+        const deviceId = getDeviceId();
+
+        const res = await fetch("/api/onboarding/status", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          cache: "no-store",
+          body: JSON.stringify({
+            deviceId,
+          }),
+        });
+
+        const data = await res.json().catch(() => null);
+
+        if (cancelled) return;
+
+        if (res.ok && data?.hasOnboarding) {
+          try {
+            localStorage.setItem(
+              STORAGE_KEY,
+              JSON.stringify({
+                deviceId,
+                name: data?.user?.name ?? "",
+                age: data?.user?.age ? String(data.user.age) : "",
+                heightCm: data?.user?.heightCm
+                  ? String(data.user.heightCm)
+                  : "",
+                weightKg: data?.user?.weightKg
+                  ? String(data.user.weightKg)
+                  : "",
+                diagnosis: data?.user?.diagnosis ?? "",
+                meds: data?.user?.meds ?? "",
+                fastingPeakMgDl: data?.user?.fastingPeakMgDl
+                  ? String(data.user.fastingPeakMgDl)
+                  : "",
+                postMealPeakMgDl: data?.user?.postMealPeakMgDl
+                  ? String(data.user.postMealPeakMgDl)
+                  : "",
+                wakeTime: data?.user?.wakeTime ?? "06:00",
+                restoredFromDatabase: true,
+              })
+            );
+          } catch {
+            // ignore localStorage errors
+          }
+
+          router.replace("/chat");
+          return;
+        }
+
+        router.replace("/onboarding");
+      } catch {
+        if (!cancelled) {
+          router.replace("/onboarding");
+        }
+      }
     }
+
+    checkOnboarding();
+
+    return () => {
+      cancelled = true;
+    };
   }, [router]);
 
   return (
