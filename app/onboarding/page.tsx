@@ -18,6 +18,27 @@ type OnboardingData = {
 
 const STORAGE_KEY = "glucosa_onboarding_v1";
 
+function buildLocalOnboarding(deviceId: string, user: any): OnboardingData & {
+  deviceId: string;
+  restoredFromDatabase: boolean;
+} {
+  return {
+    deviceId,
+    name: user?.name ?? "",
+    age: user?.age ? String(user.age) : "",
+    heightCm: user?.heightCm ? String(user.heightCm) : "",
+    weightKg: user?.weightKg ? String(user.weightKg) : "",
+    diagnosis: user?.diagnosis ?? "",
+    meds: user?.meds ?? "",
+    fastingPeakMgDl: user?.fastingPeakMgDl ? String(user.fastingPeakMgDl) : "",
+    postMealPeakMgDl: user?.postMealPeakMgDl
+      ? String(user.postMealPeakMgDl)
+      : "",
+    wakeTime: user?.wakeTime ?? "06:00",
+    restoredFromDatabase: true,
+  };
+}
+
 export default function OnboardingPage() {
   const router = useRouter();
 
@@ -40,20 +61,57 @@ export default function OnboardingPage() {
   });
 
   useEffect(() => {
-    const currentDeviceId = getDeviceId();
-    setDeviceId(currentDeviceId);
+    let cancelled = false;
 
-    try {
-      const existing = localStorage.getItem(STORAGE_KEY);
-      if (existing) {
-        router.replace("/chat");
-        return;
+    async function checkExistingOnboarding() {
+      const currentDeviceId = getDeviceId();
+      setDeviceId(currentDeviceId);
+
+      try {
+        const res = await fetch("/api/onboarding/status", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          cache: "no-store",
+          body: JSON.stringify({
+            deviceId: currentDeviceId,
+          }),
+        });
+
+        const responseData = await res.json().catch(() => null);
+
+        if (cancelled) return;
+
+        if (res.ok && responseData?.hasOnboarding) {
+          try {
+            localStorage.setItem(
+              STORAGE_KEY,
+              JSON.stringify(
+                buildLocalOnboarding(currentDeviceId, responseData?.user)
+              )
+            );
+          } catch {
+            // ignore localStorage errors
+          }
+
+          router.replace("/chat");
+          return;
+        }
+
+        setChecking(false);
+      } catch {
+        if (!cancelled) {
+          setChecking(false);
+        }
       }
-    } catch {
-      // ignore
-    } finally {
-      setChecking(false);
     }
+
+    checkExistingOnboarding();
+
+    return () => {
+      cancelled = true;
+    };
   }, [router]);
 
   const canNext = useMemo(() => {
