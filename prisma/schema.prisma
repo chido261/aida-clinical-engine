@@ -11,6 +11,18 @@ model UserState {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  // onboarding persistente
+  name              String?
+  age               Int?
+  heightCm          Float?
+  weightKg          Float?
+  diagnosis         String?
+  meds              String?
+  fastingPeakMgDl   Int?
+  postMealPeakMgDl  Int?
+  wakeTime          String?
+  onboardingDoneAt  DateTime?
+
   // baseline
   baselineA1c        Float?
   baselineAvgGlucose Int?
@@ -55,6 +67,7 @@ model UserState {
 
   @@index([phoneE164])
   @@index([licenseStatus])
+  @@index([onboardingDoneAt])
 }
 
 model Reading {
