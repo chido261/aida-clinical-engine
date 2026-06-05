@@ -68,7 +68,10 @@ export async function generateUniqueActivationCode() {
   throw new Error("No se pudo generar una clave única de activación.");
 }
 
-function getLatestValidDate(dates: Array<Date | null | undefined>, fallback: Date) {
+function getLatestValidDate(
+  dates: Array<Date | null | undefined>,
+  fallback: Date
+) {
   const validDates = dates.filter(
     (date): date is Date => !!date && date.getTime() > fallback.getTime()
   );
@@ -84,8 +87,9 @@ export async function createOrRenewActivationCode(params: {
   phone: string;
   planId: AidaPlanId;
   paymentId?: number | null;
+  deviceId?: string | null;
 }) {
-  const { phone, planId, paymentId = null } = params;
+  const { phone, planId, paymentId = null, deviceId = null } = params;
 
   const phoneE164 = normalizePhoneE164(phone);
   const plan = getAidaPlan(planId);
@@ -99,6 +103,12 @@ export async function createOrRenewActivationCode(params: {
   }
 
   const now = new Date();
+
+  const paymentUserState = deviceId
+    ? await prisma.userState.findUnique({
+        where: { id: deviceId },
+      })
+    : null;
 
   const existingActiveCode = await prisma.activationCode.findFirst({
     where: {
@@ -118,7 +128,12 @@ export async function createOrRenewActivationCode(params: {
       : null;
 
     const renewalBaseDate = getLatestValidDate(
-      [existingActiveCode.fullEndsAt, currentUserState?.fullEndsAt],
+      [
+        existingActiveCode.fullEndsAt,
+        currentUserState?.fullEndsAt,
+        paymentUserState?.fullEndsAt,
+        paymentUserState?.trialEndsAt,
+      ],
       now
     );
 
@@ -128,16 +143,23 @@ export async function createOrRenewActivationCode(params: {
       where: { id: existingActiveCode.id },
       data: {
         plan: plan.id,
-        fullStartedAt: existingActiveCode.fullStartedAt ?? currentUserState?.fullStartedAt ?? now,
+        fullStartedAt:
+          existingActiveCode.fullStartedAt ??
+          currentUserState?.fullStartedAt ??
+          paymentUserState?.trialEndsAt ??
+          paymentUserState?.fullStartedAt ??
+          now,
         fullEndsAt: renewedFullEndsAt,
         lastPaymentId: paymentId,
         status: "active",
       },
     });
 
-    if (updatedCode.currentDeviceId) {
+    const userStateDeviceId = updatedCode.currentDeviceId ?? deviceId;
+
+    if (userStateDeviceId) {
       await prisma.userState.update({
-        where: { id: updatedCode.currentDeviceId },
+        where: { id: userStateDeviceId },
         data: {
           phoneE164,
           phoneVerifiedAt: new Date(),
@@ -154,9 +176,15 @@ export async function createOrRenewActivationCode(params: {
   }
 
   const code = await generateUniqueActivationCode();
-  const fullEndsAt = addPlanDays(now, plan.durationDays);
 
-  return prisma.activationCode.create({
+  const fullStartedAt = getLatestValidDate(
+    [paymentUserState?.trialEndsAt, paymentUserState?.fullEndsAt],
+    now
+  );
+
+  const fullEndsAt = addPlanDays(fullStartedAt, plan.durationDays);
+
+  const createdCode = await prisma.activationCode.create({
     data: {
       code,
       phoneE164,
@@ -164,10 +192,27 @@ export async function createOrRenewActivationCode(params: {
       status: "active",
       createdBy: "payment",
       lastPaymentId: paymentId,
-      fullStartedAt: now,
+      fullStartedAt,
       fullEndsAt,
     },
   });
+
+  if (deviceId) {
+    await prisma.userState.update({
+      where: { id: deviceId },
+      data: {
+        phoneE164,
+        phoneVerifiedAt: new Date(),
+        licenseStatus: "active",
+        fullStartedAt: createdCode.fullStartedAt,
+        fullEndsAt: createdCode.fullEndsAt,
+        activePlan: createdCode.plan,
+        activePlanSource: "payment",
+      },
+    });
+  }
+
+  return createdCode;
 }
 
 export async function activateCodeOnDevice(params: {
@@ -221,7 +266,10 @@ export async function activateCodeOnDevice(params: {
     };
   }
 
-  if (activationCode.fullEndsAt && activationCode.fullEndsAt.getTime() <= Date.now()) {
+  if (
+    activationCode.fullEndsAt &&
+    activationCode.fullEndsAt.getTime() <= Date.now()
+  ) {
     return {
       ok: false as const,
       status: "expired_code" as const,
