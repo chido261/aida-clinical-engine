@@ -49,6 +49,18 @@ declare global {
   }
 }
 
+type UpgradeOffer = {
+  eligible: boolean;
+  title: string;
+  message: string;
+  ctaText: string;
+  ctaUrl: string;
+  currentPlan: string | null;
+  targetPlans: string[];
+  discountPercent?: number | null;
+  daysLeftToUseOffer?: number | null;
+};
+
 type UiPayload = {
   disclaimer?: string;
   mode?: string;
@@ -58,6 +70,7 @@ type UiPayload = {
   blocked?: boolean;
   ctaText?: string | null;
   ctaUrl?: string | null;
+  upgradeOffer?: UpgradeOffer | null;
 };
 
 const LS_KEY = "glucosa_onboarding_v1";
@@ -631,6 +644,57 @@ formData.append("messages", JSON.stringify(nextMessages));
           </a>
         </div>
       )}
+
+{licenseModeActive && ui?.upgradeOffer?.eligible && !chatLocked ? (
+        <div
+          style={{
+            border: "1px solid #bbf7d0",
+            background: "#f0fdf4",
+            borderRadius: 12,
+            padding: 12,
+            marginBottom: 12,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 12,
+          }}
+        >
+          <div style={{ fontSize: 13, lineHeight: 1.35 }}>
+            <div style={{ fontWeight: 900, color: "#14532d" }}>
+              {ui.upgradeOffer.title}
+            </div>
+
+            <div style={{ color: "#166534", opacity: 0.95 }}>
+              {ui.upgradeOffer.message}
+            </div>
+
+            {typeof ui.upgradeOffer.daysLeftToUseOffer === "number" ? (
+              <div style={{ color: "#166534", opacity: 0.85, marginTop: 3 }}>
+                Disponible por {ui.upgradeOffer.daysLeftToUseOffer} día(s).
+              </div>
+            ) : null}
+          </div>
+
+          <a
+            href={ui.upgradeOffer.ctaUrl}
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              padding: "10px 12px",
+              borderRadius: 10,
+              border: "1px solid #86efac",
+              background: "#14532d",
+              color: "white",
+              fontWeight: 800,
+              textDecoration: "none",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {ui.upgradeOffer.ctaText}
+          </a>
+        </div>
+      ) : null}
 
       <div
         style={{
