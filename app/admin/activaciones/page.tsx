@@ -31,6 +31,14 @@ type ActivationRequest = {
   hasRepeatedPhone: boolean;
 };
 
+type StatusFilter =
+  | "all"
+  | "pending"
+  | "paid"
+  | "activated"
+  | "cancelled"
+  | "repeated";
+
 const ADMIN_KEY_STORAGE = "aida_admin_key_v1";
 
 function formatMoney(value: number) {
@@ -48,6 +56,18 @@ function formatDate(value: string | null) {
     return new Intl.DateTimeFormat("es-MX", {
       dateStyle: "medium",
       timeStyle: "short",
+    }).format(new Date(value));
+  } catch {
+    return value;
+  }
+}
+
+function formatShortDate(value: string | null) {
+  if (!value) return "—";
+
+  try {
+    return new Intl.DateTimeFormat("es-MX", {
+      dateStyle: "medium",
     }).format(new Date(value));
   } catch {
     return value;
@@ -81,12 +101,43 @@ function getRelationLabel(request: ActivationRequest) {
   return "Sin clave activa vinculada.";
 }
 
+function getStatusBadgeStyle(status: string): React.CSSProperties {
+  return {
+    display: "inline-flex",
+    borderRadius: 999,
+    padding: "5px 8px",
+    fontSize: 12,
+    fontWeight: 900,
+    background:
+      status === "activated"
+        ? "#dcfce7"
+        : status === "paid"
+          ? "#dbeafe"
+          : status === "cancelled"
+            ? "#fee2e2"
+            : "#fef3c7",
+    color:
+      status === "activated"
+        ? "#166534"
+        : status === "paid"
+          ? "#1e40af"
+          : status === "cancelled"
+            ? "#991b1b"
+            : "#92400e",
+  };
+}
+
 export default function AdminActivacionesPage() {
   const [requests, setRequests] = useState<ActivationRequest[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isAuthorized, setIsAuthorized] = useState(false);
   const [adminKey, setAdminKey] = useState("");
   const [error, setError] = useState("");
+  const [searchText, setSearchText] = useState("");
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+  const [expandedRequestId, setExpandedRequestId] = useState<number | null>(
+    null
+  );
 
   const totalPending = useMemo(
     () => requests.filter((r) => r.status === "pending").length,
@@ -97,6 +148,40 @@ export default function AdminActivacionesPage() {
     () => requests.filter((r) => r.status === "activated").length,
     [requests]
   );
+
+  const filteredRequests = useMemo(() => {
+    const cleanSearch = searchText.trim().toLowerCase();
+
+    return requests.filter((request) => {
+      const matchesFilter =
+        statusFilter === "all"
+          ? true
+          : statusFilter === "repeated"
+            ? request.hasRepeatedPhone
+            : request.status === statusFilter;
+
+      const searchableText = [
+        request.id,
+        request.name,
+        request.phone,
+        request.phoneE164,
+        request.plan,
+        request.status,
+        request.activationCode,
+        request.deviceId,
+        request.activationCurrentDeviceId,
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+
+      const matchesSearch = cleanSearch
+        ? searchableText.includes(cleanSearch)
+        : true;
+
+      return matchesFilter && matchesSearch;
+    });
+  }, [requests, searchText, statusFilter]);
 
   function getSavedAdminKey() {
     if (typeof window === "undefined") return "";
@@ -119,6 +204,16 @@ export default function AdminActivacionesPage() {
     return {
       "x-aida-admin-key": key,
     };
+  }
+
+  async function copyText(value: string | null | undefined) {
+    if (!value) return;
+
+    try {
+      await navigator.clipboard.writeText(value);
+    } catch {
+      setError("No se pudo copiar al portapapeles.");
+    }
   }
 
   async function loadRequests(keyOverride?: string) {
@@ -247,16 +342,7 @@ export default function AdminActivacionesPage() {
             </p>
 
             <form onSubmit={handleAdminLogin} style={{ marginTop: 18 }}>
-              <label
-                htmlFor="adminKey"
-                style={{
-                  display: "block",
-                  fontSize: 14,
-                  fontWeight: 800,
-                  color: "#374151",
-                  marginBottom: 6,
-                }}
-              >
+              <label htmlFor="adminKey" style={labelStyle}>
                 Clave admin
               </label>
 
@@ -266,33 +352,10 @@ export default function AdminActivacionesPage() {
                 value={adminKey}
                 onChange={(event) => setAdminKey(event.target.value)}
                 placeholder="Escribe tu clave"
-                style={{
-                  width: "100%",
-                  boxSizing: "border-box",
-                  border: "1px solid #d1d5db",
-                  borderRadius: 12,
-                  padding: "12px 14px",
-                  fontSize: 16,
-                  outline: "none",
-                }}
+                style={inputStyle}
               />
 
-              {error ? (
-                <div
-                  style={{
-                    marginTop: 12,
-                    border: "1px solid #fecaca",
-                    background: "#fef2f2",
-                    borderRadius: 12,
-                    padding: 12,
-                    color: "#991b1b",
-                    fontWeight: 700,
-                    fontSize: 14,
-                  }}
-                >
-                  {error}
-                </div>
-              ) : null}
+              {error ? <div style={errorBoxStyle}>{error}</div> : null}
 
               <button
                 type="submit"
@@ -321,64 +384,38 @@ export default function AdminActivacionesPage() {
 
   return (
     <main style={pageStyle}>
-      <section style={{ maxWidth: 1100, margin: "0 auto" }}>
+      <section style={{ maxWidth: 1200, margin: "0 auto" }}>
         <div style={{ marginBottom: 18 }}>
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              gap: 12,
-              flexWrap: "wrap",
-              marginBottom: 16,
-            }}
-          >
-            <a
-              href="/pago"
-              style={{
-                display: "inline-flex",
-                color: "#111827",
-                textDecoration: "none",
-                fontSize: 14,
-                fontWeight: 700,
-              }}
-            >
+          <div style={topNavStyle}>
+            <a href="/pago" style={navLinkStyle}>
               ← Volver a pagos
             </a>
 
-            <a
-              href="/admin/usuarios"
-              style={{
-                display: "inline-flex",
-                color: "#111827",
-                textDecoration: "none",
-                fontSize: 14,
-                fontWeight: 900,
-              }}
-            >
+            <a href="/admin/usuarios" style={navLinkStrongStyle}>
               Ver usuarios →
             </a>
           </div>
 
           <div style={cardStyle}>
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "flex-start",
-                gap: 12,
-                flexWrap: "wrap",
-              }}
-            >
-              <div>
+            <div style={heroHeaderStyle}>
+              <div style={{ flex: 1 }}>
                 <div style={badgeStyle}>Panel admin</div>
 
-                <h1 style={titleStyle}>Solicitudes de activación</h1>
+                <h1 style={titleStyle}>Solicitudes manuales de activación</h1>
 
                 <p style={paragraphStyle}>
-                  Aquí puedes revisar solicitudes, marcar pagos, activar accesos
-                  o cancelar registros.
+                  Este panel sirve para revisar solicitudes manuales o históricas
+                  de activación. Los pagos automáticos de Mercado Pago se revisan
+                  en el panel de pagos.
                 </p>
+
+                <div style={infoBoxStyle}>
+                  Importante: si el usuario pagó por Mercado Pago, revisa primero{" "}
+                  <a href="/admin/pagos" style={infoLinkStyle}>
+                    /admin/pagos
+                  </a>
+                  .
+                </div>
               </div>
 
               <button
@@ -392,14 +429,7 @@ export default function AdminActivacionesPage() {
           </div>
         </div>
 
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-            gap: 12,
-            marginBottom: 16,
-          }}
-        >
+        <div style={metricsGridStyle}>
           <div style={smallCardStyle}>
             <div style={metricLabelStyle}>Total solicitudes</div>
             <div style={metricValueStyle}>{requests.length}</div>
@@ -416,25 +446,14 @@ export default function AdminActivacionesPage() {
           </div>
         </div>
 
-        <div
-          style={{
-            background: "white",
-            border: "1px solid #e5e7eb",
-            borderRadius: 18,
-            overflow: "hidden",
-          }}
-        >
-          <div
-            style={{
-              padding: 14,
-              borderBottom: "1px solid #e5e7eb",
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              gap: 12,
-            }}
-          >
-            <div style={{ fontWeight: 900 }}>Últimas solicitudes</div>
+        <div style={panelStyle}>
+          <div style={panelHeaderStyle}>
+            <div>
+              <div style={{ fontWeight: 900 }}>Últimas solicitudes</div>
+              <div style={{ color: "#6b7280", fontSize: 13, marginTop: 3 }}>
+                Mostrando {filteredRequests.length} de {requests.length}
+              </div>
+            </div>
 
             <button
               type="button"
@@ -446,316 +465,294 @@ export default function AdminActivacionesPage() {
             </button>
           </div>
 
-          {error ? (
-            <div
-              style={{
-                margin: 14,
-                border: "1px solid #fecaca",
-                background: "#fef2f2",
-                borderRadius: 12,
-                padding: 12,
-                color: "#991b1b",
-                fontWeight: 700,
-              }}
-            >
-              {error}
+          <div style={toolbarStyle}>
+            <input
+              type="search"
+              value={searchText}
+              onChange={(event) => setSearchText(event.target.value)}
+              placeholder="Buscar por nombre, celular, clave o dispositivo..."
+              style={searchInputStyle}
+            />
+
+            <div style={filtersStyle}>
+              {[
+                ["all", "Todos"],
+                ["pending", "Pendientes"],
+                ["paid", "Pagados"],
+                ["activated", "Activados"],
+                ["cancelled", "Cancelados"],
+                ["repeated", "Repetidos"],
+              ].map(([value, label]) => (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => setStatusFilter(value as StatusFilter)}
+                  style={
+                    statusFilter === value
+                      ? activeFilterButtonStyle
+                      : filterButtonStyle
+                  }
+                >
+                  {label}
+                </button>
+              ))}
             </div>
-          ) : null}
+          </div>
+
+          {error ? <div style={errorBoxStyle}>{error}</div> : null}
 
           {isLoading ? (
-            <div style={{ padding: 18, color: "#6b7280" }}>
-              Cargando solicitudes...
-            </div>
+            <div style={emptyStateStyle}>Cargando solicitudes...</div>
           ) : requests.length === 0 ? (
-            <div style={{ padding: 18, color: "#6b7280" }}>
+            <div style={emptyStateStyle}>
               Todavía no hay solicitudes registradas.
             </div>
+          ) : filteredRequests.length === 0 ? (
+            <div style={emptyStateStyle}>
+              No hay solicitudes que coincidan con la búsqueda o filtro.
+            </div>
           ) : (
-            <div style={{ overflowX: "auto" }}>
-              <table
-                style={{
-                  width: "100%",
-                  minWidth: 1600,
-                  borderCollapse: "collapse",
-                  fontSize: 14,
-                }}
-              >
-                <thead>
-                  <tr style={{ background: "#f9fafb" }}>
-                    <th style={thStyle}>Folio</th>
-                    <th style={thStyle}>Nombre</th>
-                    <th style={thStyle}>Celular</th>
-                    <th style={thStyle}>Plan</th>
-                    <th style={thStyle}>Clave</th>
-                    <th style={thStyle}>Dispositivo</th>
-                    <th style={thStyle}>Activación</th>
-                    <th style={thStyle}>Vigencia</th>
-                    <th style={thStyle}>Estado</th>
-                    <th style={thStyle}>Fecha</th>
-                    <th style={thStyle}>Acciones</th>
-                  </tr>
-                </thead>
+            <div>
+              <div style={compactHeaderStyle}>
+                <div>Folio</div>
+                <div>Nombre</div>
+                <div>Estado</div>
+                <div>Celular</div>
+                <div>Plan</div>
+                <div>Clave</div>
+                <div>Fecha</div>
+                <div>Detalles</div>
+              </div>
 
-                <tbody>
-                  {requests.map((request) => (
-                    <tr
-                      key={request.id}
-                      style={{ borderTop: "1px solid #e5e7eb" }}
-                    >
-                      <td style={tdStyle}>#{request.id}</td>
+              {filteredRequests.map((request) => {
+                const isExpanded = expandedRequestId === request.id;
 
-                      <td style={tdStyle}>{request.name}</td>
+                return (
+                  <div key={request.id} style={rowCardStyle}>
+                    <div style={compactRowStyle}>
+                      <div style={cellStrongStyle}>#{request.id}</div>
 
-                      <td style={tdStyle}>
-                        <div>{request.phone}</div>
-
-                        <div
-                          style={{
-                            color: "#6b7280",
-                            marginTop: 3,
-                            fontSize: 12,
-                          }}
-                        >
-                          {request.phoneE164}
-                        </div>
-
+                      <div style={cellStyle}>
+                        <div style={cellStrongStyle}>{request.name || "—"}</div>
                         {request.hasRepeatedPhone ? (
-                          <div
-                            style={{
-                              display: "inline-flex",
-                              marginTop: 6,
-                              borderRadius: 999,
-                              padding: "4px 7px",
-                              background: "#fef3c7",
-                              color: "#92400e",
-                              fontSize: 11,
-                              fontWeight: 900,
-                            }}
-                          >
-                            Teléfono repetido
-                          </div>
+                          <div style={warningPillStyle}>Teléfono repetido</div>
                         ) : null}
-                      </td>
+                      </div>
 
-                      <td style={tdStyle}>
-                        <div style={{ fontWeight: 900 }}>
+                      <div style={cellStyle}>
+                        <span style={getStatusBadgeStyle(request.status)}>
+                          {getStatusLabel(request.status)}
+                        </span>
+                      </div>
+
+                      <div style={cellStyle}>
+                        <div>{request.phone || "—"}</div>
+                        <div style={mutedSmallStyle}>{request.phoneE164}</div>
+                      </div>
+
+                      <div style={cellStyle}>
+                        <div style={cellStrongStyle}>
                           {getPlanLabel(request.plan)}
                         </div>
-
-                        <div
-                          style={{
-                            color: "#6b7280",
-                            marginTop: 3,
-                            fontSize: 12,
-                          }}
-                        >
+                        <div style={mutedSmallStyle}>
                           {formatMoney(request.price)} · {request.duration} días
                         </div>
+                      </div>
 
-                        {request.isRenewalLike ? (
-                          <div
-                            style={{
-                              display: "inline-flex",
-                              marginTop: 6,
-                              borderRadius: 999,
-                              padding: "4px 7px",
-                              background: "#ecfdf5",
-                              color: "#065f46",
-                              fontSize: 11,
-                              fontWeight: 900,
-                            }}
-                          >
-                            Renovación / historial
-                          </div>
-                        ) : null}
-                      </td>
-
-                      <td style={tdStyle}>
-                        <div style={{ fontWeight: 900 }}>
+                      <div style={cellStyle}>
+                        <div style={cellStrongStyle}>
                           {request.activationCode || "—"}
                         </div>
-
-                        <div
-                          style={{
-                            color: "#6b7280",
-                            marginTop: 3,
-                            fontSize: 12,
-                          }}
-                        >
+                        <div style={mutedSmallStyle}>
                           {request.activationStatus
                             ? `Estado: ${request.activationStatus}`
                             : "Sin clave"}
                         </div>
+                      </div>
 
-                        <div
-                          style={{
-                            marginTop: 6,
-                            color:
-                              request.activationRelation === "same_request"
-                                ? "#166534"
-                                : request.activationRelation ===
-                                    "phone_current_code"
-                                  ? "#92400e"
-                                  : "#6b7280",
-                            fontSize: 12,
-                            fontWeight: 800,
-                            maxWidth: 230,
-                            lineHeight: 1.35,
-                            whiteSpace: "normal",
-                          }}
+                      <div style={cellStyle}>
+                        {formatShortDate(request.createdAt)}
+                      </div>
+
+                      <div style={cellStyle}>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setExpandedRequestId(isExpanded ? null : request.id)
+                          }
+                          style={actionButtonStyle}
                         >
-                          {getRelationLabel(request)}
+                          {isExpanded ? "Ocultar" : "Detalles"}
+                        </button>
+                      </div>
+                    </div>
+
+                    {isExpanded ? (
+                      <div style={detailsBoxStyle}>
+                        <div style={userLikeDetailsGridStyle}>
+                          <div style={detailBlockStyle}>
+                            <DetailItem
+                              label="Clave"
+                              value={request.activationCode || "—"}
+                            />
+                            <DetailItem
+                              label="Estado de clave"
+                              value={request.activationStatus || "—"}
+                            />
+                            <DetailItem
+                              label="Relación"
+                              value={getRelationLabel(request)}
+                            />
+                          </div>
+
+                          <div style={detailBlockStyle}>
+                            <DetailItem
+                              label="ID solicitud"
+                              value={String(request.id)}
+                            />
+                            <DetailItem
+                              label="ID dispositivo solicitud"
+                              value={request.deviceId || "—"}
+                            />
+                            <DetailItem
+                              label="ID dispositivo activo"
+                              value={request.activationCurrentDeviceId || "—"}
+                            />
+                          </div>
+
+                          <div style={detailBlockStyle}>
+                            <DetailItem
+                              label="Activada"
+                              value={formatDate(request.activationActivatedAt)}
+                            />
+                            <DetailItem
+                              label="Vinculada"
+                              value={formatDate(request.deviceSessionCreatedAt)}
+                            />
+                            <DetailItem
+                              label="Sesión"
+                              value={request.deviceSessionActive ? "Activa" : "—"}
+                            />
+                          </div>
+
+                          <div style={detailBlockStyle}>
+                            <DetailItem
+                              label="Inicio"
+                              value={formatDate(request.activationFullStartedAt)}
+                            />
+                            <DetailItem
+                              label="Vence"
+                              value={formatDate(request.activationFullEndsAt)}
+                            />
+                            <DetailItem
+                              label="Solicitud creada"
+                              value={formatDate(request.createdAt)}
+                            />
+                          </div>
                         </div>
-                      </td>
 
-                      <td style={tdStyle}>
-                        <div style={{ fontWeight: 900 }}>
-                          {request.deviceSessionActive ? "Activo" : "—"}
+                        <div style={noticeStyle}>
+                          {request.activationNotice || "Sin aviso adicional."}
                         </div>
 
-                        <div
-                          style={{
-                            color: "#6b7280",
-                            marginTop: 3,
-                            fontSize: 12,
-                            maxWidth: 180,
-                            overflow: "hidden",
-                            textOverflow: "ellipsis",
-                          }}
-                        >
-                          {request.activationCurrentDeviceId ||
-                            "Sin dispositivo"}
-                        </div>
-                      </td>
+                        <div style={actionsAreaStyle}>
+                          <div style={sectionTitleStyle}>
+                            Acciones administrativas
+                          </div>
 
-                      <td style={tdStyle}>
-                        <div>
-                          <strong>Activada:</strong>{" "}
-                          {formatDate(request.activationActivatedAt)}
-                        </div>
-
-                        <div style={{ color: "#6b7280", marginTop: 3 }}>
-                          Vinculada: {formatDate(request.deviceSessionCreatedAt)}
-                        </div>
-                      </td>
-
-                      <td style={tdStyle}>
-                        <div>
-                          <strong>Inicio:</strong>{" "}
-                          {formatDate(request.activationFullStartedAt)}
-                        </div>
-
-                        <div style={{ color: "#6b7280", marginTop: 3 }}>
-                          Vence: {formatDate(request.activationFullEndsAt)}
-                        </div>
-                      </td>
-
-                      <td style={tdStyle}>
-                        <span
-                          style={{
-                            display: "inline-flex",
-                            borderRadius: 999,
-                            padding: "5px 8px",
-                            fontSize: 12,
-                            fontWeight: 900,
-                            background:
-                              request.status === "activated"
-                                ? "#dcfce7"
-                                : request.status === "paid"
-                                  ? "#dbeafe"
-                                  : request.status === "cancelled"
-                                    ? "#fee2e2"
-                                    : "#fef3c7",
-                            color:
-                              request.status === "activated"
-                                ? "#166534"
-                                : request.status === "paid"
-                                  ? "#1e40af"
-                                  : request.status === "cancelled"
-                                    ? "#991b1b"
-                                    : "#92400e",
-                          }}
-                        >
-                          {getStatusLabel(request.status)}
-                        </span>
-                      </td>
-
-                      <td style={tdStyle}>{formatDate(request.createdAt)}</td>
-
-                      <td style={tdStyle}>
-                        <div
-                          style={{ display: "flex", gap: 8, flexWrap: "wrap" }}
-                        >
-                          {request.status === "pending" ? (
-                            <>
+                          <div
+                            style={{ display: "flex", gap: 8, flexWrap: "wrap" }}
+                          >
+                            {request.activationCode ? (
                               <button
                                 type="button"
-                                onClick={() =>
-                                  updateRequestStatus(request.id, "paid")
-                                }
+                                onClick={() => copyText(request.activationCode)}
                                 style={actionButtonStyle}
                               >
-                                Marcar pagado
+                                Copiar clave
                               </button>
+                            ) : null}
 
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  updateRequestStatus(request.id, "cancelled")
-                                }
-                                style={dangerButtonStyle}
-                              >
-                                Cancelar
-                              </button>
-                            </>
-                          ) : null}
+                            {request.status === "pending" ? (
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    updateRequestStatus(request.id, "paid")
+                                  }
+                                  style={actionButtonStyle}
+                                >
+                                  Marcar pagado
+                                </button>
 
-                          {request.status === "paid" ? (
-                            <>
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  updateRequestStatus(request.id, "activated")
-                                }
-                                style={primaryButtonStyle}
-                              >
-                                Activar acceso
-                              </button>
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    updateRequestStatus(request.id, "cancelled")
+                                  }
+                                  style={dangerButtonStyle}
+                                >
+                                  Cancelar
+                                </button>
+                              </>
+                            ) : null}
 
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  updateRequestStatus(request.id, "cancelled")
-                                }
-                                style={dangerButtonStyle}
-                              >
-                                Cancelar
-                              </button>
-                            </>
-                          ) : null}
+                            {request.status === "paid" ? (
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    updateRequestStatus(request.id, "activated")
+                                  }
+                                  style={primaryButtonStyle}
+                                >
+                                  Activar acceso
+                                </button>
 
-                          {request.status === "activated" ? (
-                            <span style={{ color: "#166534", fontWeight: 900 }}>
-                              Activo
-                            </span>
-                          ) : null}
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    updateRequestStatus(request.id, "cancelled")
+                                  }
+                                  style={dangerButtonStyle}
+                                >
+                                  Cancelar
+                                </button>
+                              </>
+                            ) : null}
 
-                          {request.status === "cancelled" ? (
-                            <span style={{ color: "#991b1b", fontWeight: 900 }}>
-                              Cancelado
-                            </span>
-                          ) : null}
+                            {request.status === "activated" ? (
+                              <span style={{ color: "#166534", fontWeight: 900 }}>
+                                Solicitud activada
+                              </span>
+                            ) : null}
+
+                            {request.status === "cancelled" ? (
+                              <span style={{ color: "#991b1b", fontWeight: 900 }}>
+                                Solicitud cancelada
+                              </span>
+                            ) : null}
+                          </div>
                         </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+                      </div>
+                    ) : null}
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>
       </section>
     </main>
+  );
+}
+
+function DetailItem({ label, value }: { label: string; value: string }) {
+  return (
+    <div style={detailItemStyle}>
+      <div style={detailLabelStyle}>{label}</div>
+      <div style={detailValueStyle}>{value}</div>
+    </div>
   );
 }
 
@@ -817,20 +814,267 @@ const metricValueStyle: React.CSSProperties = {
   marginTop: 4,
 };
 
-const thStyle: React.CSSProperties = {
-  textAlign: "left",
-  padding: "12px 10px",
+const labelStyle: React.CSSProperties = {
+  display: "block",
+  fontSize: 14,
+  fontWeight: 800,
   color: "#374151",
-  fontSize: 13,
-  fontWeight: 900,
-  whiteSpace: "nowrap",
+  marginBottom: 6,
 };
 
-const tdStyle: React.CSSProperties = {
-  padding: "12px 10px",
+const inputStyle: React.CSSProperties = {
+  width: "100%",
+  boxSizing: "border-box",
+  border: "1px solid #d1d5db",
+  borderRadius: 12,
+  padding: "12px 14px",
+  fontSize: 16,
+  outline: "none",
+};
+
+const searchInputStyle: React.CSSProperties = {
+  ...inputStyle,
+  maxWidth: 460,
+};
+
+const topNavStyle: React.CSSProperties = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  gap: 12,
+  flexWrap: "wrap",
+  marginBottom: 16,
+};
+
+const navLinkStyle: React.CSSProperties = {
+  display: "inline-flex",
   color: "#111827",
-  verticalAlign: "top",
-  whiteSpace: "nowrap",
+  textDecoration: "none",
+  fontSize: 14,
+  fontWeight: 700,
+};
+
+const navLinkStrongStyle: React.CSSProperties = {
+  ...navLinkStyle,
+  fontWeight: 900,
+};
+
+const heroHeaderStyle: React.CSSProperties = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "flex-start",
+  gap: 12,
+  flexWrap: "wrap",
+};
+
+const infoBoxStyle: React.CSSProperties = {
+  marginTop: 14,
+  border: "1px solid #bfdbfe",
+  background: "#eff6ff",
+  color: "#1e3a8a",
+  borderRadius: 14,
+  padding: 12,
+  fontSize: 14,
+  fontWeight: 800,
+  lineHeight: 1.4,
+};
+
+const infoLinkStyle: React.CSSProperties = {
+  color: "#1d4ed8",
+  fontWeight: 900,
+  textDecoration: "underline",
+};
+
+const metricsGridStyle: React.CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+  gap: 12,
+  marginBottom: 16,
+};
+
+const panelStyle: React.CSSProperties = {
+  background: "white",
+  border: "1px solid #e5e7eb",
+  borderRadius: 18,
+  overflow: "hidden",
+};
+
+const panelHeaderStyle: React.CSSProperties = {
+  padding: 14,
+  borderBottom: "1px solid #e5e7eb",
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  gap: 12,
+  flexWrap: "wrap",
+};
+
+const toolbarStyle: React.CSSProperties = {
+  padding: 14,
+  borderBottom: "1px solid #e5e7eb",
+  display: "flex",
+  gap: 12,
+  flexWrap: "wrap",
+  alignItems: "center",
+  justifyContent: "space-between",
+};
+
+const filtersStyle: React.CSSProperties = {
+  display: "flex",
+  gap: 8,
+  flexWrap: "wrap",
+};
+
+const filterButtonStyle: React.CSSProperties = {
+  border: "1px solid #e5e7eb",
+  background: "white",
+  color: "#374151",
+  borderRadius: 999,
+  padding: "8px 10px",
+  fontSize: 12,
+  fontWeight: 900,
+  cursor: "pointer",
+};
+
+const activeFilterButtonStyle: React.CSSProperties = {
+  ...filterButtonStyle,
+  border: "1px solid #111827",
+  background: "#111827",
+  color: "white",
+};
+
+const compactHeaderStyle: React.CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "70px 1.25fr 110px 1.15fr 1fr 1.3fr 1fr 90px",
+  gap: 10,
+  padding: "12px 14px",
+  background: "#f9fafb",
+  borderBottom: "1px solid #e5e7eb",
+  color: "#374151",
+  fontSize: 12,
+  fontWeight: 900,
+  minWidth: 980,
+};
+
+const compactRowStyle: React.CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "70px 1.25fr 110px 1.15fr 1fr 1.3fr 1fr 90px",
+  gap: 10,
+  padding: "14px",
+  alignItems: "center",
+  minWidth: 980,
+};
+
+const rowCardStyle: React.CSSProperties = {
+  borderBottom: "1px solid #e5e7eb",
+  overflowX: "auto",
+};
+
+const cellStyle: React.CSSProperties = {
+  minWidth: 0,
+  color: "#111827",
+  fontSize: 14,
+};
+
+const cellStrongStyle: React.CSSProperties = {
+  fontWeight: 900,
+};
+
+const mutedSmallStyle: React.CSSProperties = {
+  color: "#6b7280",
+  marginTop: 3,
+  fontSize: 12,
+};
+
+const warningPillStyle: React.CSSProperties = {
+  display: "inline-flex",
+  marginTop: 6,
+  borderRadius: 999,
+  padding: "4px 7px",
+  background: "#fef3c7",
+  color: "#92400e",
+  fontSize: 11,
+  fontWeight: 900,
+};
+
+const detailsBoxStyle: React.CSSProperties = {
+  padding: 14,
+  background: "#f9fafb",
+  borderTop: "1px solid #e5e7eb",
+};
+
+const userLikeDetailsGridStyle: React.CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(230px, 1fr))",
+  gap: 14,
+};
+
+const detailBlockStyle: React.CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "1fr",
+  gap: 10,
+  alignContent: "start",
+};
+
+const detailItemStyle: React.CSSProperties = {
+  minWidth: 0,
+};
+
+const detailLabelStyle: React.CSSProperties = {
+  color: "#6b7280",
+  fontSize: 12,
+  fontWeight: 900,
+  marginBottom: 4,
+};
+
+const detailValueStyle: React.CSSProperties = {
+  color: "#111827",
+  fontSize: 13,
+  fontWeight: 900,
+  overflowWrap: "anywhere",
+  lineHeight: 1.35,
+};
+
+const noticeStyle: React.CSSProperties = {
+  marginTop: 14,
+  border: "1px solid #e5e7eb",
+  background: "white",
+  borderRadius: 12,
+  padding: 12,
+  color: "#374151",
+  fontSize: 13,
+  fontWeight: 800,
+  lineHeight: 1.4,
+};
+
+const actionsAreaStyle: React.CSSProperties = {
+  marginTop: 14,
+  background: "white",
+  border: "1px solid #e5e7eb",
+  borderRadius: 12,
+  padding: 12,
+};
+
+const sectionTitleStyle: React.CSSProperties = {
+  fontWeight: 900,
+  color: "#111827",
+  marginBottom: 10,
+};
+
+const emptyStateStyle: React.CSSProperties = {
+  padding: 18,
+  color: "#6b7280",
+};
+
+const errorBoxStyle: React.CSSProperties = {
+  margin: 14,
+  border: "1px solid #fecaca",
+  background: "#fef2f2",
+  borderRadius: 12,
+  padding: 12,
+  color: "#991b1b",
+  fontWeight: 700,
+  fontSize: 14,
 };
 
 const actionButtonStyle: React.CSSProperties = {
