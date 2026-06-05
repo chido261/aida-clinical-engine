@@ -111,6 +111,60 @@ function getStatusLabel(status: string) {
   return status || "—";
 }
 
+function getAccessActionLabels({
+  paymentId,
+  autoSuccess,
+  payment,
+}: {
+  paymentId: string | null;
+  autoSuccess: Extract<AutoActivationResponse, { ok: true }> | null;
+  payment: Extract<PaymentStatusResponse, { ok: true }>["payment"] | null;
+}) {
+  if (!paymentId) {
+    return {
+      badge: "Activación de acceso",
+      title: "Activa tu clave de AIDA",
+      description:
+        "Ingresa el celular con el que realizaste tu pago y tu clave de activación.",
+      successTitle: "Acceso activado correctamente",
+      successMessage: "Tu clave quedó vinculada a este dispositivo.",
+      loadingText: "Cargando activación...",
+      autoLoadingText: "Activando acceso automático...",
+    };
+  }
+
+  const startedAt = autoSuccess?.fullStartedAt ?? payment?.activationFullStartedAt;
+  const paymentCreatedAt = payment?.createdAt ?? null;
+
+  const isExtension = Boolean(payment?.activationCodeId) && Number(payment?.id ?? 0) > 1;
+
+  if (isExtension) {
+    return {
+      badge: "Extensión de acceso",
+      title: "Confirmando la extensión de tu cuenta",
+      description:
+        "Estamos verificando tu pago y extendiendo la vigencia de tu cuenta en este dispositivo.",
+      successTitle: "Cuenta extendida automáticamente",
+      successMessage:
+        "Tu pago fue confirmado y los días se sumaron a la vigencia de tu cuenta.",
+      loadingText: "Cargando extensión...",
+      autoLoadingText: "Extendiendo acceso automáticamente...",
+    };
+  }
+
+  return {
+    badge: "Activación de acceso",
+    title: "Confirmando tu acceso",
+    description:
+      "Estamos verificando tu pago y activando tu cuenta automáticamente en este dispositivo.",
+    successTitle: "Acceso activado automáticamente",
+    successMessage:
+      "Tu pago fue confirmado y tu cuenta completa quedó vinculada a este dispositivo.",
+    loadingText: "Cargando activación...",
+    autoLoadingText: "Activando acceso automático...",
+  };
+}
+
 export default function PagoActivarPage() {
   return (
     <Suspense fallback={<PagoActivarFallback />}>
@@ -123,7 +177,7 @@ function PagoActivarFallback() {
   return (
     <main style={pageStyle}>
       <section style={{ maxWidth: 760, margin: "0 auto" }}>
-        <div style={cardStyle}>Cargando activación...</div>
+        <div style={cardStyle}>Cargando acceso...</div>
       </section>
     </main>
   );
@@ -153,6 +207,12 @@ function PagoActivarContent() {
   const [autoSuccess, setAutoSuccess] = useState<
     Extract<AutoActivationResponse, { ok: true }> | null
   >(null);
+
+  const actionLabels = getAccessActionLabels({
+    paymentId,
+    autoSuccess,
+    payment,
+  });
 
   const effectivePlanLabel = payment?.plan
     ? normalizePlan(payment.plan)
@@ -353,7 +413,8 @@ function PagoActivarContent() {
     submitActivation(false);
   }
 
-  const shouldShowManualForm = !paymentId || (!autoSuccess && autoAttempted && payment?.status !== "approved");
+  const shouldShowManualForm =
+    !paymentId || (!autoSuccess && autoAttempted && payment?.status !== "approved");
 
   return (
     <main style={pageStyle}>
@@ -363,16 +424,14 @@ function PagoActivarContent() {
         </a>
 
         <div style={cardStyle}>
-          <div style={badgeStyle}>Activación de acceso</div>
+          <div style={badgeStyle}>{actionLabels.badge}</div>
 
           <h1 style={titleStyle}>
-            {paymentId ? "Confirmando tu acceso" : "Activa tu clave de AIDA"}
+            {paymentId ? actionLabels.title : "Activa tu clave de AIDA"}
           </h1>
 
           <p style={paragraphStyle}>
-            {paymentId
-              ? "Estamos verificando tu pago y activando tu cuenta automáticamente en este dispositivo."
-              : "Ingresa el celular con el que realizaste tu pago y tu clave de activación."}
+            {paymentId ? actionLabels.description : actionLabels.description}
           </p>
 
           {paymentId ? (
@@ -420,7 +479,7 @@ function PagoActivarContent() {
               )}
 
               {isAutoActivating ? (
-                <div style={infoBoxStyle}>Activando acceso automático...</div>
+                <div style={infoBoxStyle}>{actionLabels.autoLoadingText}</div>
               ) : null}
 
               {paymentError ? (
@@ -473,8 +532,8 @@ function PagoActivarContent() {
 
           {autoSuccess ? (
             <SuccessBox
-              title="Acceso activado automáticamente"
-              message="Tu pago fue confirmado y tu cuenta completa quedó vinculada a este dispositivo."
+              title={actionLabels.successTitle}
+              message={actionLabels.successMessage}
               plan={autoSuccess.plan}
               fullStartedAt={autoSuccess.fullStartedAt}
               fullEndsAt={autoSuccess.fullEndsAt}
@@ -574,7 +633,7 @@ function PagoActivarContent() {
             </form>
           ) : (
             <div style={infoBoxStyle}>
-              Si tu pago ya fue aprobado, la activación se realizará
+              Si tu pago ya fue aprobado, el acceso se actualizará
               automáticamente. Si tarda más de unos segundos, actualiza esta
               página.
             </div>
