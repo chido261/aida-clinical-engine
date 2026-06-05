@@ -69,16 +69,26 @@ export async function GET(req: Request) {
       ok: true,
       payment: {
         id: payment.id,
+        provider: payment.provider,
+        providerPaymentId: payment.providerPaymentId,
+        providerRef: payment.providerRef,
         status: payment.status,
         plan: payment.plan,
         amount: payment.amount,
         currency: payment.currency,
         durationDays: payment.durationDays,
         phoneMasked: maskPhone(payment.phoneE164),
+        deviceId: payment.deviceId,
         approvedAt: payment.approvedAt,
         createdAt: payment.createdAt,
+        updatedAt: payment.updatedAt,
+
+        activationCodeId: payment.activationCodeId,
         activationCode: activationCode?.code ?? null,
+        activationStatus: activationCode?.status ?? null,
+        activationFullStartedAt: activationCode?.fullStartedAt ?? null,
         activationFullEndsAt: activationCode?.fullEndsAt ?? null,
+        activationCurrentDeviceId: activationCode?.currentDeviceId ?? null,
       },
     });
   } catch (err: any) {
