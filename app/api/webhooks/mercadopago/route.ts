@@ -147,6 +147,7 @@ export async function POST(request: Request) {
       phone: existingPayment.phoneE164,
       planId: existingPayment.plan,
       paymentId: existingPayment.id,
+      deviceId: existingPayment.deviceId,
     });
 
     await prisma.payment.update({
