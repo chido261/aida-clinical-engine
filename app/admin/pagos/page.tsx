@@ -25,6 +25,14 @@ type Payment = {
   activationCurrentDeviceId: string | null;
 };
 
+type PaymentFilter =
+  | "all"
+  | "approved"
+  | "pending"
+  | "failed"
+  | "with_code"
+  | "without_code";
+
 const ADMIN_KEY_STORAGE = "aida_admin_key_v1";
 
 function formatMoneyCents(value: number, currency = "MXN") {
@@ -48,6 +56,18 @@ function formatDate(value: string | null) {
   }
 }
 
+function formatShortDate(value: string | null) {
+  if (!value) return "—";
+
+  try {
+    return new Intl.DateTimeFormat("es-MX", {
+      dateStyle: "medium",
+    }).format(new Date(value));
+  } catch {
+    return value;
+  }
+}
+
 function getPlanLabel(plan: string) {
   if (plan === "mensual") return "Mensual";
   if (plan === "3-meses") return "3 meses";
@@ -65,22 +85,33 @@ function getStatusLabel(status: string) {
   return status || "—";
 }
 
-function getStatusStyle(status: string) {
+function isPendingStatus(status: string) {
+  return status === "created" || status === "pending";
+}
+
+function isFailedStatus(status: string) {
+  return status === "rejected" || status === "cancelled" || status === "refunded";
+}
+
+function getStatusBadgeStyle(status: string): React.CSSProperties {
   if (status === "approved") {
     return {
+      ...statusBadgeStyle,
       background: "#dcfce7",
       color: "#166534",
     };
   }
 
-  if (status === "rejected" || status === "cancelled" || status === "refunded") {
+  if (isFailedStatus(status)) {
     return {
+      ...statusBadgeStyle,
       background: "#fee2e2",
       color: "#991b1b",
     };
   }
 
   return {
+    ...statusBadgeStyle,
     background: "#fef3c7",
     color: "#92400e",
   };
@@ -92,6 +123,11 @@ export default function AdminPagosPage() {
   const [isAuthorized, setIsAuthorized] = useState(false);
   const [adminKey, setAdminKey] = useState("");
   const [error, setError] = useState("");
+  const [searchText, setSearchText] = useState("");
+  const [paymentFilter, setPaymentFilter] = useState<PaymentFilter>("all");
+  const [expandedPaymentId, setExpandedPaymentId] = useState<number | null>(
+    null
+  );
 
   const totalApproved = useMemo(
     () => payments.filter((payment) => payment.status === "approved").length,
@@ -99,10 +135,7 @@ export default function AdminPagosPage() {
   );
 
   const totalPending = useMemo(
-    () =>
-      payments.filter(
-        (payment) => payment.status === "created" || payment.status === "pending"
-      ).length,
+    () => payments.filter((payment) => isPendingStatus(payment.status)).length,
     [payments]
   );
 
@@ -113,6 +146,48 @@ export default function AdminPagosPage() {
         .reduce((sum, payment) => sum + payment.amount, 0),
     [payments]
   );
+
+  const filteredPayments = useMemo(() => {
+    const cleanSearch = searchText.trim().toLowerCase();
+
+    return payments.filter((payment) => {
+      const matchesFilter =
+        paymentFilter === "all"
+          ? true
+          : paymentFilter === "approved"
+            ? payment.status === "approved"
+            : paymentFilter === "pending"
+              ? isPendingStatus(payment.status)
+              : paymentFilter === "failed"
+                ? isFailedStatus(payment.status)
+                : paymentFilter === "with_code"
+                  ? Boolean(payment.activationCode)
+                  : !payment.activationCode;
+
+      const searchableText = [
+        payment.id,
+        payment.provider,
+        payment.providerPaymentId,
+        payment.providerRef,
+        payment.status,
+        payment.plan,
+        payment.phoneE164,
+        payment.deviceId,
+        payment.activationCode,
+        payment.activationCodeId,
+        payment.activationCurrentDeviceId,
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+
+      const matchesSearch = cleanSearch
+        ? searchableText.includes(cleanSearch)
+        : true;
+
+      return matchesFilter && matchesSearch;
+    });
+  }, [payments, searchText, paymentFilter]);
 
   function getSavedAdminKey() {
     if (typeof window === "undefined") return "";
@@ -135,6 +210,16 @@ export default function AdminPagosPage() {
     return {
       "x-aida-admin-key": key,
     };
+  }
+
+  async function copyText(value: string | number | null | undefined) {
+    if (value === null || value === undefined || value === "") return;
+
+    try {
+      await navigator.clipboard.writeText(String(value));
+    } catch {
+      setError("No se pudo copiar al portapapeles.");
+    }
   }
 
   async function loadPayments(keyOverride?: string) {
@@ -216,16 +301,7 @@ export default function AdminPagosPage() {
             </p>
 
             <form onSubmit={handleAdminLogin} style={{ marginTop: 18 }}>
-              <label
-                htmlFor="adminKey"
-                style={{
-                  display: "block",
-                  fontSize: 14,
-                  fontWeight: 800,
-                  color: "#374151",
-                  marginBottom: 6,
-                }}
-              >
+              <label htmlFor="adminKey" style={labelStyle}>
                 Clave admin
               </label>
 
@@ -235,15 +311,7 @@ export default function AdminPagosPage() {
                 value={adminKey}
                 onChange={(event) => setAdminKey(event.target.value)}
                 placeholder="Escribe tu clave"
-                style={{
-                  width: "100%",
-                  boxSizing: "border-box",
-                  border: "1px solid #d1d5db",
-                  borderRadius: 12,
-                  padding: "12px 14px",
-                  fontSize: 16,
-                  outline: "none",
-                }}
+                style={inputStyle}
               />
 
               {error ? <div style={errorBoxStyle}>{error}</div> : null}
@@ -277,18 +345,9 @@ export default function AdminPagosPage() {
     <main style={pageStyle}>
       <section style={{ maxWidth: 1200, margin: "0 auto" }}>
         <div style={{ marginBottom: 18 }}>
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              gap: 12,
-              flexWrap: "wrap",
-              marginBottom: 16,
-            }}
-          >
+          <div style={topNavStyle}>
             <a href="/pago" style={topLinkStyle}>
-              ← Volver a pagos
+              ← Volver a página de pagos
             </a>
 
             <div style={{ display: "flex", gap: 14, flexWrap: "wrap" }}>
@@ -303,27 +362,23 @@ export default function AdminPagosPage() {
           </div>
 
           <div style={cardStyle}>
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "flex-start",
-                gap: 12,
-                flexWrap: "wrap",
-              }}
-            >
+            <div style={heroHeaderStyle}>
               <div>
                 <div style={badgeStyle}>Panel admin</div>
 
                 <h1 style={titleStyle}>Pagos Mercado Pago</h1>
 
                 <p style={paragraphStyle}>
-                  Aquí puedes revisar pagos, estatus, teléfono, plan y clave
-                  generada o renovada.
+                  Vista operativa de pagos automáticos, claves generadas,
+                  renovaciones y vigencias.
                 </p>
               </div>
 
-              <button type="button" onClick={handleLogout} style={dangerButtonStyle}>
+              <button
+                type="button"
+                onClick={handleLogout}
+                style={dangerButtonStyle}
+              >
                 Cerrar acceso
               </button>
             </div>
@@ -354,11 +409,14 @@ export default function AdminPagosPage() {
           </div>
         </div>
 
-        {error ? <div style={errorBoxStyle}>{error}</div> : null}
-
-        <div style={tableCardStyle}>
-          <div style={tableHeaderStyle}>
-            <div style={{ fontWeight: 900 }}>Últimos pagos</div>
+        <div style={panelStyle}>
+          <div style={panelHeaderStyle}>
+            <div>
+              <div style={{ fontWeight: 900 }}>Listado de pagos</div>
+              <div style={{ color: "#6b7280", fontSize: 13, marginTop: 3 }}>
+                Mostrando {filteredPayments.length} de {payments.length} pagos
+              </div>
+            </div>
 
             <button
               type="button"
@@ -370,122 +428,287 @@ export default function AdminPagosPage() {
             </button>
           </div>
 
-          <div style={{ overflowX: "auto" }}>
-            <table
-              style={{
-                width: "100%",
-                borderCollapse: "collapse",
-                minWidth: 1180,
-              }}
-            >
-              <thead>
-                <tr style={{ background: "#f9fafb" }}>
-                  <th style={thStyle}>Pago</th>
-                  <th style={thStyle}>Mercado Pago</th>
-                  <th style={thStyle}>Celular</th>
-                  <th style={thStyle}>Plan</th>
-                  <th style={thStyle}>Monto</th>
-                  <th style={thStyle}>Estado</th>
-                  <th style={thStyle}>Clave</th>
-                  <th style={thStyle}>Vigencia</th>
-                  <th style={thStyle}>Fechas</th>
-                </tr>
-              </thead>
+          <div style={toolbarStyle}>
+            <input
+              type="search"
+              value={searchText}
+              onChange={(event) => setSearchText(event.target.value)}
+              placeholder="Buscar por celular, clave, pago o referencia..."
+              style={searchInputStyle}
+            />
 
-              <tbody>
-                {payments.length ? (
-                  payments.map((payment) => (
-                    <tr key={payment.id} style={{ borderTop: "1px solid #e5e7eb" }}>
-                      <td style={tdStyle}>
-                        <div style={strongStyle}>#{payment.id}</div>
-                        <div style={mutedStyle}>{payment.provider}</div>
-                      </td>
+            <div style={filtersStyle}>
+              {[
+                ["all", "Todos"],
+                ["approved", "Aprobados"],
+                ["pending", "Pendientes"],
+                ["failed", "Fallidos"],
+                ["with_code", "Con clave"],
+                ["without_code", "Sin clave"],
+              ].map(([value, label]) => (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => setPaymentFilter(value as PaymentFilter)}
+                  style={
+                    paymentFilter === value
+                      ? activeFilterButtonStyle
+                      : filterButtonStyle
+                  }
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
 
-                      <td style={tdStyle}>
-                        <div style={strongStyle}>
-                          {payment.providerPaymentId ?? "—"}
-                        </div>
-                        <div style={mutedStyle}>
-                          Ref: {payment.providerRef ?? "—"}
-                        </div>
-                      </td>
+          {error ? <div style={errorBoxStyle}>{error}</div> : null}
 
-                      <td style={tdStyle}>
-                        <div style={strongStyle}>{payment.phoneE164}</div>
-                        <div style={mutedStyle}>
-                          Device: {payment.deviceId ?? "—"}
-                        </div>
-                      </td>
+          {isLoading ? (
+            <div style={emptyStateStyle}>Cargando pagos...</div>
+          ) : payments.length === 0 ? (
+            <div style={emptyStateStyle}>No hay pagos registrados.</div>
+          ) : filteredPayments.length === 0 ? (
+            <div style={emptyStateStyle}>
+              No hay pagos que coincidan con la búsqueda o filtro.
+            </div>
+          ) : (
+            <div>
+              <div style={compactHeaderStyle}>
+                <div>Pago</div>
+                <div>Estado</div>
+                <div>Celular</div>
+                <div>Plan</div>
+                <div>Monto</div>
+                <div>Clave</div>
+                <div>Fecha</div>
+                <div>Detalles</div>
+              </div>
 
-                      <td style={tdStyle}>
-                        <div style={strongStyle}>{getPlanLabel(payment.plan)}</div>
-                        <div style={mutedStyle}>{payment.durationDays} días</div>
-                      </td>
+              {filteredPayments.map((payment) => {
+                const isExpanded = expandedPaymentId === payment.id;
 
-                      <td style={tdStyle}>
-                        <div style={strongStyle}>
-                          {formatMoneyCents(payment.amount, payment.currency)}
-                        </div>
-                        <div style={mutedStyle}>{payment.currency}</div>
-                      </td>
+                return (
+                  <div key={payment.id} style={rowCardStyle}>
+                    <div style={compactRowStyle}>
+                      <div style={cellStyle}>
+                        <div style={cellStrongStyle}>#{payment.id}</div>
+                        <div style={mutedSmallStyle}>{payment.provider}</div>
+                      </div>
 
-                      <td style={tdStyle}>
-                        <span
-                          style={{
-                            ...statusBadgeStyle,
-                            ...getStatusStyle(payment.status),
-                          }}
-                        >
+                      <div style={cellStyle}>
+                        <span style={getStatusBadgeStyle(payment.status)}>
                           {getStatusLabel(payment.status)}
                         </span>
-                      </td>
+                      </div>
 
-                      <td style={tdStyle}>
-                        <div style={strongStyle}>
+                      <div style={cellStyle}>
+                        <div style={cellStrongStyle}>{payment.phoneE164}</div>
+                        <div style={ellipsisStyle}>{payment.deviceId ?? "—"}</div>
+                      </div>
+
+                      <div style={cellStyle}>
+                        <div style={cellStrongStyle}>
+                          {getPlanLabel(payment.plan)}
+                        </div>
+                        <div style={mutedSmallStyle}>
+                          {payment.durationDays} días
+                        </div>
+                      </div>
+
+                      <div style={cellStyle}>
+                        <div style={cellStrongStyle}>
+                          {formatMoneyCents(payment.amount, payment.currency)}
+                        </div>
+                        <div style={mutedSmallStyle}>{payment.currency}</div>
+                      </div>
+
+                      <div style={cellStyle}>
+                        <div style={cellStrongStyle}>
                           {payment.activationCode ?? "—"}
                         </div>
-                        <div style={mutedStyle}>
+                        <div style={mutedSmallStyle}>
                           {payment.activationCodeId
                             ? `ID: ${payment.activationCodeId}`
-                            : "Sin clave vinculada"}
+                            : "Sin clave"}
                         </div>
-                      </td>
+                      </div>
 
-                      <td style={tdStyle}>
-                        <div>
-                          <strong>Inicio:</strong>{" "}
-                          {formatDate(payment.activationFullStartedAt)}
-                        </div>
-                        <div style={mutedStyle}>
-                          <strong>Vence:</strong>{" "}
-                          {formatDate(payment.activationFullEndsAt)}
-                        </div>
-                      </td>
+                      <div style={cellStyle}>
+                        {formatShortDate(payment.createdAt)}
+                      </div>
 
-                      <td style={tdStyle}>
-                        <div>
-                          <strong>Creado:</strong> {formatDate(payment.createdAt)}
+                      <div style={cellStyle}>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setExpandedPaymentId(isExpanded ? null : payment.id)
+                          }
+                          style={actionButtonStyle}
+                        >
+                          {isExpanded ? "Ocultar" : "Detalles"}
+                        </button>
+                      </div>
+                    </div>
+
+                    {isExpanded ? (
+                      <div style={detailsBoxStyle}>
+                        <div style={userLikeDetailsGridStyle}>
+                          <div style={detailBlockStyle}>
+                            <DetailItem label="Pago interno" value={`#${payment.id}`} />
+                            <DetailItem
+                              label="Proveedor"
+                              value={payment.provider || "—"}
+                            />
+                            <DetailItem
+                              label="Estado pago"
+                              value={getStatusLabel(payment.status)}
+                            />
+                          </div>
+
+                          <div style={detailBlockStyle}>
+                            <DetailItem
+                              label="ID Mercado Pago"
+                              value={payment.providerPaymentId ?? "—"}
+                            />
+                            <DetailItem
+                              label="Referencia"
+                              value={payment.providerRef ?? "—"}
+                            />
+                            <DetailItem
+                              label="Celular"
+                              value={payment.phoneE164 || "—"}
+                            />
+                          </div>
+
+                          <div style={detailBlockStyle}>
+                            <DetailItem
+                              label="Clave"
+                              value={payment.activationCode ?? "—"}
+                            />
+                            <DetailItem
+                              label="ID clave"
+                              value={
+                                payment.activationCodeId
+                                  ? String(payment.activationCodeId)
+                                  : "—"
+                              }
+                            />
+                            <DetailItem
+                              label="Estado clave"
+                              value={payment.activationStatus ?? "—"}
+                            />
+                          </div>
+
+                          <div style={detailBlockStyle}>
+                            <DetailItem
+                              label="Plan"
+                              value={`${getPlanLabel(payment.plan)} · ${
+                                payment.durationDays
+                              } días`}
+                            />
+                            <DetailItem
+                              label="Monto"
+                              value={`${formatMoneyCents(
+                                payment.amount,
+                                payment.currency
+                              )} ${payment.currency}`}
+                            />
+                            <DetailItem
+                              label="Device ID"
+                              value={payment.deviceId ?? "—"}
+                            />
+                          </div>
+
+                          <div style={detailBlockStyle}>
+                            <DetailItem
+                              label="Creado"
+                              value={formatDate(payment.createdAt)}
+                            />
+                            <DetailItem
+                              label="Actualizado"
+                              value={formatDate(payment.updatedAt)}
+                            />
+                            <DetailItem
+                              label="Aprobado"
+                              value={formatDate(payment.approvedAt)}
+                            />
+                          </div>
+
+                          <div style={detailBlockStyle}>
+                            <DetailItem
+                              label="Inicio vigencia"
+                              value={formatDate(payment.activationFullStartedAt)}
+                            />
+                            <DetailItem
+                              label="Fin vigencia"
+                              value={formatDate(payment.activationFullEndsAt)}
+                            />
+                            <DetailItem
+                              label="Dispositivo activo"
+                              value={payment.activationCurrentDeviceId ?? "—"}
+                            />
+                          </div>
                         </div>
-                        <div style={mutedStyle}>
-                          <strong>Aprobado:</strong>{" "}
-                          {formatDate(payment.approvedAt)}
+
+                        <div style={actionsAreaStyle}>
+                          <div style={sectionTitleStyle}>Acciones rápidas</div>
+
+                          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                            <button
+                              type="button"
+                              onClick={() => copyText(payment.providerPaymentId)}
+                              style={actionButtonStyle}
+                            >
+                              Copiar ID Mercado Pago
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => copyText(payment.providerRef)}
+                              style={actionButtonStyle}
+                            >
+                              Copiar referencia
+                            </button>
+
+                            {payment.activationCode ? (
+                              <button
+                                type="button"
+                                onClick={() => copyText(payment.activationCode)}
+                                style={actionButtonStyle}
+                              >
+                                Copiar clave
+                              </button>
+                            ) : null}
+
+                            <button
+                              type="button"
+                              onClick={() => copyText(payment.phoneE164)}
+                              style={actionButtonStyle}
+                            >
+                              Copiar celular
+                            </button>
+                          </div>
                         </div>
-                      </td>
-                    </tr>
-                  ))
-                ) : (
-                  <tr>
-                    <td style={tdStyle} colSpan={9}>
-                      No hay pagos registrados.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
+                      </div>
+                    ) : null}
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       </section>
     </main>
+  );
+}
+
+function DetailItem({ label, value }: { label: string; value: string }) {
+  return (
+    <div style={detailItemStyle}>
+      <div style={detailLabelStyle}>{label}</div>
+      <div style={detailValueStyle}>{value}</div>
+    </div>
   );
 }
 
@@ -495,6 +718,8 @@ const pageStyle: React.CSSProperties = {
   color: "#111827",
   padding: "32px 18px",
   boxSizing: "border-box",
+  fontFamily:
+    'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
 };
 
 const cardStyle: React.CSSProperties = {
@@ -538,12 +763,52 @@ const paragraphStyle: React.CSSProperties = {
   lineHeight: 1.5,
 };
 
+const labelStyle: React.CSSProperties = {
+  display: "block",
+  fontSize: 14,
+  fontWeight: 800,
+  color: "#374151",
+  marginBottom: 6,
+};
+
+const inputStyle: React.CSSProperties = {
+  width: "100%",
+  boxSizing: "border-box",
+  border: "1px solid #d1d5db",
+  borderRadius: 12,
+  padding: "12px 14px",
+  fontSize: 16,
+  outline: "none",
+};
+
+const searchInputStyle: React.CSSProperties = {
+  ...inputStyle,
+  maxWidth: 460,
+};
+
+const topNavStyle: React.CSSProperties = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  gap: 12,
+  flexWrap: "wrap",
+  marginBottom: 16,
+};
+
 const topLinkStyle: React.CSSProperties = {
   display: "inline-flex",
   color: "#111827",
   textDecoration: "none",
   fontSize: 14,
   fontWeight: 900,
+};
+
+const heroHeaderStyle: React.CSSProperties = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "flex-start",
+  gap: 12,
+  flexWrap: "wrap",
 };
 
 const metricsGridStyle: React.CSSProperties = {
@@ -565,45 +830,105 @@ const metricValueStyle: React.CSSProperties = {
   fontWeight: 900,
 };
 
-const tableCardStyle: React.CSSProperties = {
+const panelStyle: React.CSSProperties = {
   background: "white",
   border: "1px solid #e5e7eb",
   borderRadius: 18,
   overflow: "hidden",
 };
 
-const tableHeaderStyle: React.CSSProperties = {
+const panelHeaderStyle: React.CSSProperties = {
   padding: 14,
   borderBottom: "1px solid #e5e7eb",
   display: "flex",
   justifyContent: "space-between",
   alignItems: "center",
   gap: 12,
+  flexWrap: "wrap",
 };
 
-const thStyle: React.CSSProperties = {
-  textAlign: "left",
-  padding: "12px 14px",
-  fontSize: 13,
+const toolbarStyle: React.CSSProperties = {
+  padding: 14,
+  borderBottom: "1px solid #e5e7eb",
+  display: "flex",
+  gap: 12,
+  flexWrap: "wrap",
+  alignItems: "center",
+  justifyContent: "space-between",
+};
+
+const filtersStyle: React.CSSProperties = {
+  display: "flex",
+  gap: 8,
+  flexWrap: "wrap",
+};
+
+const filterButtonStyle: React.CSSProperties = {
+  border: "1px solid #e5e7eb",
+  background: "white",
   color: "#374151",
-  whiteSpace: "nowrap",
+  borderRadius: 999,
+  padding: "8px 10px",
+  fontSize: 12,
+  fontWeight: 900,
+  cursor: "pointer",
 };
 
-const tdStyle: React.CSSProperties = {
+const activeFilterButtonStyle: React.CSSProperties = {
+  ...filterButtonStyle,
+  border: "1px solid #111827",
+  background: "#111827",
+  color: "white",
+};
+
+const compactHeaderStyle: React.CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "90px 115px 1.25fr 1fr 1fr 1.25fr 1fr 90px",
+  gap: 10,
+  padding: "12px 14px",
+  background: "#f9fafb",
+  borderBottom: "1px solid #e5e7eb",
+  color: "#374151",
+  fontSize: 12,
+  fontWeight: 900,
+  minWidth: 980,
+};
+
+const compactRowStyle: React.CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "90px 115px 1.25fr 1fr 1fr 1.25fr 1fr 90px",
+  gap: 10,
   padding: "14px",
-  verticalAlign: "top",
-  fontSize: 14,
-  color: "#111827",
+  alignItems: "center",
+  minWidth: 980,
 };
 
-const strongStyle: React.CSSProperties = {
+const rowCardStyle: React.CSSProperties = {
+  borderBottom: "1px solid #e5e7eb",
+  overflowX: "auto",
+};
+
+const cellStyle: React.CSSProperties = {
+  minWidth: 0,
+  color: "#111827",
+  fontSize: 14,
+};
+
+const cellStrongStyle: React.CSSProperties = {
   fontWeight: 900,
 };
 
-const mutedStyle: React.CSSProperties = {
-  marginTop: 6,
+const mutedSmallStyle: React.CSSProperties = {
   color: "#6b7280",
-  fontSize: 13,
+  marginTop: 3,
+  fontSize: 12,
+};
+
+const ellipsisStyle: React.CSSProperties = {
+  ...mutedSmallStyle,
+  overflow: "hidden",
+  textOverflow: "ellipsis",
+  whiteSpace: "nowrap",
 };
 
 const statusBadgeStyle: React.CSSProperties = {
@@ -613,6 +938,63 @@ const statusBadgeStyle: React.CSSProperties = {
   padding: "7px 10px",
   fontSize: 13,
   fontWeight: 900,
+};
+
+const detailsBoxStyle: React.CSSProperties = {
+  padding: 14,
+  background: "#f9fafb",
+  borderTop: "1px solid #e5e7eb",
+};
+
+const userLikeDetailsGridStyle: React.CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(230px, 1fr))",
+  gap: 14,
+};
+
+const detailBlockStyle: React.CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "1fr",
+  gap: 10,
+  alignContent: "start",
+};
+
+const detailItemStyle: React.CSSProperties = {
+  minWidth: 0,
+};
+
+const detailLabelStyle: React.CSSProperties = {
+  color: "#6b7280",
+  fontSize: 12,
+  fontWeight: 900,
+  marginBottom: 4,
+};
+
+const detailValueStyle: React.CSSProperties = {
+  color: "#111827",
+  fontSize: 13,
+  fontWeight: 900,
+  overflowWrap: "anywhere",
+  lineHeight: 1.35,
+};
+
+const actionsAreaStyle: React.CSSProperties = {
+  marginTop: 14,
+  background: "white",
+  border: "1px solid #e5e7eb",
+  borderRadius: 12,
+  padding: 12,
+};
+
+const sectionTitleStyle: React.CSSProperties = {
+  fontWeight: 900,
+  color: "#111827",
+  marginBottom: 10,
+};
+
+const emptyStateStyle: React.CSSProperties = {
+  padding: 18,
+  color: "#6b7280",
 };
 
 const dangerButtonStyle: React.CSSProperties = {
@@ -638,7 +1020,7 @@ const actionButtonStyle: React.CSSProperties = {
 };
 
 const errorBoxStyle: React.CSSProperties = {
-  marginTop: 12,
+  margin: 14,
   border: "1px solid #fecaca",
   background: "#fef2f2",
   borderRadius: 12,
