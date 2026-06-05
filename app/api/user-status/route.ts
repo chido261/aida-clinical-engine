@@ -256,6 +256,10 @@ export async function POST(req: Request) {
     return jsonOK({
       ok: true,
       ui,
+      user: {
+        name: userState?.name ?? null,
+        phoneE164: userState?.phoneE164 ?? null,
+      },
     });
   } catch (err: any) {
     console.error("API /api/user-status ERROR:", err);
