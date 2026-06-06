@@ -193,6 +193,21 @@ export async function POST(request: Request) {
 
     const baseUrl = getBaseUrl();
 
+    const localCheckoutPayload = {
+      kind: "aida_checkout",
+      plan: plan.id,
+      targetPlan: plan.id,
+      phoneE164,
+      deviceId,
+      name,
+      upgrade: isUpgrade,
+      currentPlan: pricing.currentPlan,
+      creditCents: pricing.creditCents,
+      amountCents: pricing.amountCents,
+      normalDurationDays: plan.durationDays,
+      createdAt: new Date().toISOString(),
+    };
+
     const payment = await prisma.payment.create({
       data: {
         provider: "mercadopago",
@@ -203,6 +218,7 @@ export async function POST(request: Request) {
         durationDays: plan.durationDays,
         phoneE164,
         deviceId,
+        rawPayload: JSON.stringify(localCheckoutPayload),
       },
     });
 
@@ -248,11 +264,17 @@ export async function POST(request: Request) {
       },
     });
 
+    const updatedCheckoutPayload = {
+      ...localCheckoutPayload,
+      preferenceId: mpPreference.id ? String(mpPreference.id) : null,
+    };
+
     await prisma.payment.update({
       where: { id: payment.id },
       data: {
         providerRef: mpPreference.id ? String(mpPreference.id) : null,
         status: "pending",
+        rawPayload: JSON.stringify(updatedCheckoutPayload),
       },
     });
 

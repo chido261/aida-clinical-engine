@@ -128,15 +128,12 @@ function getAccessActionLabels({
         "Ingresa el celular con el que realizaste tu pago y tu clave de activación.",
       successTitle: "Acceso activado correctamente",
       successMessage: "Tu clave quedó vinculada a este dispositivo.",
-      loadingText: "Cargando activación...",
       autoLoadingText: "Activando acceso automático...",
     };
   }
 
-  const startedAt = autoSuccess?.fullStartedAt ?? payment?.activationFullStartedAt;
-  const paymentCreatedAt = payment?.createdAt ?? null;
-
-  const isExtension = Boolean(payment?.activationCodeId) && Number(payment?.id ?? 0) > 1;
+  const isExtension =
+    Boolean(payment?.activationCodeId || autoSuccess) && Number(payment?.id ?? paymentId) > 1;
 
   if (isExtension) {
     return {
@@ -147,7 +144,6 @@ function getAccessActionLabels({
       successTitle: "Cuenta extendida automáticamente",
       successMessage:
         "Tu pago fue confirmado y los días se sumaron a la vigencia de tu cuenta.",
-      loadingText: "Cargando extensión...",
       autoLoadingText: "Extendiendo acceso automáticamente...",
     };
   }
@@ -160,7 +156,6 @@ function getAccessActionLabels({
     successTitle: "Acceso activado automáticamente",
     successMessage:
       "Tu pago fue confirmado y tu cuenta completa quedó vinculada a este dispositivo.",
-    loadingText: "Cargando activación...",
     autoLoadingText: "Activando acceso automático...",
   };
 }
@@ -214,15 +209,60 @@ function PagoActivarContent() {
     payment,
   });
 
-  const effectivePlanLabel = payment?.plan
-    ? normalizePlan(payment.plan)
-    : selectedPlanLabel;
+  const paymentView = useMemo(() => {
+    if (!payment) return null;
 
-  const effectiveCode = payment?.activationCode ?? code;
+    if (!autoSuccess) return payment;
+
+    return {
+      ...payment,
+      status: "approved",
+      activationCode: autoSuccess.code,
+      activationCodeId: payment.activationCodeId ?? 1,
+      activationFullStartedAt: autoSuccess.fullStartedAt,
+      activationFullEndsAt: autoSuccess.fullEndsAt,
+    };
+  }, [payment, autoSuccess]);
+
+  const effectivePlanLabel = paymentView?.plan
+    ? normalizePlan(paymentView.plan)
+    : autoSuccess?.plan
+      ? normalizePlan(autoSuccess.plan)
+      : selectedPlanLabel;
+
+  const effectiveCode = paymentView?.activationCode ?? autoSuccess?.code ?? code;
 
   const canSubmit = useMemo(() => {
     return phone.trim().length >= 10 && effectiveCode.trim().length >= 8;
   }, [phone, effectiveCode]);
+
+  async function refreshPaymentStatus() {
+    if (!paymentId) return;
+
+    const res = await fetch(`/api/payments/status?paymentId=${paymentId}`, {
+      cache: "no-store",
+    });
+
+    const data = (await res.json().catch(() => null)) as
+      | PaymentStatusResponse
+      | null;
+
+    if (!res.ok) {
+      throw new Error(
+        (data as any)?.error || "No se pudo consultar el estado del pago."
+      );
+    }
+
+    if (!data || !data.ok) {
+      throw new Error((data as any)?.error || "No se pudo consultar el pago.");
+    }
+
+    setPayment(data.payment);
+
+    if (data.payment.activationCode) {
+      setCode(data.payment.activationCode);
+    }
+  }
 
   async function activatePaidAccess(nextForceTransfer = false) {
     if (!paymentId || isAutoActivating) return;
@@ -276,7 +316,10 @@ function PagoActivarContent() {
       }
 
       setAutoSuccess(data);
+      setCode(data.code);
       setForceTransfer(false);
+
+      await refreshPaymentStatus().catch(() => null);
     } catch (err: any) {
       setPaymentError(
         err?.message ||
@@ -328,11 +371,7 @@ function PagoActivarContent() {
           setCode(data.payment.activationCode);
         }
 
-        if (
-          data.payment.status === "approved" &&
-          data.payment.activationCode &&
-          !autoAttempted
-        ) {
+        if (!autoAttempted) {
           await activatePaidAccess(false);
         }
       } catch (err: any) {
@@ -414,7 +453,7 @@ function PagoActivarContent() {
   }
 
   const shouldShowManualForm =
-    !paymentId || (!autoSuccess && autoAttempted && payment?.status !== "approved");
+    !paymentId || (!autoSuccess && autoAttempted && paymentView?.status !== "approved");
 
   return (
     <main style={pageStyle}>
@@ -430,9 +469,7 @@ function PagoActivarContent() {
             {paymentId ? actionLabels.title : "Activa tu clave de AIDA"}
           </h1>
 
-          <p style={paragraphStyle}>
-            {paymentId ? actionLabels.description : actionLabels.description}
-          </p>
+          <p style={paragraphStyle}>{actionLabels.description}</p>
 
           {paymentId ? (
             <div style={paymentBoxStyle}>
@@ -440,35 +477,35 @@ function PagoActivarContent() {
                 Estado del pago
               </div>
 
-              {isLoadingPayment ? (
+              {isLoadingPayment && !paymentView ? (
                 <div style={{ fontWeight: 800 }}>Consultando pago...</div>
-              ) : payment ? (
+              ) : paymentView ? (
                 <div style={{ display: "grid", gap: 7, fontSize: 15 }}>
                   <div>
-                    <strong>Pago:</strong> #{payment.id}
+                    <strong>Pago:</strong> #{paymentView.id}
                   </div>
                   <div>
-                    <strong>Estado:</strong> {getStatusLabel(payment.status)}
+                    <strong>Estado:</strong> {getStatusLabel(paymentView.status)}
                   </div>
                   <div>
                     <strong>Monto:</strong>{" "}
-                    {formatMoneyCents(payment.amount, payment.currency)}
+                    {formatMoneyCents(paymentView.amount, paymentView.currency)}
                   </div>
                   <div>
-                    <strong>Celular:</strong> {payment.phoneMasked ?? "—"}
+                    <strong>Celular:</strong> {paymentView.phoneMasked ?? "—"}
                   </div>
                   <div>
                     <strong>Inicio:</strong>{" "}
-                    {formatDate(payment.activationFullStartedAt)}
+                    {formatDate(paymentView.activationFullStartedAt)}
                   </div>
                   <div>
                     <strong>Vence:</strong>{" "}
-                    {formatDate(payment.activationFullEndsAt)}
+                    {formatDate(paymentView.activationFullEndsAt)}
                   </div>
                   <div>
                     <strong>Clave:</strong>{" "}
                     <span style={codePillStyle}>
-                      {payment.activationCode ?? "Procesando..."}
+                      {paymentView.activationCode ?? "Procesando..."}
                     </span>
                   </div>
                 </div>
@@ -482,9 +519,7 @@ function PagoActivarContent() {
                 <div style={infoBoxStyle}>{actionLabels.autoLoadingText}</div>
               ) : null}
 
-              {paymentError ? (
-                <div style={errorBoxStyle}>{paymentError}</div>
-              ) : null}
+              {paymentError ? <div style={errorBoxStyle}>{paymentError}</div> : null}
 
               {warning ? (
                 <div style={warningBoxStyle}>
@@ -577,11 +612,11 @@ function PagoActivarContent() {
                     }}
                     placeholder="Ej. AIDA-7K82-MP4Q"
                     autoCapitalize="characters"
-                    readOnly={Boolean(payment?.activationCode)}
+                    readOnly={Boolean(paymentView?.activationCode)}
                     style={{
                       ...inputStyle,
                       textTransform: "uppercase",
-                      background: payment?.activationCode ? "#f9fafb" : "white",
+                      background: paymentView?.activationCode ? "#f9fafb" : "white",
                     }}
                   />
                 </label>
@@ -633,9 +668,8 @@ function PagoActivarContent() {
             </form>
           ) : (
             <div style={infoBoxStyle}>
-              Si tu pago ya fue aprobado, el acceso se actualizará
-              automáticamente. Si tarda más de unos segundos, actualiza esta
-              página.
+              Estamos terminando de confirmar tu pago. En unos segundos verás el
+              estado final de tu acceso.
             </div>
           )}
 
