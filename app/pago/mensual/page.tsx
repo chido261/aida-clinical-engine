@@ -51,10 +51,16 @@ export default function PagoMensualPage() {
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [isLoadingUser, setIsLoadingUser] = useState(true);
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isCreatingCheckout, setIsCreatingCheckout] = useState(false);
   const [error, setError] = useState("");
+  const [paymentId, setPaymentId] = useState<number | null>(null);
+  const [checkoutUrl, setCheckoutUrl] = useState("");
+  const [checkoutStarted, setCheckoutStarted] = useState(false);
 
-  const canPay = phone.trim().length >= 10 && !isSubmitting;
+  const canCreateCheckout =
+    phone.trim().length >= 10 && !isLoadingUser && !isCreatingCheckout;
+
+  const confirmUrl = paymentId ? `/pago/regreso?paymentId=${paymentId}` : "";
 
   useEffect(() => {
     let cancelled = false;
@@ -102,10 +108,23 @@ export default function PagoMensualPage() {
     };
   }, []);
 
-  async function handleCheckout() {
-    if (!canPay) return;
+  function openMercadoPago(url: string) {
+    const opened = window.open(url, "_blank");
 
-    setIsSubmitting(true);
+    if (!opened) {
+      setError(
+        "Tu navegador bloqueó la pestaña de Mercado Pago. Usa el botón “Abrir Mercado Pago” para continuar."
+      );
+      return false;
+    }
+
+    return true;
+  }
+
+  async function handleCheckout() {
+    if (!canCreateCheckout) return;
+
+    setIsCreatingCheckout(true);
     setError("");
 
     try {
@@ -136,17 +155,32 @@ export default function PagoMensualPage() {
         );
       }
 
-      const checkoutUrl = data.sandboxInitPoint || data.initPoint;
+      const nextCheckoutUrl = data.sandboxInitPoint || data.initPoint;
 
-      if (!checkoutUrl) {
+      if (!nextCheckoutUrl) {
         throw new Error("No se recibió el enlace de pago.");
       }
 
-      window.location.href = checkoutUrl;
+      setPaymentId(data.paymentId);
+      setCheckoutUrl(nextCheckoutUrl);
+      setCheckoutStarted(true);
+
+      openMercadoPago(nextCheckoutUrl);
     } catch (err: any) {
       setError(err?.message || "No se pudo iniciar el pago.");
-      setIsSubmitting(false);
+    } finally {
+      setIsCreatingCheckout(false);
     }
+  }
+
+  function handleOpenExistingCheckout() {
+    if (!checkoutUrl) {
+      setError("No se encontró el enlace de Mercado Pago. Intenta iniciar el pago nuevamente.");
+      return;
+    }
+
+    setError("");
+    openMercadoPago(checkoutUrl);
   }
 
   return (
@@ -198,7 +232,7 @@ export default function PagoMensualPage() {
                 value={name}
                 onChange={(event) => setName(event.target.value)}
                 placeholder="Tu nombre"
-                disabled={isLoadingUser || isSubmitting}
+                disabled={isLoadingUser || isCreatingCheckout || checkoutStarted}
                 style={inputStyle}
               />
             </label>
@@ -210,35 +244,75 @@ export default function PagoMensualPage() {
                 onChange={(event) => setPhone(event.target.value)}
                 placeholder="Ej. 4531234567"
                 inputMode="tel"
-                disabled={isLoadingUser || isSubmitting}
+                disabled={isLoadingUser || isCreatingCheckout || checkoutStarted}
                 style={inputStyle}
               />
             </label>
 
             <div style={infoBoxStyle}>
-              Al pagar, Mercado Pago te llevará a la confirmación. Después
-              regresarás automáticamente a AIDA para activar tu acceso.
+              El pago se abrirá en una pestaña de Mercado Pago. Cuando veas el
+              mensaje <strong> “Tu pago ya se acreditó”</strong>, regresa a esta
+              pestaña de AIDA y confirma tu acceso.
             </div>
           </div>
 
+          {checkoutStarted && paymentId ? (
+            <div style={confirmBoxStyle}>
+              <div style={{ fontWeight: 900, marginBottom: 6 }}>
+                Pago en proceso
+              </div>
+
+              <div style={{ fontSize: 14, lineHeight: 1.45, marginBottom: 12 }}>
+                Completa tu pago en Mercado Pago. No cierres esta pestaña de
+                AIDA. Cuando termines el pago, vuelve aquí y confirma tu acceso.
+              </div>
+
+              <button
+                type="button"
+                onClick={handleOpenExistingCheckout}
+                style={openPaymentButtonStyle}
+              >
+                Abrir Mercado Pago
+              </button>
+
+              <a href={confirmUrl} style={confirmButtonStyle}>
+                Ya realicé mi pago, confirmar acceso
+              </a>
+            </div>
+          ) : null}
+
           {error ? <div style={errorBoxStyle}>{error}</div> : null}
 
-          <button
-            type="button"
-            onClick={handleCheckout}
-            disabled={!canPay || isLoadingUser}
-            style={{
-              ...primaryButtonStyle,
-              background: canPay && !isLoadingUser ? "#111827" : "#d1d5db",
-              cursor: canPay && !isLoadingUser ? "pointer" : "not-allowed",
-            }}
-          >
-            {isSubmitting
-              ? "Abriendo Mercado Pago..."
-              : isLoadingUser
-                ? "Cargando datos..."
-                : "Pagar con Mercado Pago"}
-          </button>
+          {!checkoutStarted ? (
+            <button
+              type="button"
+              onClick={handleCheckout}
+              disabled={!canCreateCheckout}
+              style={{
+                ...primaryButtonStyle,
+                background: canCreateCheckout ? "#111827" : "#d1d5db",
+                cursor: canCreateCheckout ? "pointer" : "not-allowed",
+              }}
+            >
+              {isCreatingCheckout
+                ? "Abriendo Mercado Pago..."
+                : isLoadingUser
+                  ? "Cargando datos..."
+                  : "Pagar con Mercado Pago"}
+            </button>
+          ) : (
+            <button
+              type="button"
+              disabled
+              style={{
+                ...primaryButtonStyle,
+                background: "#d1d5db",
+                cursor: "not-allowed",
+              }}
+            >
+              Pago abierto en Mercado Pago
+            </button>
+          )}
 
           <a href="/pago" style={secondaryButtonStyle}>
             Volver a planes
@@ -377,6 +451,42 @@ const infoBoxStyle: React.CSSProperties = {
   fontSize: 14,
   fontWeight: 700,
   lineHeight: 1.45,
+};
+
+const confirmBoxStyle: React.CSSProperties = {
+  border: "1px solid #bbf7d0",
+  background: "#f0fdf4",
+  borderRadius: 14,
+  padding: 14,
+  color: "#14532d",
+  marginBottom: 16,
+};
+
+const openPaymentButtonStyle: React.CSSProperties = {
+  width: "100%",
+  borderRadius: 12,
+  padding: "12px 14px",
+  background: "white",
+  color: "#14532d",
+  border: "1px solid #86efac",
+  fontWeight: 900,
+  fontSize: 15,
+  marginBottom: 10,
+  cursor: "pointer",
+};
+
+const confirmButtonStyle: React.CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  width: "100%",
+  borderRadius: 12,
+  padding: "12px 14px",
+  background: "#14532d",
+  color: "white",
+  fontWeight: 900,
+  fontSize: 15,
+  textDecoration: "none",
 };
 
 const errorBoxStyle: React.CSSProperties = {

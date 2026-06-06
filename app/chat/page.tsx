@@ -29,6 +29,30 @@ type Paywall = {
   ctaUrl: string;
 };
 
+type LatestPayment = {
+  id: number;
+  status: string;
+  plan: string;
+  amount: number;
+  currency: string;
+  createdAt: string;
+  approvedAt: string | null;
+  activationCodeId: number | null;
+};
+
+type LatestPaymentResponse =
+  | {
+      ok: true;
+      found: boolean;
+      payment: LatestPayment | null;
+      redirectUrl?: string;
+    }
+  | {
+      ok: false;
+      error?: string;
+      message?: string;
+    };
+
 type SpeechRecognitionLike = {
   lang: string;
   interimResults: boolean;
@@ -99,6 +123,21 @@ function getFileKind(file: File | null) {
   return "Archivo";
 }
 
+function formatPaymentPlan(plan: string) {
+  if (plan === "mensual") return "mensual";
+  if (plan === "3-meses") return "3 meses";
+  if (plan === "anual") return "anual";
+  return plan || "AIDA";
+}
+
+function formatMoneyCents(value: number, currency = "MXN") {
+  return new Intl.NumberFormat("es-MX", {
+    style: "currency",
+    currency,
+    maximumFractionDigits: 0,
+  }).format(value / 100);
+}
+
 async function normalizeImageFile(file: File): Promise<File> {
   if (!file.type.startsWith("image/")) return file;
 
@@ -167,6 +206,9 @@ export default function ChatPage() {
   const [appMode, setAppMode] = useState<"local" | "cloud">("local");
   const [ui, setUi] = useState<UiPayload | null>(null);
   const [isLoadingUserStatus, setIsLoadingUserStatus] = useState(true);
+  const [latestPayment, setLatestPayment] = useState<LatestPayment | null>(null);
+  const [latestPaymentRedirectUrl, setLatestPaymentRedirectUrl] = useState("");
+  const [isLoadingLatestPayment, setIsLoadingLatestPayment] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -187,10 +229,12 @@ export default function ChatPage() {
 
   useEffect(() => {
     if (!deviceId) return;
-  
+
     let cancelled = false;
-  
+
     async function loadUserStatus() {
+      setIsLoadingUserStatus(true);
+
       try {
         const res = await fetch("/api/user-status", {
           method: "POST",
@@ -199,28 +243,89 @@ export default function ChatPage() {
             deviceId,
           }),
         });
-  
+
         const data = await safeReadJson(res);
-  
+
         if (!res.ok) {
           throw new Error(
             (typeof data?.error === "string" && data.error) ||
               "No pude cargar el estado del usuario."
           );
         }
-  
+
         if (cancelled) return;
-  
+
         if (data?.ui) {
           setUi(data.ui as UiPayload);
         }
       } catch (e) {
         console.error(e);
+      } finally {
+        if (!cancelled) {
+          setIsLoadingUserStatus(false);
+        }
       }
     }
-  
+
     loadUserStatus();
-  
+
+    return () => {
+      cancelled = true;
+    };
+  }, [deviceId]);
+
+  useEffect(() => {
+    if (!deviceId) return;
+
+    let cancelled = false;
+
+    async function loadLatestPayment() {
+      setIsLoadingLatestPayment(true);
+
+      try {
+        const res = await fetch("/api/payments/latest-for-device", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            deviceId,
+          }),
+        });
+
+        const data = (await safeReadJson(res)) as LatestPaymentResponse | null;
+
+        if (!res.ok || !data?.ok) {
+          throw new Error(
+            (data as any)?.message ||
+              (data as any)?.error ||
+              "No se pudo consultar el último pago."
+          );
+        }
+
+        if (cancelled) return;
+
+        if (data.found && data.payment && data.redirectUrl) {
+          setLatestPayment(data.payment);
+          setLatestPaymentRedirectUrl(data.redirectUrl);
+        } else {
+          setLatestPayment(null);
+          setLatestPaymentRedirectUrl("");
+        }
+      } catch (e) {
+        console.error(e);
+
+        if (!cancelled) {
+          setLatestPayment(null);
+          setLatestPaymentRedirectUrl("");
+        }
+      } finally {
+        if (!cancelled) {
+          setIsLoadingLatestPayment(false);
+        }
+      }
+    }
+
+    loadLatestPayment();
+
     return () => {
       cancelled = true;
     };
@@ -305,6 +410,12 @@ export default function ChatPage() {
   const licenseModeActive = ui?.mode !== "LOCAL";
   const chatLocked = licenseModeActive && (ui?.blocked === true || !!paywall);
 
+  const shouldShowLatestPaymentBanner =
+    licenseModeActive &&
+    !!latestPayment &&
+    !!latestPaymentRedirectUrl &&
+    latestPayment.status !== "approved";
+
   const canSend = useMemo(() => {
     return (
       (input.trim().length > 0 || !!selectedFile) &&
@@ -318,14 +429,15 @@ export default function ChatPage() {
   function autoResizeTextarea() {
     const textarea = textareaRef.current;
     if (!textarea) return;
-  
+
     textarea.style.height = "auto";
-  
+
     const maxHeight = 120;
     const nextHeight = Math.min(textarea.scrollHeight, maxHeight);
-  
+
     textarea.style.height = `${nextHeight}px`;
-    textarea.style.overflowY = textarea.scrollHeight > maxHeight ? "auto" : "hidden";
+    textarea.style.overflowY =
+      textarea.scrollHeight > maxHeight ? "auto" : "hidden";
   }
 
   function handleFileSelected(file: File | null) {
@@ -349,26 +461,41 @@ export default function ChatPage() {
 
     setSelectedFile(file);
 
-if (file.type.startsWith("image/")) {
-  const url = URL.createObjectURL(file);
-  setImagePreviewUrl(url);
-} else {
-  setImagePreviewUrl(null);
-}
+    if (file.type.startsWith("image/")) {
+      const url = URL.createObjectURL(file);
+      setImagePreviewUrl(url);
+    } else {
+      setImagePreviewUrl(null);
+    }
   }
 
   async function handleSend() {
     const text = input.trim();
 
-    if ((!text && !selectedFile) || isSending || !deviceId || !onboarding || chatLocked) return;
+    if (
+      (!text && !selectedFile) ||
+      isSending ||
+      !deviceId ||
+      !onboarding ||
+      chatLocked
+    ) {
+      return;
+    }
 
-    const fileToSend = selectedFile ? await normalizeImageFile(selectedFile) : null;
+    const fileToSend = selectedFile
+      ? await normalizeImageFile(selectedFile)
+      : null;
 
     const userContent = fileToSend
-      ? `${text || "Analiza este archivo."}\n\n[${getFileKind(fileToSend)}: ${fileToSend.name}]`
+      ? `${text || "Analiza este archivo."}\n\n[${getFileKind(fileToSend)}: ${
+          fileToSend.name
+        }]`
       : text;
 
-    const nextMessages: ChatMessage[] = [...messages, { role: "user", content: userContent }];
+    const nextMessages: ChatMessage[] = [
+      ...messages,
+      { role: "user", content: userContent },
+    ];
 
     setMessages(nextMessages);
     setInput("");
@@ -384,11 +511,11 @@ if (file.type.startsWith("image/")) {
     try {
       if (fileToSend) {
         const formData = new FormData();
-formData.append("file", fileToSend);
-formData.append("message", text || "Analiza este archivo.");
-formData.append("deviceId", deviceId);
-formData.append("onboarding", JSON.stringify(onboarding));
-formData.append("messages", JSON.stringify(nextMessages));
+        formData.append("file", fileToSend);
+        formData.append("message", text || "Analiza este archivo.");
+        formData.append("deviceId", deviceId);
+        formData.append("onboarding", JSON.stringify(onboarding));
+        formData.append("messages", JSON.stringify(nextMessages));
 
         const res = await fetch("/api/analyze-file", {
           method: "POST",
@@ -430,7 +557,6 @@ formData.append("messages", JSON.stringify(nextMessages));
 
         if (data?.ui) setUi(data.ui as UiPayload);
 
-        
         const pw: Paywall = data?.paywall
           ? {
               title: String(data.paywall.title ?? "Tu prueba gratuita terminó"),
@@ -514,24 +640,24 @@ formData.append("messages", JSON.stringify(nextMessages));
       setIsListening(false);
       return;
     }
-  
+
     const SpeechRecognition =
       window.SpeechRecognition || window.webkitSpeechRecognition;
-  
+
     if (!SpeechRecognition) {
       alert("Tu navegador no permite dictado por voz. Prueba con Chrome en Android.");
       return;
     }
-  
+
     const recognition = new SpeechRecognition();
-  
+
     recognition.lang = "es-MX";
     recognition.interimResults = false;
     recognition.continuous = false;
-  
+
     recognition.onresult = (event: any) => {
       const transcript = event.results?.[0]?.[0]?.transcript ?? "";
-  
+
       if (transcript) {
         setInput((prev) => {
           const separator = prev.trim().length ? " " : "";
@@ -539,15 +665,15 @@ formData.append("messages", JSON.stringify(nextMessages));
         });
       }
     };
-  
+
     recognition.onerror = () => {
       setIsListening(false);
     };
-  
+
     recognition.onend = () => {
       setIsListening(false);
     };
-  
+
     recognitionRef.current = recognition;
     setIsListening(true);
     recognition.start();
@@ -561,11 +687,11 @@ formData.append("messages", JSON.stringify(nextMessages));
   }
 
   const planLabel =
-  ui?.modeLabel && ui.modeLabel.trim().length > 0
-    ? ui.modeLabel.replace(/^Modo:\s*/i, "")
-    : deviceId
-      ? "Cargando plan..."
-      : "Estado del plan";
+    ui?.modeLabel && ui.modeLabel.trim().length > 0
+      ? ui.modeLabel.replace(/^Modo:\s*/i, "")
+      : deviceId
+        ? "Cargando plan..."
+        : "Estado del plan";
 
   const disclaimer =
     ui?.disclaimer ??
@@ -602,6 +728,61 @@ formData.append("messages", JSON.stringify(nextMessages));
           {planLabel}
         </div>
       </div>
+
+      {shouldShowLatestPaymentBanner ? (
+        <div
+          style={{
+            border: "1px solid #bfdbfe",
+            background: "#eff6ff",
+            borderRadius: 12,
+            padding: 12,
+            marginBottom: 12,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 12,
+          }}
+        >
+          <div style={{ fontSize: 13, lineHeight: 1.35 }}>
+            <div style={{ fontWeight: 900, color: "#1e3a8a" }}>
+              ¿Ya realizaste tu pago?
+            </div>
+
+            <div style={{ color: "#1e40af", opacity: 0.95 }}>
+              Detectamos un pago reciente de{" "}
+              {latestPayment
+                ? `${formatMoneyCents(
+                    latestPayment.amount,
+                    latestPayment.currency
+                  )} para plan ${formatPaymentPlan(latestPayment.plan)}.`
+                : "AIDA."}
+            </div>
+
+            <div style={{ color: "#1e40af", opacity: 0.85, marginTop: 3 }}>
+              Confirma tu acceso para activar o extender tu cuenta.
+            </div>
+          </div>
+
+          <a
+            href={latestPaymentRedirectUrl}
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              padding: "10px 12px",
+              borderRadius: 10,
+              border: "1px solid #93c5fd",
+              background: "#1d4ed8",
+              color: "white",
+              fontWeight: 900,
+              textDecoration: "none",
+              whiteSpace: "nowrap",
+            }}
+          >
+            Confirmar acceso
+          </a>
+        </div>
+      ) : null}
 
       {isTrialBanner && (
         <div
@@ -645,7 +826,7 @@ formData.append("messages", JSON.stringify(nextMessages));
         </div>
       )}
 
-{licenseModeActive && ui?.upgradeOffer?.eligible && !chatLocked ? (
+      {licenseModeActive && ui?.upgradeOffer?.eligible && !chatLocked ? (
         <div
           style={{
             border: "1px solid #bbf7d0",
@@ -730,7 +911,9 @@ formData.append("messages", JSON.stringify(nextMessages));
           </div>
         ))}
 
-        {isSending && <div style={{ opacity: 0.7, marginTop: 6 }}>AIDA está analizando…</div>}
+        {isSending && (
+          <div style={{ opacity: 0.7, marginTop: 6 }}>AIDA está analizando…</div>
+        )}
 
         <div ref={bottomRef} />
       </div>
@@ -750,19 +933,19 @@ formData.append("messages", JSON.stringify(nextMessages));
             gap: 8,
           }}
         >
-{imagePreviewUrl && (
-  <img
-    src={imagePreviewUrl}
-    alt="Vista previa"
-    style={{
-      width: 48,
-      height: 48,
-      objectFit: "cover",
-      borderRadius: 10,
-      border: "1px solid #e5e7eb",
-    }}
-  />
-)}
+          {imagePreviewUrl && (
+            <img
+              src={imagePreviewUrl}
+              alt="Vista previa"
+              style={{
+                width: 48,
+                height: 48,
+                objectFit: "cover",
+                borderRadius: 10,
+                border: "1px solid #e5e7eb",
+              }}
+            />
+          )}
 
           <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
             📎 {getFileKind(selectedFile)}: {selectedFile.name}
@@ -772,8 +955,8 @@ formData.append("messages", JSON.stringify(nextMessages));
             type="button"
             onClick={() => {
               setSelectedFile(null);
-setImagePreviewUrl(null);
-if (fileInputRef.current) fileInputRef.current.value = "";
+              setImagePreviewUrl(null);
+              if (fileInputRef.current) fileInputRef.current.value = "";
             }}
             style={{
               border: "none",
@@ -813,7 +996,10 @@ if (fileInputRef.current) fileInputRef.current.value = "";
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
-            cursor: !onboarding || isSending || !deviceId || chatLocked ? "not-allowed" : "pointer",
+            cursor:
+              !onboarding || isSending || !deviceId || chatLocked
+                ? "not-allowed"
+                : "pointer",
           }}
           title="Adjuntar foto o archivo"
         >
@@ -905,7 +1091,10 @@ if (fileInputRef.current) fileInputRef.current.value = "";
               onClick={() => {
                 setShowAttachMenu(false);
                 fileInputRef.current?.removeAttribute("capture");
-                fileInputRef.current?.setAttribute("accept", ".pdf,application/pdf,image/*");
+                fileInputRef.current?.setAttribute(
+                  "accept",
+                  ".pdf,application/pdf,image/*"
+                );
                 fileInputRef.current?.click();
               }}
               style={{
@@ -943,7 +1132,7 @@ if (fileInputRef.current) fileInputRef.current.value = "";
           }}
         >
           <textarea
-          ref={textareaRef}
+            ref={textareaRef}
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={onKeyDown}
@@ -981,8 +1170,11 @@ if (fileInputRef.current) fileInputRef.current.value = "";
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              cursor: !onboarding || isSending || !deviceId || chatLocked ? "not-allowed" : "pointer",
-              opacity: !onboarding || isSending || !deviceId || chatLocked ? 0.45 : 1,              
+              cursor:
+                !onboarding || isSending || !deviceId || chatLocked
+                  ? "not-allowed"
+                  : "pointer",
+              opacity: !onboarding || isSending || !deviceId || chatLocked ? 0.45 : 1,
             }}
             title="Dictar por voz"
           >
@@ -1020,60 +1212,60 @@ if (fileInputRef.current) fileInputRef.current.value = "";
         </p>
       )}
 
-{chatLocked && ui?.ctaUrl && ui?.ctaText ? (
-  <div
-    style={{
-      marginTop: 12,
-      border: "1px solid #e5e7eb",
-      background: "#fff7ed",
-      borderRadius: 14,
-      padding: 14,
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "space-between",
-      gap: 12,
-    }}
-  >
-    <div style={{ fontSize: 14, lineHeight: 1.35 }}>
-      <div style={{ fontWeight: 800 }}>Tu prueba gratuita terminó</div>
-      <div style={{ opacity: 0.85 }}>
-        Activa la versión completa para continuar usando AIDA.
+      {chatLocked && ui?.ctaUrl && ui?.ctaText ? (
+        <div
+          style={{
+            marginTop: 12,
+            border: "1px solid #e5e7eb",
+            background: "#fff7ed",
+            borderRadius: 14,
+            padding: 14,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 12,
+          }}
+        >
+          <div style={{ fontSize: 14, lineHeight: 1.35 }}>
+            <div style={{ fontWeight: 800 }}>Tu prueba gratuita terminó</div>
+            <div style={{ opacity: 0.85 }}>
+              Activa la versión completa para continuar usando AIDA.
+            </div>
+          </div>
+
+          <a
+            href={ui.ctaUrl}
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              padding: "10px 12px",
+              borderRadius: 10,
+              border: "1px solid #e5e7eb",
+              background: "black",
+              color: "white",
+              fontWeight: 800,
+              textDecoration: "none",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {ui.ctaText}
+          </a>
+        </div>
+      ) : null}
+
+      <div style={{ marginTop: 10, fontSize: 12, opacity: 0.75 }}>
+        {disclaimer}
+
+        {licenseModeActive && ui?.ctaUrl && ui?.ctaText && !chatLocked ? (
+          <>
+            {" "}
+            <a href={ui.ctaUrl} style={{ fontWeight: 700, textDecoration: "underline" }}>
+              {ui.ctaText}
+            </a>
+          </>
+        ) : null}
       </div>
-    </div>
-
-    <a
-      href={ui.ctaUrl}
-      style={{
-        display: "inline-flex",
-        alignItems: "center",
-        justifyContent: "center",
-        padding: "10px 12px",
-        borderRadius: 10,
-        border: "1px solid #e5e7eb",
-        background: "black",
-        color: "white",
-        fontWeight: 800,
-        textDecoration: "none",
-        whiteSpace: "nowrap",
-      }}
-    >
-      {ui.ctaText}
-    </a>
-  </div>
-) : null}
-
-<div style={{ marginTop: 10, fontSize: 12, opacity: 0.75 }}>
-  {disclaimer}
-
-  {licenseModeActive && ui?.ctaUrl && ui?.ctaText && !chatLocked ? (
-    <>
-      {" "}
-      <a href={ui.ctaUrl} style={{ fontWeight: 700, textDecoration: "underline" }}>
-        {ui.ctaText}
-      </a>
-    </>
-  ) : null}
-</div>
 
       <PushInit userId={deviceId} />
 
