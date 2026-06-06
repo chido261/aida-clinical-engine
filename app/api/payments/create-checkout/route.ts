@@ -256,7 +256,7 @@ export async function POST(request: Request) {
           name: name || undefined,
         },
         back_urls: {
-          success: `${baseUrl}/pago/activar?paymentId=${payment.id}`,
+          success: `${baseUrl}/pago/regreso?paymentId=${payment.id}`,
           failure: `${baseUrl}/pago?status=failure`,
           pending: `${baseUrl}/pago?status=pending`,
         },
