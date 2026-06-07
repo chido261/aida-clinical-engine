@@ -104,11 +104,33 @@ function formatMoneyCents(value: number, currency = "MXN") {
 function getStatusLabel(status: string) {
   if (status === "approved") return "Aprobado";
   if (status === "pending") return "Pendiente";
+  if (status === "in_process") return "Procesando";
   if (status === "created") return "Creado";
   if (status === "rejected") return "Rechazado";
   if (status === "cancelled") return "Cancelado";
   if (status === "refunded") return "Reembolsado";
   return status || "—";
+}
+
+function getFriendlyPaymentError(message: string, paymentStatus?: string) {
+  const cleanMessage = String(message || "").toLowerCase();
+  const cleanStatus = String(paymentStatus || "").toLowerCase();
+
+  const isPendingLike =
+    cleanStatus === "pending" ||
+    cleanStatus === "in_process" ||
+    cleanStatus === "created" ||
+    cleanMessage.includes("todavía no aparece como aprobado") ||
+    cleanMessage.includes("aún no aparece como aprobado") ||
+    cleanMessage.includes("no aparece como aprobado") ||
+    cleanMessage.includes("pending") ||
+    cleanMessage.includes("in_process");
+
+  if (isPendingLike) {
+    return "Tu pago aún no ha sido confirmado por Mercado Pago. Si Mercado Pago ya te mostró que el pago fue aprobado, espera unos minutos y vuelve a verificar. Si sigue sin confirmarse, revisa tu comprobante o comunícate con soporte.";
+  }
+
+  return message || "Tu pago se encontró, pero no se pudo activar automáticamente.";
 }
 
 function getAccessActionLabels({
@@ -321,10 +343,7 @@ function PagoActivarContent() {
 
       await refreshPaymentStatus().catch(() => null);
     } catch (err: any) {
-      setPaymentError(
-        err?.message ||
-          "Tu pago se encontró, pero no se pudo activar automáticamente."
-      );
+      setPaymentError(getFriendlyPaymentError(err?.message, payment?.status));
     } finally {
       setIsAutoActivating(false);
       setAutoAttempted(true);
