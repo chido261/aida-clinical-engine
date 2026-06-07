@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 
 type AdminUser = {
   id: string;
+  name: string | null;
   licenseStatus: string;
   licenseLabel: string;
   phoneE164: string | null;
@@ -99,6 +100,14 @@ function getDisplayStartDate(user: AdminUser) {
   if (user.fullStartedAt) return user.fullStartedAt;
   if (user.activationFullStartedAt) return user.activationFullStartedAt;
   return user.trialStartedAt;
+}
+
+function getUserDisplayName(user: AdminUser) {
+  const name = String(user.name || "").trim();
+
+  if (name) return name;
+
+  return `${user.id.slice(0, 8)}...`;
 }
 
 function getSavedAdminKey() {
@@ -199,11 +208,15 @@ export default function AdminUsuariosPage() {
     const cleanSearch = normalizeSearch(searchPhone);
 
     return users.filter((user) => {
+      const name = normalizeSearch(user.name || "");
+      const userId = normalizeSearch(user.id || "");
       const phone = normalizeSearch(user.phoneE164 || "");
       const activationPhone = normalizeSearch(user.activationPhoneE164 || "");
 
       const matchesSearch =
         !cleanSearch ||
+        name.includes(cleanSearch) ||
+        userId.includes(cleanSearch) ||
         phone.includes(cleanSearch) ||
         activationPhone.includes(cleanSearch);
 
@@ -285,12 +298,14 @@ export default function AdminUsuariosPage() {
   }
 
   async function extendLicense(user: AdminUser, days: number) {
+    const displayName = getUserDisplayName(user);
+
     const confirmText =
       days === 30
-        ? `¿Extender 30 días la licencia de ${user.id.slice(0, 8)}...?`
+        ? `¿Extender 30 días la licencia de ${displayName}?`
         : days === 90
-          ? `¿Extender 90 días la licencia de ${user.id.slice(0, 8)}...?`
-          : `¿Extender 365 días la licencia de ${user.id.slice(0, 8)}...?`;
+          ? `¿Extender 90 días la licencia de ${displayName}?`
+          : `¿Extender 365 días la licencia de ${displayName}?`;
 
     const ok = window.confirm(confirmText);
     if (!ok) return;
@@ -332,10 +347,12 @@ export default function AdminUsuariosPage() {
   }
 
   async function updateLicense(user: AdminUser, action: LicenseAction) {
+    const displayName = getUserDisplayName(user);
+
     const confirmText =
       action === "cancel-license"
-        ? `¿Cancelar la licencia de ${user.id.slice(0, 8)}...? El usuario perderá acceso completo.`
-        : `¿Reiniciar trial de ${user.id.slice(0, 8)}...? El usuario volverá a prueba gratuita de 7 días.`;
+        ? `¿Cancelar la licencia de ${displayName}? El usuario perderá acceso completo.`
+        : `¿Reiniciar trial de ${displayName}? El usuario volverá a prueba gratuita de 7 días.`;
 
     const ok = window.confirm(confirmText);
     if (!ok) return;
@@ -377,11 +394,10 @@ export default function AdminUsuariosPage() {
   }
 
   async function deleteUser(user: AdminUser) {
+    const displayName = getUserDisplayName(user);
+
     const ok = window.confirm(
-      `¿Eliminar definitivamente el registro del usuario ${user.id.slice(
-        0,
-        8
-      )}...?\n\nSe borrará UserState, lecturas, uso diario y sesiones de dispositivo.\n\nNo se borrarán pagos, claves ni solicitudes.\n\nEsta acción no se puede deshacer.`
+      `¿Eliminar definitivamente el registro del usuario ${displayName}?\n\nSe borrará UserState, lecturas, uso diario y sesiones de dispositivo.\n\nNo se borrarán pagos, claves ni solicitudes.\n\nEsta acción no se puede deshacer.`
     );
 
     if (!ok) return;
@@ -571,7 +587,7 @@ export default function AdminUsuariosPage() {
           <div style={toolbarStyle}>
             <div style={{ flex: "1 1 280px" }}>
               <label htmlFor="searchPhone" style={labelStyle}>
-                Buscar por celular
+                Buscar por nombre, celular o usuario
               </label>
 
               <input
@@ -579,7 +595,7 @@ export default function AdminUsuariosPage() {
                 type="search"
                 value={searchPhone}
                 onChange={(event) => setSearchPhone(event.target.value)}
-                placeholder="Ejemplo: 4531234567"
+                placeholder="Ejemplo: David, 4531234567 o ID usuario"
                 style={inputStyle}
               />
             </div>
@@ -677,6 +693,7 @@ export default function AdminUsuariosPage() {
                   user.deviceSessionActive || user.activationCurrentDeviceId
                     ? "Vinculado"
                     : "No vinculado";
+                const displayName = getUserDisplayName(user);
 
                 return (
                   <article key={user.id} style={userCardStyle}>
@@ -699,8 +716,13 @@ export default function AdminUsuariosPage() {
                       <div style={compactFieldStyle}>
                         <div style={compactLabelStyle}>Usuario</div>
                         <div style={compactUserValueStyle}>
-                          {user.id.slice(0, 8)}...
+                          {displayName}
                         </div>
+                        {user.name ? (
+                          <div style={compactMutedValueStyle}>
+                            {user.id.slice(0, 8)}...
+                          </div>
+                        ) : null}
                       </div>
 
                       <div style={compactFieldStyle}>
@@ -773,6 +795,13 @@ export default function AdminUsuariosPage() {
                       <div style={detailsBoxStyle}>
                         <div style={detailsGridStyle}>
                           <div>
+                            <div style={detailLabelStyle}>Nombre</div>
+                            <div style={detailValueStyle}>
+                              {user.name || "—"}
+                            </div>
+                          </div>
+
+                          <div>
                             <div style={detailLabelStyle}>Clave</div>
                             <div style={detailValueStyle}>
                               {user.activationCode || "—"}
@@ -831,6 +860,13 @@ export default function AdminUsuariosPage() {
                             <div style={detailLabelStyle}>Plan vence</div>
                             <div style={detailValueStyle}>
                               {formatDate(user.fullEndsAt)}
+                            </div>
+                          </div>
+
+                          <div>
+                            <div style={detailLabelStyle}>Origen plan</div>
+                            <div style={detailValueStyle}>
+                              {getPlanSourceLabel(user.activePlanSource)}
                             </div>
                           </div>
 
@@ -1132,7 +1168,7 @@ const userCardStyle: React.CSSProperties = {
 const compactGridStyle: React.CSSProperties = {
   display: "grid",
   gridTemplateColumns:
-    "42px 150px 90px 145px 95px 115px 95px 115px 120px 100px",
+    "42px 170px 90px 145px 95px 115px 95px 115px 120px 100px",
   alignItems: "center",
   columnGap: 10,
   rowGap: 8,
@@ -1170,6 +1206,16 @@ const compactUserValueStyle: React.CSSProperties = {
   color: "#111827",
   fontSize: 14,
   fontWeight: 900,
+  overflow: "hidden",
+  textOverflow: "ellipsis",
+  whiteSpace: "nowrap",
+};
+
+const compactMutedValueStyle: React.CSSProperties = {
+  color: "#6b7280",
+  fontSize: 11,
+  fontWeight: 800,
+  marginTop: 2,
   overflow: "hidden",
   textOverflow: "ellipsis",
   whiteSpace: "nowrap",

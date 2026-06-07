@@ -101,6 +101,7 @@ export async function GET(req: Request) {
 
         return {
           id: user.id,
+          name: user.name,
           licenseStatus: user.licenseStatus,
           licenseLabel: getLicenseLabel(user.licenseStatus),
           phoneE164: user.phoneE164,
