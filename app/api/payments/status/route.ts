@@ -3,6 +3,7 @@
 export const runtime = "nodejs";
 
 import { NextResponse } from "next/server";
+import { MercadoPagoConfig, Payment as MercadoPagoPayment } from "mercadopago";
 import { prisma } from "@/app/lib/prisma";
 
 function jsonOK(payload: any) {
@@ -25,6 +26,66 @@ function maskPhone(phoneE164: string | null) {
   return `••••••${clean.slice(-4)}`;
 }
 
+function getString(value: unknown) {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+async function syncMercadoPagoStatus(paymentId: number) {
+  const payment = await prisma.payment.findUnique({
+    where: {
+      id: paymentId,
+    },
+  });
+
+  if (!payment) return null;
+
+  if (payment.provider !== "mercadopago") {
+    return payment;
+  }
+
+  if (payment.status === "approved") {
+    return payment;
+  }
+
+  if (!payment.providerPaymentId) {
+    return payment;
+  }
+
+  const accessToken = process.env.MERCADOPAGO_ACCESS_TOKEN;
+
+  if (!accessToken) {
+    return payment;
+  }
+
+  try {
+    const client = new MercadoPagoConfig({
+      accessToken,
+    });
+
+    const mpPaymentClient = new MercadoPagoPayment(client);
+    const mpPayment = await mpPaymentClient.get({
+      id: payment.providerPaymentId,
+    });
+
+    const mpStatus = getString(mpPayment.status) || payment.status;
+    const rawPayload = JSON.stringify(mpPayment);
+
+    return await prisma.payment.update({
+      where: {
+        id: payment.id,
+      },
+      data: {
+        status: mpStatus,
+        rawPayload,
+        approvedAt: mpStatus === "approved" ? new Date() : payment.approvedAt,
+      },
+    });
+  } catch (error) {
+    console.error("syncMercadoPagoStatus error", error);
+    return payment;
+  }
+}
+
 export async function GET(req: Request) {
   try {
     const url = new URL(req.url);
@@ -41,11 +102,7 @@ export async function GET(req: Request) {
       );
     }
 
-    const payment = await prisma.payment.findUnique({
-      where: {
-        id: paymentId,
-      },
-    });
+    const payment = await syncMercadoPagoStatus(paymentId);
 
     if (!payment) {
       return jsonERR(
