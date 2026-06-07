@@ -35,6 +35,7 @@ type PaymentFilter =
   | "without_code";
 
 const ADMIN_KEY_STORAGE = "aida_admin_key_v1";
+const EXPIRED_PENDING_HOURS = 24;
 
 function formatMoneyCents(value: number, currency = "MXN") {
   return new Intl.NumberFormat("es-MX", {
@@ -76,17 +77,6 @@ function getPlanLabel(plan: string) {
   return plan || "—";
 }
 
-function getStatusLabel(status: string) {
-  if (status === "created") return "Creado";
-  if (status === "pending") return "Pendiente";
-  if (status === "in_process") return "Procesando";
-  if (status === "approved") return "Aprobado";
-  if (status === "rejected") return "Rechazado";
-  if (status === "cancelled") return "Cancelado";
-  if (status === "refunded") return "Reembolsado";
-  return status || "—";
-}
-
 function isPendingStatus(status: string) {
   return status === "created" || status === "pending" || status === "in_process";
 }
@@ -95,8 +85,51 @@ function isFailedStatus(status: string) {
   return status === "rejected" || status === "cancelled" || status === "refunded";
 }
 
-function getStatusBadgeStyle(status: string): React.CSSProperties {
-  if (status === "approved") {
+function isExpiredPendingPayment(payment: Payment) {
+  if (!isPendingStatus(payment.status)) return false;
+
+  const createdAtMs = new Date(payment.createdAt).getTime();
+
+  if (!Number.isFinite(createdAtMs)) return false;
+
+  const ageMs = Date.now() - createdAtMs;
+  const expiredMs = EXPIRED_PENDING_HOURS * 60 * 60 * 1000;
+
+  return ageMs > expiredMs;
+}
+
+function getPaymentStatusLabel(payment: Payment) {
+  if (isExpiredPendingPayment(payment)) return "Vencido";
+
+  if (payment.status === "created") return "Creado";
+  if (payment.status === "pending") return "Pendiente";
+  if (payment.status === "in_process") return "Procesando";
+  if (payment.status === "approved") return "Aprobado";
+  if (payment.status === "rejected") return "Rechazado";
+  if (payment.status === "cancelled") return "Cancelado";
+  if (payment.status === "refunded") return "Reembolsado";
+
+  return payment.status || "—";
+}
+
+function isVisualPendingPayment(payment: Payment) {
+  return isPendingStatus(payment.status) && !isExpiredPendingPayment(payment);
+}
+
+function isVisualFailedPayment(payment: Payment) {
+  return isFailedStatus(payment.status) || isExpiredPendingPayment(payment);
+}
+
+function getStatusBadgeStyle(payment: Payment): React.CSSProperties {
+  if (isExpiredPendingPayment(payment)) {
+    return {
+      ...statusBadgeStyle,
+      background: "#e5e7eb",
+      color: "#374151",
+    };
+  }
+
+  if (payment.status === "approved") {
     return {
       ...statusBadgeStyle,
       background: "#dcfce7",
@@ -104,7 +137,7 @@ function getStatusBadgeStyle(status: string): React.CSSProperties {
     };
   }
 
-  if (isFailedStatus(status)) {
+  if (isFailedStatus(payment.status)) {
     return {
       ...statusBadgeStyle,
       background: "#fee2e2",
@@ -112,7 +145,7 @@ function getStatusBadgeStyle(status: string): React.CSSProperties {
     };
   }
 
-  if (status === "in_process") {
+  if (payment.status === "in_process") {
     return {
       ...statusBadgeStyle,
       background: "#dbeafe",
@@ -145,7 +178,12 @@ export default function AdminPagosPage() {
   );
 
   const totalPending = useMemo(
-    () => payments.filter((payment) => isPendingStatus(payment.status)).length,
+    () => payments.filter((payment) => isVisualPendingPayment(payment)).length,
+    [payments]
+  );
+
+  const totalExpired = useMemo(
+    () => payments.filter((payment) => isExpiredPendingPayment(payment)).length,
     [payments]
   );
 
@@ -167,12 +205,14 @@ export default function AdminPagosPage() {
           : paymentFilter === "approved"
             ? payment.status === "approved"
             : paymentFilter === "pending"
-              ? isPendingStatus(payment.status)
+              ? isVisualPendingPayment(payment)
               : paymentFilter === "failed"
-                ? isFailedStatus(payment.status)
+                ? isVisualFailedPayment(payment)
                 : paymentFilter === "with_code"
                   ? Boolean(payment.activationCode)
                   : !payment.activationCode;
+
+      const statusLabel = getPaymentStatusLabel(payment);
 
       const searchableText = [
         payment.id,
@@ -181,7 +221,7 @@ export default function AdminPagosPage() {
         payment.providerPaymentId,
         payment.providerRef,
         payment.status,
-        getStatusLabel(payment.status),
+        statusLabel,
         payment.plan,
         payment.phoneE164,
         payment.deviceId,
@@ -414,6 +454,11 @@ export default function AdminPagosPage() {
           </div>
 
           <div style={smallCardStyle}>
+            <div style={metricLabelStyle}>Vencidos</div>
+            <div style={metricValueStyle}>{totalExpired}</div>
+          </div>
+
+          <div style={smallCardStyle}>
             <div style={metricLabelStyle}>Total aprobado</div>
             <div style={metricValueStyle}>
               {formatMoneyCents(totalApprovedAmount)}
@@ -454,7 +499,7 @@ export default function AdminPagosPage() {
                 ["all", "Todos"],
                 ["approved", "Aprobados"],
                 ["pending", "Pendientes"],
-                ["failed", "Fallidos"],
+                ["failed", "Fallidos / vencidos"],
                 ["with_code", "Con clave"],
                 ["without_code", "Sin clave"],
               ].map(([value, label]) => (
@@ -500,6 +545,7 @@ export default function AdminPagosPage() {
 
               {filteredPayments.map((payment) => {
                 const isExpanded = expandedPaymentId === payment.id;
+                const statusLabel = getPaymentStatusLabel(payment);
 
                 return (
                   <div key={payment.id} style={rowCardStyle}>
@@ -510,8 +556,8 @@ export default function AdminPagosPage() {
                       </div>
 
                       <div style={cellStyle}>
-                        <span style={getStatusBadgeStyle(payment.status)}>
-                          {getStatusLabel(payment.status)}
+                        <span style={getStatusBadgeStyle(payment)}>
+                          {statusLabel}
                         </span>
                       </div>
 
@@ -581,7 +627,7 @@ export default function AdminPagosPage() {
                             />
                             <DetailItem
                               label="Estado pago"
-                              value={getStatusLabel(payment.status)}
+                              value={statusLabel}
                             />
                           </div>
 
