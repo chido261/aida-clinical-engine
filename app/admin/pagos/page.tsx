@@ -14,6 +14,7 @@ type Payment = {
   durationDays: number;
   phoneE164: string;
   deviceId: string | null;
+  customerName: string | null;
   activationCodeId: number | null;
   createdAt: string;
   updatedAt: string;
@@ -78,6 +79,7 @@ function getPlanLabel(plan: string) {
 function getStatusLabel(status: string) {
   if (status === "created") return "Creado";
   if (status === "pending") return "Pendiente";
+  if (status === "in_process") return "Procesando";
   if (status === "approved") return "Aprobado";
   if (status === "rejected") return "Rechazado";
   if (status === "cancelled") return "Cancelado";
@@ -86,7 +88,7 @@ function getStatusLabel(status: string) {
 }
 
 function isPendingStatus(status: string) {
-  return status === "created" || status === "pending";
+  return status === "created" || status === "pending" || status === "in_process";
 }
 
 function isFailedStatus(status: string) {
@@ -107,6 +109,14 @@ function getStatusBadgeStyle(status: string): React.CSSProperties {
       ...statusBadgeStyle,
       background: "#fee2e2",
       color: "#991b1b",
+    };
+  }
+
+  if (status === "in_process") {
+    return {
+      ...statusBadgeStyle,
+      background: "#dbeafe",
+      color: "#1e40af",
     };
   }
 
@@ -166,10 +176,12 @@ export default function AdminPagosPage() {
 
       const searchableText = [
         payment.id,
+        payment.customerName,
         payment.provider,
         payment.providerPaymentId,
         payment.providerRef,
         payment.status,
+        getStatusLabel(payment.status),
         payment.plan,
         payment.phoneE164,
         payment.deviceId,
@@ -343,7 +355,7 @@ export default function AdminPagosPage() {
 
   return (
     <main style={pageStyle}>
-      <section style={{ maxWidth: 1200, margin: "0 auto" }}>
+      <section style={{ maxWidth: 1300, margin: "0 auto" }}>
         <div style={{ marginBottom: 18 }}>
           <div style={topNavStyle}>
             <a href="/pago" style={topLinkStyle}>
@@ -397,7 +409,7 @@ export default function AdminPagosPage() {
           </div>
 
           <div style={smallCardStyle}>
-            <div style={metricLabelStyle}>Pendientes</div>
+            <div style={metricLabelStyle}>Pendientes / procesando</div>
             <div style={metricValueStyle}>{totalPending}</div>
           </div>
 
@@ -433,7 +445,7 @@ export default function AdminPagosPage() {
               type="search"
               value={searchText}
               onChange={(event) => setSearchText(event.target.value)}
-              placeholder="Buscar por celular, clave, pago o referencia..."
+              placeholder="Buscar por nombre, celular, clave, pago o referencia..."
               style={searchInputStyle}
             />
 
@@ -477,6 +489,7 @@ export default function AdminPagosPage() {
               <div style={compactHeaderStyle}>
                 <div>Pago</div>
                 <div>Estado</div>
+                <div>Nombre</div>
                 <div>Celular</div>
                 <div>Plan</div>
                 <div>Monto</div>
@@ -500,6 +513,12 @@ export default function AdminPagosPage() {
                         <span style={getStatusBadgeStyle(payment.status)}>
                           {getStatusLabel(payment.status)}
                         </span>
+                      </div>
+
+                      <div style={cellStyle}>
+                        <div style={cellStrongStyle}>
+                          {payment.customerName || "—"}
+                        </div>
                       </div>
 
                       <div style={cellStyle}>
@@ -568,6 +587,21 @@ export default function AdminPagosPage() {
 
                           <div style={detailBlockStyle}>
                             <DetailItem
+                              label="Nombre"
+                              value={payment.customerName ?? "—"}
+                            />
+                            <DetailItem
+                              label="Celular"
+                              value={payment.phoneE164 || "—"}
+                            />
+                            <DetailItem
+                              label="Device ID"
+                              value={payment.deviceId ?? "—"}
+                            />
+                          </div>
+
+                          <div style={detailBlockStyle}>
+                            <DetailItem
                               label="ID Mercado Pago"
                               value={payment.providerPaymentId ?? "—"}
                             />
@@ -576,8 +610,10 @@ export default function AdminPagosPage() {
                               value={payment.providerRef ?? "—"}
                             />
                             <DetailItem
-                              label="Celular"
-                              value={payment.phoneE164 || "—"}
+                              label="Plan"
+                              value={`${getPlanLabel(payment.plan)} · ${
+                                payment.durationDays
+                              } días`}
                             />
                           </div>
 
@@ -602,25 +638,12 @@ export default function AdminPagosPage() {
 
                           <div style={detailBlockStyle}>
                             <DetailItem
-                              label="Plan"
-                              value={`${getPlanLabel(payment.plan)} · ${
-                                payment.durationDays
-                              } días`}
-                            />
-                            <DetailItem
                               label="Monto"
                               value={`${formatMoneyCents(
                                 payment.amount,
                                 payment.currency
                               )} ${payment.currency}`}
                             />
-                            <DetailItem
-                              label="Device ID"
-                              value={payment.deviceId ?? "—"}
-                            />
-                          </div>
-
-                          <div style={detailBlockStyle}>
                             <DetailItem
                               label="Creado"
                               value={formatDate(payment.createdAt)}
@@ -629,13 +652,13 @@ export default function AdminPagosPage() {
                               label="Actualizado"
                               value={formatDate(payment.updatedAt)}
                             />
+                          </div>
+
+                          <div style={detailBlockStyle}>
                             <DetailItem
                               label="Aprobado"
                               value={formatDate(payment.approvedAt)}
                             />
-                          </div>
-
-                          <div style={detailBlockStyle}>
                             <DetailItem
                               label="Inicio vigencia"
                               value={formatDate(payment.activationFullStartedAt)}
@@ -644,6 +667,9 @@ export default function AdminPagosPage() {
                               label="Fin vigencia"
                               value={formatDate(payment.activationFullEndsAt)}
                             />
+                          </div>
+
+                          <div style={detailBlockStyle}>
                             <DetailItem
                               label="Dispositivo activo"
                               value={payment.activationCurrentDeviceId ?? "—"}
@@ -655,6 +681,14 @@ export default function AdminPagosPage() {
                           <div style={sectionTitleStyle}>Acciones rápidas</div>
 
                           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                            <button
+                              type="button"
+                              onClick={() => copyText(payment.customerName)}
+                              style={actionButtonStyle}
+                            >
+                              Copiar nombre
+                            </button>
+
                             <button
                               type="button"
                               onClick={() => copyText(payment.providerPaymentId)}
@@ -883,7 +917,7 @@ const activeFilterButtonStyle: React.CSSProperties = {
 
 const compactHeaderStyle: React.CSSProperties = {
   display: "grid",
-  gridTemplateColumns: "90px 115px 1.25fr 1fr 1fr 1.25fr 1fr 90px",
+  gridTemplateColumns: "90px 125px 1.1fr 1.25fr 0.9fr 0.95fr 1.15fr 0.9fr 90px",
   gap: 10,
   padding: "12px 14px",
   background: "#f9fafb",
@@ -891,16 +925,16 @@ const compactHeaderStyle: React.CSSProperties = {
   color: "#374151",
   fontSize: 12,
   fontWeight: 900,
-  minWidth: 980,
+  minWidth: 1160,
 };
 
 const compactRowStyle: React.CSSProperties = {
   display: "grid",
-  gridTemplateColumns: "90px 115px 1.25fr 1fr 1fr 1.25fr 1fr 90px",
+  gridTemplateColumns: "90px 125px 1.1fr 1.25fr 0.9fr 0.95fr 1.15fr 0.9fr 90px",
   gap: 10,
   padding: "14px",
   alignItems: "center",
-  minWidth: 980,
+  minWidth: 1160,
 };
 
 const rowCardStyle: React.CSSProperties = {
