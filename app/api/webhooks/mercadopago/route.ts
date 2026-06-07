@@ -30,6 +30,40 @@ function getPaymentIdFromUrl(request: Request) {
   );
 }
 
+function safeParseJson(value: string | null | undefined) {
+  if (!value) return null;
+
+  try {
+    return JSON.parse(value);
+  } catch {
+    return value;
+  }
+}
+
+function buildDebugPayload({
+  existingRawPayload,
+  webhookBody,
+  providerPaymentId,
+  mpPayment,
+}: {
+  existingRawPayload: string | null;
+  webhookBody: MercadoPagoWebhookBody | null;
+  providerPaymentId: string;
+  mpPayment: any;
+}) {
+  return JSON.stringify({
+    checkout: safeParseJson(existingRawPayload),
+    webhook: {
+      receivedAt: new Date().toISOString(),
+      providerPaymentId,
+      type: webhookBody?.type || null,
+      action: webhookBody?.action || null,
+      dataId: webhookBody?.data?.id ? String(webhookBody.data.id) : null,
+    },
+    mercadoPagoPayment: mpPayment,
+  });
+}
+
 export async function POST(request: Request) {
   try {
     const accessToken = process.env.MERCADOPAGO_ACCESS_TOKEN;
@@ -66,7 +100,6 @@ export async function POST(request: Request) {
 
     const externalReference = getString(mpPayment.external_reference);
     const status = getString(mpPayment.status);
-    const rawPayload = JSON.stringify(mpPayment);
 
     if (!externalReference) {
       return NextResponse.json({
@@ -98,6 +131,13 @@ export async function POST(request: Request) {
         localPaymentId,
       });
     }
+
+    const rawPayload = buildDebugPayload({
+      existingRawPayload: existingPayment.rawPayload,
+      webhookBody: body,
+      providerPaymentId: String(providerPaymentId),
+      mpPayment,
+    });
 
     if (existingPayment.status === "approved" && existingPayment.activationCodeId) {
       return NextResponse.json({

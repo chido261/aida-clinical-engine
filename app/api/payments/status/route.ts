@@ -30,6 +30,38 @@ function getString(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
 }
 
+function safeParseJson(value: string | null | undefined) {
+  if (!value) return null;
+
+  try {
+    return JSON.parse(value);
+  } catch {
+    return value;
+  }
+}
+
+function buildManualStatusPayload({
+  existingRawPayload,
+  providerPaymentId,
+  mpStatus,
+  mpPayment,
+}: {
+  existingRawPayload: string | null;
+  providerPaymentId: string;
+  mpStatus: string;
+  mpPayment: any;
+}) {
+  return JSON.stringify({
+    previous: safeParseJson(existingRawPayload),
+    manualStatusCheck: {
+      checkedAt: new Date().toISOString(),
+      providerPaymentId,
+      status: mpStatus,
+    },
+    mercadoPagoPayment: mpPayment,
+  });
+}
+
 async function syncMercadoPagoStatus(paymentId: number) {
   const payment = await prisma.payment.findUnique({
     where: {
@@ -68,7 +100,13 @@ async function syncMercadoPagoStatus(paymentId: number) {
     });
 
     const mpStatus = getString(mpPayment.status) || payment.status;
-    const rawPayload = JSON.stringify(mpPayment);
+
+    const rawPayload = buildManualStatusPayload({
+      existingRawPayload: payment.rawPayload,
+      providerPaymentId: payment.providerPaymentId,
+      mpStatus,
+      mpPayment,
+    });
 
     return await prisma.payment.update({
       where: {

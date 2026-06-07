@@ -46,15 +46,57 @@ function safeParseRawPayload(rawPayload: unknown) {
   }
 }
 
-function getCustomerNameFromRawPayload(rawPayload: unknown) {
-  const payload = safeParseRawPayload(rawPayload);
-  const name = typeof payload?.name === "string" ? payload.name.trim() : "";
-
-  return name || null;
-}
-
 function normalizeText(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
+}
+
+function getCustomerNameFromRawPayload(rawPayload: unknown) {
+  const payload = safeParseRawPayload(rawPayload);
+
+  const directName = normalizeText(payload?.name);
+  const checkoutName = normalizeText(payload?.checkout?.name);
+  const previousCheckoutName = normalizeText(payload?.previous?.checkout?.name);
+  const nestedPreviousCheckoutName = normalizeText(
+    payload?.previous?.previous?.checkout?.name
+  );
+
+  return (
+    directName ||
+    checkoutName ||
+    previousCheckoutName ||
+    nestedPreviousCheckoutName ||
+    null
+  );
+}
+
+function getMercadoPagoPaymentFromRawPayload(rawPayload: unknown) {
+  const payload = safeParseRawPayload(rawPayload);
+
+  return (
+    payload?.mercadoPagoPayment ||
+    payload?.previous?.mercadoPagoPayment ||
+    payload?.previous?.previous?.mercadoPagoPayment ||
+    payload?.checkout?.mercadoPagoPayment ||
+    null
+  );
+}
+
+function getMercadoPagoStatusDetail(rawPayload: unknown) {
+  const mpPayment = getMercadoPagoPaymentFromRawPayload(rawPayload);
+
+  return normalizeText(mpPayment?.status_detail) || null;
+}
+
+function getMercadoPagoPaymentMethod(rawPayload: unknown) {
+  const mpPayment = getMercadoPagoPaymentFromRawPayload(rawPayload);
+
+  return normalizeText(mpPayment?.payment_method_id) || null;
+}
+
+function getMercadoPagoPaymentType(rawPayload: unknown) {
+  const mpPayment = getMercadoPagoPaymentFromRawPayload(rawPayload);
+
+  return normalizeText(mpPayment?.payment_type_id) || null;
 }
 
 export async function GET(req: Request) {
@@ -175,6 +217,9 @@ export async function GET(req: Request) {
           providerPaymentId: payment.providerPaymentId,
           providerRef: payment.providerRef,
           status: payment.status,
+          statusDetail: getMercadoPagoStatusDetail(payment.rawPayload),
+          paymentMethodId: getMercadoPagoPaymentMethod(payment.rawPayload),
+          paymentTypeId: getMercadoPagoPaymentType(payment.rawPayload),
           amount: payment.amount,
           currency: payment.currency,
           plan: payment.plan,

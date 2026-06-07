@@ -8,6 +8,9 @@ type Payment = {
   providerPaymentId: string | null;
   providerRef: string | null;
   status: string;
+  statusDetail: string | null;
+  paymentMethodId: string | null;
+  paymentTypeId: string | null;
   amount: number;
   currency: string;
   plan: string;
@@ -221,6 +224,9 @@ export default function AdminPagosPage() {
         payment.providerPaymentId,
         payment.providerRef,
         payment.status,
+        payment.statusDetail,
+        payment.paymentMethodId,
+        payment.paymentTypeId,
         statusLabel,
         payment.plan,
         payment.phoneE164,
@@ -490,7 +496,7 @@ export default function AdminPagosPage() {
               type="search"
               value={searchText}
               onChange={(event) => setSearchText(event.target.value)}
-              placeholder="Buscar por nombre, celular, clave, pago o referencia..."
+              placeholder="Buscar por nombre, celular, clave, pago, motivo o referencia..."
               style={searchInputStyle}
             />
 
@@ -559,6 +565,11 @@ export default function AdminPagosPage() {
                         <span style={getStatusBadgeStyle(payment)}>
                           {statusLabel}
                         </span>
+                        {payment.statusDetail ? (
+                          <div style={mutedSmallStyle}>
+                            {payment.statusDetail}
+                          </div>
+                        ) : null}
                       </div>
 
                       <div style={cellStyle}>
@@ -629,6 +640,10 @@ export default function AdminPagosPage() {
                               label="Estado pago"
                               value={statusLabel}
                             />
+                            <DetailItem
+                              label="Motivo MP"
+                              value={payment.statusDetail ?? "—"}
+                            />
                           </div>
 
                           <div style={detailBlockStyle}>
@@ -656,14 +671,22 @@ export default function AdminPagosPage() {
                               value={payment.providerRef ?? "—"}
                             />
                             <DetailItem
+                              label="Método MP"
+                              value={payment.paymentMethodId ?? "—"}
+                            />
+                            <DetailItem
+                              label="Tipo pago MP"
+                              value={payment.paymentTypeId ?? "—"}
+                            />
+                          </div>
+
+                          <div style={detailBlockStyle}>
+                            <DetailItem
                               label="Plan"
                               value={`${getPlanLabel(payment.plan)} · ${
                                 payment.durationDays
                               } días`}
                             />
-                          </div>
-
-                          <div style={detailBlockStyle}>
                             <DetailItem
                               label="Clave"
                               value={payment.activationCode ?? "—"}
@@ -750,6 +773,16 @@ export default function AdminPagosPage() {
                             >
                               Copiar referencia
                             </button>
+
+                            {payment.statusDetail ? (
+                              <button
+                                type="button"
+                                onClick={() => copyText(payment.statusDetail)}
+                                style={actionButtonStyle}
+                              >
+                                Copiar motivo MP
+                              </button>
+                            ) : null}
 
                             {payment.activationCode ? (
                               <button

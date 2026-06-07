@@ -50,6 +50,12 @@ function getPlanCreditCents(currentPlan: string | null) {
   return 0;
 }
 
+function getAccessTokenMode(accessToken: string) {
+  if (accessToken.startsWith("TEST-")) return "test";
+  if (accessToken.startsWith("APP_USR-")) return "production";
+  return "unknown";
+}
+
 function getCheckoutPricing({
   targetPlan,
   userState,
@@ -192,6 +198,13 @@ export async function POST(request: Request) {
     }
 
     const baseUrl = getBaseUrl();
+    const notificationUrl = `${baseUrl}/api/webhooks/mercadopago`;
+
+    const backUrls = {
+      success: `${baseUrl}/pago/regreso?paymentId=__PAYMENT_ID__`,
+      failure: `${baseUrl}/pago?status=failure`,
+      pending: `${baseUrl}/pago?status=pending`,
+    };
 
     const localCheckoutPayload = {
       kind: "aida_checkout",
@@ -205,6 +218,12 @@ export async function POST(request: Request) {
       creditCents: pricing.creditCents,
       amountCents: pricing.amountCents,
       normalDurationDays: plan.durationDays,
+      mercadoPago: {
+        accessTokenMode: getAccessTokenMode(accessToken),
+        baseUrl,
+        notificationUrl,
+        backUrls,
+      },
       createdAt: new Date().toISOString(),
     };
 
@@ -221,6 +240,12 @@ export async function POST(request: Request) {
         rawPayload: JSON.stringify(localCheckoutPayload),
       },
     });
+
+    const finalBackUrls = {
+      success: `${baseUrl}/pago/regreso?paymentId=${payment.id}`,
+      failure: `${baseUrl}/pago?status=failure`,
+      pending: `${baseUrl}/pago?status=pending`,
+    };
 
     const client = new MercadoPagoConfig({
       accessToken,
@@ -255,18 +280,22 @@ export async function POST(request: Request) {
         payer: {
           name: name || undefined,
         },
-        back_urls: {
-          success: `${baseUrl}/pago/regreso?paymentId=${payment.id}`,
-          failure: `${baseUrl}/pago?status=failure`,
-          pending: `${baseUrl}/pago?status=pending`,
-        },
-        notification_url: `${baseUrl}/api/webhooks/mercadopago`,
+        back_urls: finalBackUrls,
+        notification_url: notificationUrl,
       },
     });
 
     const updatedCheckoutPayload = {
       ...localCheckoutPayload,
-      preferenceId: mpPreference.id ? String(mpPreference.id) : null,
+      mercadoPago: {
+        ...localCheckoutPayload.mercadoPago,
+        backUrls: finalBackUrls,
+        preferenceId: mpPreference.id ? String(mpPreference.id) : null,
+        initPoint: mpPreference.init_point || null,
+        sandboxInitPoint: mpPreference.sandbox_init_point || null,
+        hasInitPoint: Boolean(mpPreference.init_point),
+        hasSandboxInitPoint: Boolean(mpPreference.sandbox_init_point),
+      },
     };
 
     await prisma.payment.update({
