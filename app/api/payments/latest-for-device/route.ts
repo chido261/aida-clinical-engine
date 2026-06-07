@@ -9,6 +9,8 @@ type Body = {
   deviceId?: unknown;
 };
 
+const APPROVED_PAYMENT_WINDOW_HOURS = 24;
+
 function jsonOK(payload: any) {
   return NextResponse.json(payload);
 }
@@ -21,8 +23,8 @@ function getString(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
 }
 
-function minutesAgo(minutes: number) {
-  return new Date(Date.now() - minutes * 60 * 1000);
+function hoursAgo(hours: number) {
+  return new Date(Date.now() - hours * 60 * 60 * 1000);
 }
 
 export async function POST(req: Request) {
@@ -45,15 +47,14 @@ export async function POST(req: Request) {
       where: {
         deviceId,
         provider: "mercadopago",
-        status: {
-          in: ["pending", "created", "approved"],
-        },
+        status: "approved",
+        activationCodeId: null,
         createdAt: {
-          gte: minutesAgo(120),
+          gte: hoursAgo(APPROVED_PAYMENT_WINDOW_HOURS),
         },
       },
       orderBy: {
-        createdAt: "desc",
+        approvedAt: "desc",
       },
       select: {
         id: true,
