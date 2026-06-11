@@ -42,6 +42,117 @@ function isValidAction(value: string | undefined): value is LicenseAction {
   return value === "cancel-license" || value === "reset-trial";
 }
 
+async function cancelActiveAccessForUser({
+  userId,
+  phoneE164,
+  now,
+}: {
+  userId: string;
+  phoneE164: string | null;
+  now: Date;
+}) {
+  const activeSessions = await prisma.deviceSession.findMany({
+    where: {
+      OR: [
+        {
+          deviceId: userId,
+        },
+        phoneE164
+          ? {
+              phoneE164,
+            }
+          : undefined,
+      ].filter(Boolean) as any,
+      active: true,
+    },
+    select: {
+      activationCodeId: true,
+    },
+  });
+
+  const sessionActivationCodeIds = activeSessions
+    .map((session) => session.activationCodeId)
+    .filter((id): id is number => typeof id === "number");
+
+  const activeCodes = await prisma.activationCode.findMany({
+    where: {
+      status: "active",
+      OR: [
+        {
+          currentDeviceId: userId,
+        },
+        phoneE164
+          ? {
+              phoneE164,
+            }
+          : undefined,
+        sessionActivationCodeIds.length
+          ? {
+              id: {
+                in: sessionActivationCodeIds,
+              },
+            }
+          : undefined,
+      ].filter(Boolean) as any,
+    },
+    select: {
+      id: true,
+    },
+  });
+
+  const activationCodeIds = Array.from(
+    new Set([
+      ...sessionActivationCodeIds,
+      ...activeCodes.map((code) => code.id),
+    ])
+  );
+
+  await prisma.deviceSession.updateMany({
+    where: {
+      OR: [
+        {
+          deviceId: userId,
+        },
+        phoneE164
+          ? {
+              phoneE164,
+            }
+          : undefined,
+        activationCodeIds.length
+          ? {
+              activationCodeId: {
+                in: activationCodeIds,
+              },
+            }
+          : undefined,
+      ].filter(Boolean) as any,
+      active: true,
+    },
+    data: {
+      active: false,
+      disabledAt: now,
+    },
+  });
+
+  if (activationCodeIds.length) {
+    await prisma.activationCode.updateMany({
+      where: {
+        id: {
+          in: activationCodeIds,
+        },
+      },
+      data: {
+        status: "cancelled",
+        currentDeviceId: null,
+      },
+    });
+  }
+
+  return {
+    cancelledActivationCodes: activationCodeIds.length,
+  };
+}
+
 export async function POST(req: Request) {
   try {
     if (!isAuthorizedAdmin(req)) {
@@ -97,6 +208,12 @@ export async function POST(req: Request) {
 
     const now = new Date();
 
+    const accessCleanup = await cancelActiveAccessForUser({
+      userId,
+      phoneE164: existing.phoneE164,
+      now,
+    });
+
     const updatedUser =
       action === "cancel-license"
         ? await prisma.userState.update({
@@ -130,6 +247,7 @@ export async function POST(req: Request) {
     return jsonOK({
       ok: true,
       action,
+      accessCleanup,
       user: {
         id: updatedUser.id,
         licenseStatus: updatedUser.licenseStatus,
