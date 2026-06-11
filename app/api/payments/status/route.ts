@@ -5,6 +5,8 @@ export const runtime = "nodejs";
 import { NextResponse } from "next/server";
 import { MercadoPagoConfig, Payment as MercadoPagoPayment } from "mercadopago";
 import { prisma } from "@/app/lib/prisma";
+import { createOrRenewActivationCode } from "@/app/lib/aidaActivation";
+import { isAidaPlanId } from "@/app/lib/aidaPlans";
 
 function jsonOK(payload: any) {
   return NextResponse.json(payload);
@@ -62,6 +64,25 @@ function buildManualStatusPayload({
   });
 }
 
+async function ensureActivationCodeForApprovedPayment(payment: any) {
+  if (payment.activationCodeId) {
+    return payment.activationCodeId;
+  }
+
+  if (!isAidaPlanId(payment.plan)) {
+    return null;
+  }
+
+  const activationCode = await createOrRenewActivationCode({
+    phone: payment.phoneE164,
+    planId: payment.plan,
+    paymentId: payment.id,
+    deviceId: payment.deviceId,
+  });
+
+  return activationCode.id;
+}
+
 async function syncMercadoPagoStatus(paymentId: number) {
   const payment = await prisma.payment.findUnique({
     where: {
@@ -75,7 +96,7 @@ async function syncMercadoPagoStatus(paymentId: number) {
     return payment;
   }
 
-  if (payment.status === "approved") {
+  if (payment.status === "approved" && payment.activationCodeId) {
     return payment;
   }
 
@@ -108,14 +129,36 @@ async function syncMercadoPagoStatus(paymentId: number) {
       mpPayment,
     });
 
+    if (mpStatus !== "approved") {
+      return await prisma.payment.update({
+        where: {
+          id: payment.id,
+        },
+        data: {
+          status: mpStatus,
+          rawPayload,
+        },
+      });
+    }
+
+    const paymentWithRawPayload = {
+      ...payment,
+      rawPayload,
+    };
+
+    const activationCodeId =
+      payment.activationCodeId ||
+      (await ensureActivationCodeForApprovedPayment(paymentWithRawPayload));
+
     return await prisma.payment.update({
       where: {
         id: payment.id,
       },
       data: {
-        status: mpStatus,
+        status: "approved",
         rawPayload,
-        approvedAt: mpStatus === "approved" ? new Date() : payment.approvedAt,
+        approvedAt: payment.approvedAt ?? new Date(),
+        activationCodeId,
       },
     });
   } catch (error) {
