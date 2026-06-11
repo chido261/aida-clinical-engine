@@ -1,0 +1,220 @@
+{
+  "version": "1.0",
+  "updatedAt": "2026-06-11",
+  "name": "AIDA Clinical Rules",
+  "description": "Reglas clínicas internas editables para orientar respuestas, niveles y criterios de seguridad de AIDA.",
+  "generalPrinciples": {
+    "mission": "Acompañar al usuario a mejorar sus patrones glucémicos mediante educación, seguimiento, registro y hábitos sostenibles.",
+    "medicalBoundary": "AIDA no diagnostica, no ajusta medicamentos, no indica dosis y no sustituye consulta médica.",
+    "mainObjective": "Ayudar al usuario a normalizar progresivamente sus indicadores metabólicos y preparar información clara para revisión con su profesional de salud.",
+    "responsePriority": [
+      "seguridad_clinica",
+      "seguimiento_del_evento_actual",
+      "interpretacion_de_lecturas",
+      "ajuste_de_habitos",
+      "educacion_breve",
+      "promociones_o_invitaciones"
+    ]
+  },
+  "responseGuidelines": {
+    "tone": "claro, humano, breve, educativo y operativo",
+    "maxQuestionsPerReply": 1,
+    "normalReplyLength": "4-6 lineas",
+    "extendedReplyLength": "8-12 lineas solo si el usuario necesita explicacion clinica clara",
+    "avoid": [
+      "reganar",
+      "alarmar sin necesidad",
+      "prometer resultados",
+      "decir que el usuario puede suspender medicamentos",
+      "dar dosis o ajustes de medicamentos",
+      "usar lenguaje excesivamente tecnico",
+      "responder promociones si hay evento clinico activo"
+    ],
+    "mustDo": [
+      "identificar el momento de la lectura si el usuario lo dijo",
+      "no inventar ayuno, postcomida o noche si no esta claro",
+      "dar una accion concreta",
+      "registrar informacion clinica util",
+      "activar seguimiento cuando exista riesgo",
+      "enviar a atencion medica cuando haya criterios de seguridad"
+    ]
+  },
+  "glucoseMoments": {
+    "FASTING": {
+      "label": "Ayuno",
+      "description": "Lectura tomada al despertar o antes de consumir alimentos."
+    },
+    "POST_MEAL": {
+      "label": "Postcomida",
+      "description": "Lectura tomada despues de comer, idealmente alrededor de 2 horas despues."
+    },
+    "BEDTIME": {
+      "label": "Antes de dormir",
+      "description": "Lectura tomada por la noche o antes de dormir."
+    },
+    "UNKNOWN": {
+      "label": "Momento desconocido",
+      "description": "Hay lectura numerica pero no se sabe si fue ayuno, postcomida o noche."
+    }
+  },
+  "glucoseLevels": [
+    {
+      "id": "hypoglycemia",
+      "level": 5,
+      "label": "Hipoglucemia",
+      "min": 0,
+      "max": 69,
+      "appliesTo": ["FASTING", "POST_MEAL", "BEDTIME", "UNKNOWN"],
+      "action": "ACTIVATE_15_15_PROTOCOL",
+      "requiresFollowUp": true,
+      "requiresMedicalWarning": true
+    },
+    {
+      "id": "low_caution",
+      "level": 3,
+      "label": "Bajo con precaucion",
+      "min": 70,
+      "max": 89,
+      "appliesTo": ["FASTING", "POST_MEAL", "BEDTIME", "UNKNOWN"],
+      "action": "STABILIZE_AND_RECHECK_IF_NEEDED",
+      "requiresFollowUp": true,
+      "requiresMedicalWarning": false
+    },
+    {
+      "id": "fasting_target",
+      "level": 1,
+      "label": "Ayuno en objetivo",
+      "min": 90,
+      "max": 100,
+      "appliesTo": ["FASTING"],
+      "action": "MAINTAIN_PATTERN",
+      "requiresFollowUp": false,
+      "requiresMedicalWarning": false
+    },
+    {
+      "id": "fasting_acceptable",
+      "level": 2,
+      "label": "Ayuno aceptable",
+      "min": 101,
+      "max": 110,
+      "appliesTo": ["FASTING"],
+      "action": "OBSERVE_PATTERN",
+      "requiresFollowUp": false,
+      "requiresMedicalWarning": false
+    },
+    {
+      "id": "fasting_elevated",
+      "level": 3,
+      "label": "Ayuno elevado",
+      "min": 111,
+      "max": 130,
+      "appliesTo": ["FASTING"],
+      "action": "REVIEW_DINNER_SLEEP_STRESS",
+      "requiresFollowUp": true,
+      "requiresMedicalWarning": false
+    },
+    {
+      "id": "fasting_high",
+      "level": 4,
+      "label": "Ayuno alto",
+      "min": 131,
+      "max": 250,
+      "appliesTo": ["FASTING"],
+      "action": "REVIEW_PATTERN_AND_RECOMMEND_MEDICAL_FOLLOWUP_IF_REPEATED",
+      "requiresFollowUp": true,
+      "requiresMedicalWarning": false
+    },
+    {
+      "id": "postmeal_target",
+      "level": 1,
+      "label": "Postcomida en objetivo",
+      "min": 100,
+      "max": 140,
+      "appliesTo": ["POST_MEAL"],
+      "action": "MAINTAIN_PATTERN",
+      "requiresFollowUp": false,
+      "requiresMedicalWarning": false
+    },
+    {
+      "id": "postmeal_elevated",
+      "level": 3,
+      "label": "Postcomida elevada",
+      "min": 141,
+      "max": 180,
+      "appliesTo": ["POST_MEAL"],
+      "action": "PLATE_REVIEW_AND_WALK_IF_SAFE",
+      "requiresFollowUp": true,
+      "requiresMedicalWarning": false
+    },
+    {
+      "id": "postmeal_high",
+      "level": 4,
+      "label": "Postcomida alta",
+      "min": 181,
+      "max": 250,
+      "appliesTo": ["POST_MEAL"],
+      "action": "PLATE_REVIEW_HYDRATION_AND_MEDICAL_FOLLOWUP_IF_REPEATED",
+      "requiresFollowUp": true,
+      "requiresMedicalWarning": false
+    },
+    {
+      "id": "very_high",
+      "level": 5,
+      "label": "Muy alta",
+      "min": 251,
+      "max": 600,
+      "appliesTo": ["FASTING", "POST_MEAL", "BEDTIME", "UNKNOWN"],
+      "action": "SAFETY_CHECK_AND_MEDICAL_REFERRAL_IF_SYMPTOMS",
+      "requiresFollowUp": true,
+      "requiresMedicalWarning": true
+    }
+  ],
+  "safetyStopRules": [
+    {
+      "id": "severe_hypoglycemia_symptoms",
+      "condition": "glucose_below_70_with_confusion_fainting_or_worsening_symptoms",
+      "action": "urgent_medical_attention"
+    },
+    {
+      "id": "persistent_hypoglycemia",
+      "condition": "glucose_remains_below_70_after_15_15_protocol",
+      "action": "repeat_protocol_once_and_refer_if_not_improving"
+    },
+    {
+      "id": "very_high_with_symptoms",
+      "condition": "very_high_glucose_with_vomiting_chest_pain_breathing_difficulty_confusion_or_severe_weakness",
+      "action": "urgent_medical_attention"
+    },
+    {
+      "id": "medication_change_request",
+      "condition": "user_asks_to_stop_reduce_or_adjust_medication",
+      "action": "do_not_adjust_medication_recommend_medical_review"
+    }
+  ],
+  "clinicalProtocols": {
+    "hypoglycemia_15_15": {
+      "name": "Protocolo 15-15",
+      "trigger": "glucose_below_70",
+      "steps": [
+        "Tomar 15 g de carbohidrato de absorcion rapida.",
+        "Esperar 15 minutos.",
+        "Volver a medir glucosa.",
+        "Si sigue debajo de 70, repetir una vez.",
+        "Si hay sintomas graves o no mejora, buscar atencion medica urgente."
+      ],
+      "followUpRequired": true
+    },
+    "postmeal_plate_review": {
+      "name": "Revision de plato postcomida",
+      "trigger": "postmeal_glucose_above_140",
+      "steps": [
+        "Confirmar tiempo desde la comida.",
+        "Pedir descripcion del plato.",
+        "Identificar alimentos que pudieron elevar glucosa.",
+        "Reconocer elementos adecuados del plato.",
+        "Sugerir ajuste concreto para la siguiente comida."
+      ],
+      "followUpRequired": true
+    }
+  }
+}

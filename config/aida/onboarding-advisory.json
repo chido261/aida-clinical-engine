@@ -1,0 +1,95 @@
+{
+  "version": "1.0",
+  "updatedAt": "2026-06-11",
+  "name": "AIDA Initial Advisory",
+  "description": "Reglas editables para invitar al usuario a asesorías iniciales, capacitaciones y orientación de uso.",
+  "globalRules": {
+    "active": true,
+    "timezone": "America/Mexico_City",
+    "instagramUrl": "https://instagram.com/bajatuglucosa",
+    "respectQuietHours": true,
+    "doNotSendIfClinicalEventActive": true,
+    "maxAdvisoryInvitesPerUser": 2,
+    "minimumDaysBetweenInvites": 3
+  },
+  "program": {
+    "id": "AIDA_INITIAL_ADVISORY",
+    "name": "Asesoría inicial de uso de AIDA",
+    "objective": "Ayudar al usuario a aprender cómo registrar lecturas, enviar alimentos, interpretar respuestas y aprovechar mejor AIDA.",
+    "targetUsers": [
+      "usuarios nuevos",
+      "usuarios en prueba",
+      "usuarios activos que no han usado funciones clave",
+      "usuarios que necesitan apoyo para entender el seguimiento"
+    ],
+    "officialDatesSource": {
+      "type": "instagram",
+      "url": "https://instagram.com/bajatuglucosa",
+      "message": "Las fechas oficiales de asesorías y capacitaciones se publican en Instagram."
+    }
+  },
+  "inviteRules": [
+    {
+      "id": "invite_after_onboarding",
+      "active": true,
+      "trigger": "ONBOARDING_COMPLETED",
+      "delayMinutes": 10,
+      "maxSendsPerUser": 1,
+      "message": {
+        "title": "Aprende a usar AIDA",
+        "body": "Tenemos asesorías iniciales para que aprendas a registrar lecturas y aprovechar mejor AIDA. Revisa las fechas oficiales en Instagram.",
+        "targetUrl": "https://instagram.com/bajatuglucosa"
+      }
+    },
+    {
+      "id": "invite_trial_day_2",
+      "active": true,
+      "trigger": "TRIAL_DAY",
+      "day": 2,
+      "preferredTime": "12:00",
+      "maxSendsPerUser": 1,
+      "message": {
+        "title": "Asesoría inicial",
+        "body": "Si quieres aprender a usar AIDA paso a paso, revisa las próximas fechas de asesoría en Instagram.",
+        "targetUrl": "https://instagram.com/bajatuglucosa"
+      }
+    },
+    {
+      "id": "invite_after_low_usage",
+      "active": true,
+      "trigger": "LOW_USAGE",
+      "condition": {
+        "minimumDaysSinceOnboarding": 2,
+        "maximumMessagesSent": 3
+      },
+      "preferredTime": "13:00",
+      "maxSendsPerUser": 1,
+      "message": {
+        "title": "¿Necesitas ayuda con AIDA?",
+        "body": "Puedes tomar una asesoría inicial para aprender a usar el chat, registrar lecturas y enviar alimentos o capturas.",
+        "targetUrl": "https://instagram.com/bajatuglucosa"
+      }
+    }
+  ],
+  "chatInvitationTemplates": [
+    {
+      "id": "soft_invite_after_confusion",
+      "active": true,
+      "trigger": "USER_CONFUSED_ABOUT_APP",
+      "message": "También puedes revisar las fechas de asesoría inicial en Instagram. Ahí explicamos cómo usar AIDA paso a paso."
+    },
+    {
+      "id": "soft_invite_after_registration",
+      "active": true,
+      "trigger": "USER_ASKS_HOW_TO_START",
+      "message": "Para comenzar mejor, puedes revisar las asesorías iniciales publicadas en Instagram. Te ayudan a aprender cómo registrar lecturas y usar AIDA correctamente."
+    }
+  ],
+  "limits": [
+    "No insistir en asesorías si el usuario está en evento clínico activo.",
+    "No enviar más de 2 invitaciones por usuario.",
+    "No presentar la asesoría como obligatoria.",
+    "No mezclar asesoría inicial con urgencias clínicas.",
+    "No mandar al usuario a Instagram si necesita atención médica."
+  ]
+}

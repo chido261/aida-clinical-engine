@@ -1,0 +1,219 @@
+{
+  "version": "1.0",
+  "updatedAt": "2026-06-11",
+  "name": "AIDA Protocol Rules",
+  "description": "Reglas editables para definir protocolos, criterios de avance y límites de actuación de AIDA.",
+  "protocols": [
+    {
+      "id": "TRIAL_7_DAYS",
+      "name": "Programa de prueba de 7 días",
+      "access": "trial",
+      "objective": "Conocer al usuario, registrar lecturas iniciales, enseñar hábitos base y detectar patrones glucémicos.",
+      "minimumDays": 7,
+      "aidaCanAssignAutomatically": true,
+      "aidaCanAdvanceAutomatically": false,
+      "allowedFocus": [
+        "registro de glucosa en ayuno",
+        "registro postcomida",
+        "educacion inicial",
+        "lista basica de alimentos",
+        "hidratacion",
+        "caminar de forma segura",
+        "reporte inicial"
+      ],
+      "limits": [
+        "No prometer normalizacion completa en 7 dias.",
+        "No sugerir suspender medicamentos.",
+        "No trabajar reduccion de medicamentos durante trial."
+      ]
+    },
+    {
+      "id": "PROTOCOL_1",
+      "name": "Protocolo 1 - Normalizacion glucemica inicial",
+      "access": "active",
+      "objective": "Reducir picos, estabilizar ayuno y postcomida, mejorar adherencia y crear un patron glucemico confiable.",
+      "minimumDays": 14,
+      "aidaCanAssignAutomatically": false,
+      "aidaCanAdvanceAutomatically": false,
+      "allowedFocus": [
+        "ayuno estable",
+        "postcomida estable",
+        "analisis de plato",
+        "ajuste de horarios",
+        "actividad fisica segura",
+        "sueno",
+        "estres",
+        "registro de medicamentos sin ajustar dosis",
+        "reporte para revision medica"
+      ],
+      "limits": [
+        "AIDA no reduce medicamentos.",
+        "AIDA no indica dosis.",
+        "Si hay medicamentos y lecturas bajas, sugerir revision medica.",
+        "Si hay hipoglucemias frecuentes, priorizar seguridad."
+      ]
+    },
+    {
+      "id": "PROTOCOL_2",
+      "name": "Protocolo 2 - Consolidacion y revision medica",
+      "access": "active",
+      "objective": "Sostener niveles glucemicos normales y preparar informacion clara para que el medico valore ajustes de tratamiento cuando corresponda.",
+      "minimumDays": 30,
+      "aidaCanAssignAutomatically": false,
+      "aidaCanAdvanceAutomatically": false,
+      "allowedFocus": [
+        "sostener estabilidad",
+        "detectar hipoglucemias",
+        "vigilar ayuno y postcomida",
+        "preparar reporte medico",
+        "formular preguntas para consulta",
+        "evitar recaidas"
+      ],
+      "limits": [
+        "AIDA no indica dejar medicamentos.",
+        "AIDA solo puede sugerir hablar con el medico si hay estabilidad sostenida o hipoglucemias.",
+        "Cualquier ajuste farmacologico debe decidirlo un profesional de salud."
+      ]
+    },
+    {
+      "id": "PROTOCOL_3",
+      "name": "Protocolo 3 - Mantenimiento",
+      "access": "active",
+      "objective": "Mantener estabilidad metabolica, prevenir recaidas y sostener habitos de largo plazo.",
+      "minimumDays": 60,
+      "aidaCanAssignAutomatically": false,
+      "aidaCanAdvanceAutomatically": false,
+      "allowedFocus": [
+        "monitoreo estrategico",
+        "prevencion de recaidas",
+        "flexibilidad alimentaria controlada",
+        "actividad fisica sostenible",
+        "seguimiento mensual",
+        "reporte de mantenimiento"
+      ],
+      "limits": [
+        "No bajar vigilancia si hay nuevas lecturas fuera de rango.",
+        "Si reaparecen picos frecuentes, regresar a protocolo previo o revision."
+      ]
+    }
+  ],
+  "advancementRules": [
+    {
+      "id": "trial_to_protocol_1_after_activation",
+      "active": true,
+      "type": "PROTOCOL_ENTRY",
+      "fromProtocol": "TRIAL_7_DAYS",
+      "toProtocol": "PROTOCOL_1",
+      "description": "Cuando el usuario activa la version completa, puede iniciar Protocolo 1.",
+      "conditions": {
+        "licenseStatus": ["active"],
+        "requiresCompletedTrial": false
+      },
+      "result": {
+        "candidateStatus": "READY_FOR_PROTOCOL_1",
+        "requiresAdminReview": false,
+        "requiresMedicalReview": false,
+        "aidaCanAdvanceAutomatically": true
+      }
+    },
+    {
+      "id": "p1_candidate_to_p2_after_7_stable_days",
+      "active": true,
+      "type": "PROTOCOL_ADVANCEMENT",
+      "fromProtocol": "PROTOCOL_1",
+      "toProtocol": "PROTOCOL_2",
+      "description": "Usuario candidato a pasar de Protocolo 1 a Protocolo 2 si completa 7 dias con lecturas dentro de rango.",
+      "conditions": {
+        "minimumCompleteDays": 7,
+        "requiredReadingsPerDay": {
+          "fasting": 1,
+          "postMeal": 1
+        },
+        "targets": {
+          "fasting": {
+            "min": 70,
+            "max": 100
+          },
+          "postMeal": {
+            "min": 100,
+            "max": 140
+          }
+        },
+        "medicationPolicy": {
+          "allowWithMedication": true,
+          "allowWithoutMedication": true,
+          "ifUsingMedicationMessage": "El usuario puede ser candidato a Protocolo 2, pero cualquier ajuste de medicamento debe revisarse con su medico."
+        }
+      },
+      "result": {
+        "candidateStatus": "CANDIDATE_FOR_PROTOCOL_2",
+        "requiresAdminReview": true,
+        "requiresMedicalReview": true,
+        "aidaCanAdvanceAutomatically": false,
+        "message": "AIDA detecto estabilidad suficiente para considerar revision hacia Protocolo 2."
+      }
+    },
+    {
+      "id": "p2_candidate_to_p3_after_30_stable_days",
+      "active": true,
+      "type": "PROTOCOL_ADVANCEMENT",
+      "fromProtocol": "PROTOCOL_2",
+      "toProtocol": "PROTOCOL_3",
+      "description": "Usuario candidato a mantenimiento si sostiene estabilidad por 30 dias.",
+      "conditions": {
+        "minimumCompleteDays": 30,
+        "requiresNoSevereEvents": true,
+        "requiresNoFrequentHypoglycemia": true,
+        "targets": {
+          "fasting": {
+            "min": 70,
+            "max": 100
+          },
+          "postMeal": {
+            "min": 100,
+            "max": 140
+          }
+        }
+      },
+      "result": {
+        "candidateStatus": "CANDIDATE_FOR_PROTOCOL_3",
+        "requiresAdminReview": true,
+        "requiresMedicalReview": false,
+        "aidaCanAdvanceAutomatically": false,
+        "message": "AIDA detecto estabilidad sostenida para considerar mantenimiento."
+      }
+    }
+  ],
+  "regressionRules": [
+    {
+      "id": "return_to_protocol_1_if_repeated_highs",
+      "active": true,
+      "description": "Si el usuario en Protocolo 2 o 3 presenta elevaciones repetidas, debe volver a enfoque de estabilizacion.",
+      "conditions": {
+        "appliesFromProtocols": ["PROTOCOL_2", "PROTOCOL_3"],
+        "repeatedOutOfRangeDays": 3,
+        "fastingAbove": 110,
+        "postMealAbove": 140
+      },
+      "result": {
+        "recommendedProtocol": "PROTOCOL_1",
+        "requiresAdminReview": true,
+        "message": "Se detectaron lecturas repetidas fuera de rango. Conviene volver temporalmente al enfoque de estabilizacion."
+      }
+    },
+    {
+      "id": "medical_review_if_frequent_hypoglycemia",
+      "active": true,
+      "description": "Si hay hipoglucemias frecuentes, no avanzar de protocolo y sugerir revision medica.",
+      "conditions": {
+        "hypoglycemiaEvents": 2,
+        "periodDays": 7
+      },
+      "result": {
+        "recommendedAction": "MEDICAL_REVIEW",
+        "blockProtocolAdvancement": true,
+        "message": "Se detectaron hipoglucemias frecuentes. Antes de avanzar, es importante revisar el tratamiento con el medico."
+      }
+    }
+  ]
+}

@@ -1,0 +1,192 @@
+{
+  "version": "1.0",
+  "updatedAt": "2026-06-11",
+  "name": "AIDA Notification Rules",
+  "description": "Reglas editables para controlar notificaciones push clínicas, educativas y promocionales sin saturar al usuario.",
+  "globalLimits": {
+    "timezone": "America/Mexico_City",
+    "quietHours": {
+      "start": "21:00",
+      "end": "08:00",
+      "description": "No enviar notificaciones no urgentes durante este horario."
+    },
+    "maxTotalPushPerDay": 3,
+    "maxClinicalPushPerDay": 2,
+    "maxEducationalPushPerDay": 1,
+    "maxPromotionalPushPerWeek": 2,
+    "minimumMinutesBetweenPush": 180,
+    "doNotSendPromotionsIfClinicalEventActive": true,
+    "doNotSendPromotionsIfUserIsExpired": false
+  },
+  "priorityOrder": [
+    "CLINICAL_SAFETY",
+    "CLINICAL_FOLLOW_UP",
+    "PROTOCOL_REMINDER",
+    "EDUCATIONAL",
+    "INITIAL_ADVISORY",
+    "PROMOTION"
+  ],
+  "clinicalNotifications": [
+    {
+      "id": "hypo_recheck_15min",
+      "active": true,
+      "type": "CLINICAL_SAFETY",
+      "priority": 1,
+      "condition": {
+        "pendingFollowUpType": "HYPO_RECHECK_15MIN",
+        "minutesAfterEvent": 15,
+        "requiresNoNewReading": true
+      },
+      "limits": {
+        "maxSendsPerEvent": 2,
+        "minimumMinutesBetweenSameEvent": 15
+      },
+      "push": {
+        "title": "Revisa tu glucosa",
+        "body": "Ya pasaron 15 minutos. Vuelve a medirte para confirmar que la glucosa subió a rango seguro."
+      }
+    },
+    {
+      "id": "hypo_stability_recheck",
+      "active": true,
+      "type": "CLINICAL_FOLLOW_UP",
+      "priority": 2,
+      "condition": {
+        "pendingFollowUpType": "HYPO_STABILITY_RECHECK",
+        "minutesAfterEvent": 45,
+        "requiresNoNewReading": true
+      },
+      "limits": {
+        "maxSendsPerEvent": 1,
+        "minimumMinutesBetweenSameEvent": 45
+      },
+      "push": {
+        "title": "Seguimiento de estabilidad",
+        "body": "Cuando puedas, vuelve a medir tu glucosa para confirmar que sigues estable después de la baja."
+      }
+    },
+    {
+      "id": "postmeal_plate_review_pending",
+      "active": true,
+      "type": "CLINICAL_FOLLOW_UP",
+      "priority": 3,
+      "condition": {
+        "pendingFollowUpType": "POSTMEAL_PLATE_REVIEW",
+        "minutesAfterEvent": 60,
+        "requiresNoUserReply": true
+      },
+      "limits": {
+        "maxSendsPerEvent": 1,
+        "minimumMinutesBetweenSameEvent": 60
+      },
+      "push": {
+        "title": "Revisemos tu comida",
+        "body": "Si me dices qué comiste, puedo ayudarte a entender por qué subió tu glucosa y cómo ajustar la siguiente comida."
+      }
+    }
+  ],
+  "protocolReminders": [
+    {
+      "id": "morning_fasting_reading",
+      "active": true,
+      "type": "PROTOCOL_REMINDER",
+      "priority": 4,
+      "condition": {
+        "protocols": ["TRIAL_7_DAYS", "PROTOCOL_1"],
+        "time": "08:00",
+        "requiresNoFastingReadingToday": true
+      },
+      "limits": {
+        "maxSendsPerDay": 1,
+        "daysOfWeek": ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday"]
+      },
+      "push": {
+        "title": "Registra tu ayuno",
+        "body": "Cuando puedas, registra tu glucosa en ayunas para seguir construyendo tu patrón."
+      }
+    },
+    {
+      "id": "daily_summary_invite",
+      "active": true,
+      "type": "PROTOCOL_REMINDER",
+      "priority": 5,
+      "condition": {
+        "protocols": ["TRIAL_7_DAYS", "PROTOCOL_1", "PROTOCOL_2"],
+        "time": "19:00",
+        "requiresAtLeastOneReadingToday": true,
+        "requiresNoDailySummaryToday": true
+      },
+      "limits": {
+        "maxSendsPerDay": 1
+      },
+      "push": {
+        "title": "Resumen del día",
+        "body": "Puedes pedirme tu resumen del día para revisar cómo vas y qué ajustar mañana."
+      }
+    }
+  ],
+  "educationalNotifications": [
+    {
+      "id": "trial_day_2_food_basics",
+      "active": true,
+      "type": "EDUCATIONAL",
+      "priority": 6,
+      "condition": {
+        "protocol": "TRIAL_7_DAYS",
+        "trialDay": 2,
+        "time": "12:00"
+      },
+      "limits": {
+        "maxSendsPerUser": 1
+      },
+      "push": {
+        "title": "Tip para tus comidas",
+        "body": "Hoy enfócate en proteína, grasa saludable y fibra antes de agregar carbohidratos."
+      }
+    },
+    {
+      "id": "trial_day_4_postmeal_learning",
+      "active": true,
+      "type": "EDUCATIONAL",
+      "priority": 6,
+      "condition": {
+        "protocol": "TRIAL_7_DAYS",
+        "trialDay": 4,
+        "time": "12:00"
+      },
+      "limits": {
+        "maxSendsPerUser": 1
+      },
+      "push": {
+        "title": "Aprende de tus postcomidas",
+        "body": "Tus lecturas después de comer ayudan a descubrir qué alimentos te mantienen más estable."
+      }
+    }
+  ],
+  "suppressionRules": [
+    {
+      "id": "no_promotions_during_hypoglycemia",
+      "description": "No enviar promociones si hay hipoglucemia o recuperación de hipoglucemia activa.",
+      "condition": {
+        "clinicalState": ["HYPO_ACTIVE", "RECOVERING_FROM_HYPO"]
+      },
+      "suppressTypes": ["PROMOTION", "INITIAL_ADVISORY", "EDUCATIONAL"]
+    },
+    {
+      "id": "no_nonurgent_push_at_night",
+      "description": "No enviar notificaciones no urgentes durante horario silencioso.",
+      "condition": {
+        "quietHoursActive": true
+      },
+      "suppressTypes": ["PROTOCOL_REMINDER", "EDUCATIONAL", "INITIAL_ADVISORY", "PROMOTION"]
+    },
+    {
+      "id": "avoid_push_overload",
+      "description": "Evitar saturar al usuario con notificaciones repetidas.",
+      "condition": {
+        "minimumMinutesBetweenPushNotMet": true
+      },
+      "suppressTypes": ["CLINICAL_FOLLOW_UP", "PROTOCOL_REMINDER", "EDUCATIONAL", "INITIAL_ADVISORY", "PROMOTION"]
+    }
+  ]
+}

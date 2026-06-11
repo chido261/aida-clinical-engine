@@ -1,0 +1,75 @@
+{
+  "version": "1.0",
+  "updatedAt": "2026-06-11",
+  "name": "AIDA Promotions",
+  "description": "Campañas promocionales, educativas y eventos programados para usuarios de AIDA.",
+  "globalRules": {
+    "timezone": "America/Mexico_City",
+    "respectQuietHours": true,
+    "doNotSendIfClinicalEventActive": true,
+    "maxPromotionalPushPerWeek": 2,
+    "minimumDaysBetweenPromotions": 2,
+    "defaultTargetUrl": "https://instagram.com/bajatuglucosa"
+  },
+  "campaigns": [
+    {
+      "id": "sample_free_conference",
+      "active": false,
+      "type": "FREE_EVENT",
+      "name": "Conferencia gratuita",
+      "title": "Conferencia gratuita",
+      "body": "Próximamente tendremos una conferencia gratuita sobre control de glucosa. Revisa las fechas oficiales en Instagram.",
+      "targetUrl": "https://instagram.com/bajatuglucosa",
+      "startsAt": "2026-07-01T09:00:00-06:00",
+      "endsAt": "2026-07-05T20:00:00-06:00",
+      "audience": {
+        "licenseStatus": ["trial", "active", "maintenance"],
+        "protocols": ["TRIAL_7_DAYS", "PROTOCOL_1", "PROTOCOL_2", "PROTOCOL_3"],
+        "excludeClinicalStates": ["HYPO_ACTIVE", "RECOVERING_FROM_HYPO"]
+      },
+      "sendRules": {
+        "maxSendsPerUser": 1,
+        "preferredTime": "12:00",
+        "allowRepeatReminder": false
+      }
+    },
+    {
+      "id": "sample_discount_training",
+      "active": false,
+      "type": "PAID_EVENT_DISCOUNT",
+      "name": "Capacitación con descuento",
+      "title": "Capacitación especial",
+      "body": "Tendremos una capacitación sobre alimentación y glucosa. Revisa los detalles y descuentos disponibles en Instagram.",
+      "targetUrl": "https://instagram.com/bajatuglucosa",
+      "discountPercent": 20,
+      "startsAt": "2026-07-10T09:00:00-06:00",
+      "endsAt": "2026-07-15T20:00:00-06:00",
+      "audience": {
+        "licenseStatus": ["trial", "active", "maintenance"],
+        "protocols": ["TRIAL_7_DAYS", "PROTOCOL_1", "PROTOCOL_2", "PROTOCOL_3"],
+        "excludeClinicalStates": ["HYPO_ACTIVE", "RECOVERING_FROM_HYPO"]
+      },
+      "sendRules": {
+        "maxSendsPerUser": 1,
+        "preferredTime": "13:00",
+        "allowRepeatReminder": true,
+        "repeatReminderDaysBeforeEnd": 1
+      }
+    }
+  ],
+  "messageRules": {
+    "tone": "claro, breve y no invasivo",
+    "avoid": [
+      "presionar al usuario",
+      "enviar promociones si hay un problema clinico activo",
+      "hacer promesas de resultados",
+      "usar urgencia falsa"
+    ],
+    "mustIncludeWhenRelevant": [
+      "fecha o periodo",
+      "tema",
+      "beneficio claro",
+      "liga oficial"
+    ]
+  }
+}
