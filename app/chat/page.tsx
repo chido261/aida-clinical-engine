@@ -815,20 +815,20 @@ export default function ChatPage() {
               </div>
             </div>
 
-            <div
+            <a
+              href="/soporte"
               style={{
+                display: "block",
                 padding: "11px 12px",
                 borderRadius: 12,
-                color: "#9ca3af",
+                color: "#111827",
+                textDecoration: "none",
                 fontSize: 14,
                 fontWeight: 800,
               }}
             >
               Soporte
-              <div style={{ fontSize: 11, fontWeight: 600, marginTop: 2 }}>
-                Próximamente
-              </div>
-            </div>
+            </a>
           </div>
         ) : null}
       </div>
