@@ -15,6 +15,20 @@ function safeParseJson(value: string | null | undefined) {
   }
 }
 
+function isAuthorized(req: Request) {
+  const adminKey = process.env.AIDA_ADMIN_KEY;
+
+  if (!adminKey) {
+    return false;
+  }
+
+  const headerKey = req.headers.get("x-aida-admin-key");
+  const url = new URL(req.url);
+  const queryKey = url.searchParams.get("adminKey");
+
+  return headerKey === adminKey || queryKey === adminKey;
+}
+
 function pickMercadoPagoSummary(rawPayload: any) {
   const mpPayment =
     rawPayload?.mercadoPagoPayment ||
@@ -45,6 +59,16 @@ function pickMercadoPagoSummary(rawPayload: any) {
 
 export async function GET(req: Request) {
   try {
+    if (!isAuthorized(req)) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "No autorizado",
+        },
+        { status: 401 }
+      );
+    }
+
     const url = new URL(req.url);
     const paymentIdRaw = url.searchParams.get("paymentId") ?? "";
     const paymentId = Number(paymentIdRaw);
