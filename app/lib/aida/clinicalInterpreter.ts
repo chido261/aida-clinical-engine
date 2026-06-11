@@ -28,6 +28,12 @@ export type AidaClinicalInterpretation = {
   originalText: string;
 };
 
+type ReadingMatch = {
+  glucose: number;
+  rawValue: string;
+  index: number;
+};
+
 function normalizeText(text: string) {
   return text
     .toLowerCase()
@@ -41,14 +47,20 @@ function isValidGlucose(value: number) {
   return Number.isFinite(value) && value >= 40 && value <= 600;
 }
 
-function detectMomentNearText(text: string): {
+function getContextWindow(text: string, index: number, length: number) {
+  const start = Math.max(0, index - 55);
+  const end = Math.min(text.length, index + length + 75);
+  return text.slice(start, end).trim();
+}
+
+function detectMomentInText(text: string): {
   moment: AidaReadingMoment;
   confidence: "high" | "medium" | "low";
 } {
   const normalized = normalizeText(text);
 
   if (
-    /\b(ayuno|ayunas|en ayunas|al despertar|despertando|amaneci|amanecer|sin comer)\b/.test(
+    /\b(ayuno|ayunas|en ayunas|al despertar|despertando|desperte|desperté|amaneci|amanecí|amanecer|sin comer)\b/.test(
       normalized
     )
   ) {
@@ -56,7 +68,7 @@ function detectMomentNearText(text: string): {
   }
 
   if (
-    /\b(postcomida|post comida|despues de comer|despues de desayunar|despues del desayuno|despues de almorzar|despues de la comida|despues de cenar|2h|2 horas|dos horas)\b/.test(
+    /\b(postcomida|post comida|despues de comer|despues de desayunar|despues del desayuno|despues de almorzar|despues de la comida|despues de cenar|despues tuve|despues me salio|despues marque|2h|2 horas|dos horas)\b/.test(
       normalized
     )
   ) {
@@ -64,7 +76,7 @@ function detectMomentNearText(text: string): {
   }
 
   if (
-    /\b(antes de dormir|al dormir|me voy a dormir|noche|por la noche|antes de acostarme|acostarme)\b/.test(
+    /\b(antes de dormir|al dormir|me voy a dormir|noche|por la noche|en la noche|antes de acostarme|acostarme)\b/.test(
       normalized
     )
   ) {
@@ -74,15 +86,9 @@ function detectMomentNearText(text: string): {
   return { moment: "UNKNOWN", confidence: "low" };
 }
 
-function getContextWindow(text: string, index: number, length: number) {
-  const start = Math.max(0, index - 55);
-  const end = Math.min(text.length, index + length + 75);
-  return text.slice(start, end);
-}
-
-function extractReadingsFromText(text: string): AidaInterpretedReading[] {
-  const readings: AidaInterpretedReading[] = [];
+function extractReadingMatches(text: string): ReadingMatch[] {
   const matches = Array.from(text.matchAll(/\b(\d{2,3})\b/g));
+  const readings: ReadingMatch[] = [];
 
   for (const match of matches) {
     const rawValue = match[1];
@@ -92,19 +98,174 @@ function extractReadingsFromText(text: string): AidaInterpretedReading[] {
       continue;
     }
 
-    const index = match.index ?? 0;
-    const sourceText = getContextWindow(text, index, rawValue.length);
-    const detected = detectMomentNearText(sourceText);
-
     readings.push({
       glucose,
-      moment: detected.moment,
-      sourceText: sourceText.trim(),
-      confidence: detected.confidence,
+      rawValue,
+      index: match.index ?? 0,
     });
   }
 
   return readings;
+}
+
+function getSegmentForReading(text: string, matches: ReadingMatch[], currentIndex: number) {
+  const current = matches[currentIndex];
+  const previous = matches[currentIndex - 1];
+  const next = matches[currentIndex + 1];
+
+  const start = previous
+    ? Math.max(previous.index + previous.rawValue.length, current.index - 80)
+    : 0;
+
+  const end = next
+    ? Math.min(next.index, current.index + current.rawValue.length + 90)
+    : text.length;
+
+  return text.slice(start, end).trim();
+}
+
+function getPrefixForReading(text: string, current: ReadingMatch) {
+  return text.slice(0, current.index).trim();
+}
+
+function getSuffixForReading(text: string, current: ReadingMatch) {
+  return text.slice(current.index + current.rawValue.length).trim();
+}
+
+function inferMomentByPosition(params: {
+  text: string;
+  matches: ReadingMatch[];
+  currentIndex: number;
+  currentMoment: AidaReadingMoment;
+}): {
+  moment: AidaReadingMoment;
+  confidence: "high" | "medium" | "low";
+} {
+  const { text, matches, currentIndex, currentMoment } = params;
+
+  if (currentMoment !== "UNKNOWN") {
+    return { moment: currentMoment, confidence: "high" };
+  }
+
+  const normalized = normalizeText(text);
+  const current = matches[currentIndex];
+  const prefix = normalizeText(getPrefixForReading(text, current));
+  const suffix = normalizeText(getSuffixForReading(text, current));
+
+  if (
+    currentIndex === 0 &&
+    /\b(desperte|desperté|al despertar|amaneci|amanecí|amanecer|ayuno|ayunas|en ayunas)\b/.test(
+      prefix + " " + suffix.slice(0, 50)
+    )
+  ) {
+    return { moment: "FASTING", confidence: "medium" };
+  }
+
+  if (
+    currentIndex > 0 &&
+    /\b(despues|después|postcomida|post comida|2h|2 horas|dos horas)\b/.test(
+      prefix.slice(-120) + " " + suffix.slice(0, 80)
+    )
+  ) {
+    return { moment: "POST_MEAL", confidence: "medium" };
+  }
+
+  const mentionsWakeThenMealThenAfter =
+    /\b(desperte|desperté|amaneci|amanecí|al despertar)\b/.test(normalized) &&
+    /\b(desayune|desayuné|comi|comí|cene|cené|almorce|almorcé)\b/.test(normalized) &&
+    /\b(despues|después)\b/.test(normalized);
+
+  if (mentionsWakeThenMealThenAfter && matches.length >= 2) {
+    if (currentIndex === 0) {
+      return { moment: "FASTING", confidence: "medium" };
+    }
+
+    if (currentIndex === 1) {
+      return { moment: "POST_MEAL", confidence: "medium" };
+    }
+  }
+
+  return { moment: "UNKNOWN", confidence: "low" };
+}
+
+function repairSequentialMoments(
+  readings: AidaInterpretedReading[],
+  originalText: string
+): AidaInterpretedReading[] {
+  if (readings.length < 2) {
+    return readings;
+  }
+
+  const normalized = normalizeText(originalText);
+  const next = [...readings];
+
+  const mentionsFasting =
+    /\b(ayuno|ayunas|en ayunas|al despertar|despertando|desperte|desperté|amaneci|amanecí|amanecer)\b/.test(
+      normalized
+    );
+
+  const mentionsPostMeal =
+    /\b(despues de desayunar|despues del desayuno|despues de comer|despues de comida|despues de la comida|postcomida|post comida|2h|2 horas|dos horas|despues tuve)\b/.test(
+      normalized
+    );
+
+  const mentionsNight =
+    /\b(antes de dormir|al dormir|noche|por la noche|en la noche|antes de acostarme)\b/.test(
+      normalized
+    );
+
+  if (mentionsFasting && mentionsPostMeal && next.length >= 2) {
+    next[0] = {
+      ...next[0],
+      moment: "FASTING",
+      confidence: next[0].confidence === "high" ? "high" : "medium",
+    };
+
+    next[1] = {
+      ...next[1],
+      moment: "POST_MEAL",
+      confidence: next[1].confidence === "high" ? "high" : "medium",
+    };
+  }
+
+  if (mentionsNight && next.length >= 3) {
+    next[2] = {
+      ...next[2],
+      moment: "BEDTIME",
+      confidence: next[2].confidence === "high" ? "high" : "medium",
+    };
+  }
+
+  return next;
+}
+
+function extractReadingsFromText(text: string): AidaInterpretedReading[] {
+  const matches = extractReadingMatches(text);
+
+  const readings = matches.map((match, index) => {
+    const segment = getSegmentForReading(text, matches, index);
+    const sourceText = getContextWindow(text, match.index, match.rawValue.length);
+
+    const segmentMoment = detectMomentInText(segment);
+    const inferred = inferMomentByPosition({
+      text,
+      matches,
+      currentIndex: index,
+      currentMoment: segmentMoment.moment,
+    });
+
+    return {
+      glucose: match.glucose,
+      moment: inferred.moment,
+      sourceText,
+      confidence:
+        inferred.moment === segmentMoment.moment
+          ? segmentMoment.confidence
+          : inferred.confidence,
+    };
+  });
+
+  return repairSequentialMoments(readings, text);
 }
 
 function detectSymptoms(text: string): AidaDetectedSymptom[] {
@@ -142,63 +303,13 @@ function detectSymptoms(text: string): AidaDetectedSymptom[] {
   return Array.from(symptoms);
 }
 
-function improveSequentialMoments(
-  readings: AidaInterpretedReading[],
-  text: string
-): AidaInterpretedReading[] {
-  if (readings.length < 2) {
-    return readings;
-  }
-
-  const normalized = normalizeText(text);
-
-  const mentionsFastingAndPostMeal =
-    /\b(ayuno|ayunas|en ayunas|al despertar|despertando|amaneci|amanecer)\b/.test(
-      normalized
-    ) &&
-    /\b(despues de desayunar|despues del desayuno|despues de comer|postcomida|post comida|2h|2 horas|dos horas)\b/.test(
-      normalized
-    );
-
-  if (!mentionsFastingAndPostMeal) {
-    return readings;
-  }
-
-  const next = [...readings];
-
-  if (next[0]?.moment === "FASTING" && next[1]?.moment === "FASTING") {
-    next[1] = {
-      ...next[1],
-      moment: "POST_MEAL",
-      confidence: "medium",
-    };
-  }
-
-  if (next[0]?.moment === "UNKNOWN") {
-    next[0] = {
-      ...next[0],
-      moment: "FASTING",
-      confidence: "medium",
-    };
-  }
-
-  if (next[1]?.moment === "UNKNOWN") {
-    next[1] = {
-      ...next[1],
-      moment: "POST_MEAL",
-      confidence: "medium",
-    };
-  }
-
-  return next;
-}
-
 export function interpretAidaClinicalText(text: string): AidaClinicalInterpretation {
   const safeText = typeof text === "string" ? text : "";
 
-  const rawReadings = extractReadingsFromText(safeText);
-  const readings = improveSequentialMoments(rawReadings, safeText);
+  const readings = extractReadingsFromText(safeText);
   const symptoms = detectSymptoms(safeText);
+
+  const hasMultipleReadings = readings.length > 1;
 
   const needsMomentClarification =
     readings.length === 1 && readings[0]?.moment === "UNKNOWN";
@@ -206,7 +317,7 @@ export function interpretAidaClinicalText(text: string): AidaClinicalInterpretat
   return {
     readings,
     symptoms,
-    hasMultipleReadings: readings.length > 1,
+    hasMultipleReadings,
     needsMomentClarification,
     originalText: safeText,
   };
