@@ -209,6 +209,7 @@ export default function ChatPage() {
   const [latestPayment, setLatestPayment] = useState<LatestPayment | null>(null);
   const [latestPaymentRedirectUrl, setLatestPaymentRedirectUrl] = useState("");
   const [isLoadingLatestPayment, setIsLoadingLatestPayment] = useState(false);
+  const [showMainMenu, setShowMainMenu] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -704,29 +705,132 @@ export default function ChatPage() {
 
   return (
     <main style={{ maxWidth: 720, margin: "0 auto", padding: 16, position: "relative" }}>
-      <div
+            <div
         style={{
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between",
           gap: 12,
           marginBottom: 12,
+          position: "relative",
         }}
       >
         <h1 style={{ fontSize: 22, fontWeight: 700, margin: 0 }}>AIDA</h1>
 
         <div
           style={{
-            border: "1px solid #e5e7eb",
-            background: "white",
-            borderRadius: 999,
-            padding: "6px 10px",
-            fontSize: 12,
-            fontWeight: 600,
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
           }}
         >
-          {planLabel}
+          <div
+            style={{
+              border: "1px solid #e5e7eb",
+              background: "white",
+              borderRadius: 999,
+              padding: "6px 10px",
+              fontSize: 12,
+              fontWeight: 600,
+            }}
+          >
+            {planLabel}
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setShowMainMenu((prev) => !prev)}
+            style={{
+              border: "1px solid #e5e7eb",
+              background: "white",
+              borderRadius: 999,
+              padding: "6px 10px",
+              fontSize: 12,
+              fontWeight: 800,
+              cursor: "pointer",
+            }}
+            title="Abrir menú"
+          >
+            Menú
+          </button>
         </div>
+
+        {showMainMenu ? (
+          <div
+            style={{
+              position: "absolute",
+              top: 42,
+              right: 0,
+              width: 220,
+              background: "white",
+              border: "1px solid #e5e7eb",
+              borderRadius: 16,
+              boxShadow: "0 18px 45px rgba(0,0,0,0.14)",
+              padding: 8,
+              zIndex: 60,
+            }}
+          >
+            <a
+              href="/mi-cuenta"
+              style={{
+                display: "block",
+                padding: "11px 12px",
+                borderRadius: 12,
+                color: "#111827",
+                textDecoration: "none",
+                fontSize: 14,
+                fontWeight: 800,
+              }}
+            >
+              Mi cuenta
+            </a>
+
+            <a
+              href="/pago"
+              style={{
+                display: "block",
+                padding: "11px 12px",
+                borderRadius: 12,
+                color: "#111827",
+                textDecoration: "none",
+                fontSize: 14,
+                fontWeight: 800,
+              }}
+            >
+              Planes
+            </a>
+
+            <div
+              style={{
+                padding: "11px 12px",
+                borderRadius: 12,
+                color: "#9ca3af",
+                fontSize: 14,
+                fontWeight: 800,
+              }}
+            >
+              Tutoriales
+              <div style={{ fontSize: 11, fontWeight: 600, marginTop: 2 }}>
+                Próximamente
+              </div>
+            </div>
+
+            <div
+              style={{
+                padding: "11px 12px",
+                borderRadius: 12,
+                color: "#9ca3af",
+                fontSize: 14,
+                fontWeight: 800,
+              }}
+            >
+              Soporte
+              <div style={{ fontSize: 11, fontWeight: 600, marginTop: 2 }}>
+                Próximamente
+              </div>
+            </div>
+          </div>
+        ) : null}
       </div>
 
       {shouldShowLatestPaymentBanner ? (
