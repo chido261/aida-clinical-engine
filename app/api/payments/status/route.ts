@@ -167,6 +167,26 @@ async function syncMercadoPagoStatus(paymentId: number) {
   }
 }
 
+function getPublicActivationMessage(status: string, activationAvailable: boolean) {
+  if (status === "approved" && activationAvailable) {
+    return "Tu pago fue aprobado. Tu código de activación estará disponible en la sección Mi cuenta.";
+  }
+
+  if (status === "approved") {
+    return "Tu pago fue aprobado. Estamos preparando la activación de tu cuenta.";
+  }
+
+  if (status === "pending" || status === "in_process") {
+    return "Tu pago está en proceso. Te avisaremos cuando Mercado Pago confirme la aprobación.";
+  }
+
+  if (status === "rejected") {
+    return "Tu pago no fue aprobado. Puedes intentar nuevamente desde la sección de planes.";
+  }
+
+  return "Estamos revisando el estado de tu pago.";
+}
+
 export async function GET(req: Request) {
   try {
     const url = new URL(req.url);
@@ -195,13 +215,11 @@ export async function GET(req: Request) {
       );
     }
 
-    const activationCode = payment.activationCodeId
-      ? await prisma.activationCode.findUnique({
-          where: {
-            id: payment.activationCodeId,
-          },
-        })
-      : null;
+    const activationAvailable = Boolean(payment.activationCodeId);
+    const publicMessage = getPublicActivationMessage(
+      payment.status,
+      activationAvailable
+    );
 
     return jsonOK({
       ok: true,
@@ -216,17 +234,12 @@ export async function GET(req: Request) {
         currency: payment.currency,
         durationDays: payment.durationDays,
         phoneMasked: maskPhone(payment.phoneE164),
-        deviceId: payment.deviceId,
         approvedAt: payment.approvedAt,
         createdAt: payment.createdAt,
         updatedAt: payment.updatedAt,
 
-        activationCodeId: payment.activationCodeId,
-        activationCode: activationCode?.code ?? null,
-        activationStatus: activationCode?.status ?? null,
-        activationFullStartedAt: activationCode?.fullStartedAt ?? null,
-        activationFullEndsAt: activationCode?.fullEndsAt ?? null,
-        activationCurrentDeviceId: activationCode?.currentDeviceId ?? null,
+        activationAvailable,
+        activationMessage: publicMessage,
       },
     });
   } catch (err: any) {
