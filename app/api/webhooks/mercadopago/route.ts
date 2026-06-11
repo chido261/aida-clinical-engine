@@ -19,6 +19,17 @@ function getString(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
 }
 
+function getNumber(value: unknown) {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+
+  if (typeof value === "string") {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+
+  return null;
+}
+
 function getPaymentIdFromUrl(request: Request) {
   const url = new URL(request.url);
 
@@ -45,11 +56,13 @@ function buildDebugPayload({
   webhookBody,
   providerPaymentId,
   mpPayment,
+  securityCheck,
 }: {
   existingRawPayload: string | null;
   webhookBody: MercadoPagoWebhookBody | null;
   providerPaymentId: string;
   mpPayment: any;
+  securityCheck?: Record<string, any>;
 }) {
   return JSON.stringify({
     checkout: safeParseJson(existingRawPayload),
@@ -61,7 +74,56 @@ function buildDebugPayload({
       dataId: webhookBody?.data?.id ? String(webhookBody.data.id) : null,
     },
     mercadoPagoPayment: mpPayment,
+    securityCheck: securityCheck || null,
   });
+}
+
+function validateApprovedMercadoPagoPayment({
+  mpPayment,
+  existingPayment,
+  externalReference,
+}: {
+  mpPayment: any;
+  existingPayment: any;
+  externalReference: string;
+}) {
+  const status = getString(mpPayment.status);
+  const currencyId = getString(mpPayment.currency_id);
+  const transactionAmount = getNumber(mpPayment.transaction_amount);
+
+  const expectedExternalReference = String(existingPayment.id);
+  const expectedAmountPesos = Number(existingPayment.amount) / 100;
+
+  const amountMatches =
+    typeof transactionAmount === "number" &&
+    Math.abs(transactionAmount - expectedAmountPesos) < 0.01;
+
+  const checks = {
+    status,
+    statusOk: status === "approved",
+
+    externalReference,
+    expectedExternalReference,
+    externalReferenceOk: externalReference === expectedExternalReference,
+
+    currencyId,
+    currencyOk: currencyId === "MXN",
+
+    transactionAmount,
+    expectedAmountPesos,
+    amountOk: amountMatches,
+  };
+
+  const ok =
+    checks.statusOk &&
+    checks.externalReferenceOk &&
+    checks.currencyOk &&
+    checks.amountOk;
+
+  return {
+    ok,
+    checks,
+  };
 }
 
 export async function POST(request: Request) {
@@ -132,7 +194,7 @@ export async function POST(request: Request) {
       });
     }
 
-    const rawPayload = buildDebugPayload({
+    const baseRawPayload = buildDebugPayload({
       existingRawPayload: existingPayment.rawPayload,
       webhookBody: body,
       providerPaymentId: String(providerPaymentId),
@@ -154,7 +216,7 @@ export async function POST(request: Request) {
         data: {
           providerPaymentId: String(providerPaymentId),
           status: status || "pending",
-          rawPayload,
+          rawPayload: baseRawPayload,
         },
       });
 
@@ -162,6 +224,43 @@ export async function POST(request: Request) {
         ok: true,
         paymentId: existingPayment.id,
         status,
+      });
+    }
+
+    const securityValidation = validateApprovedMercadoPagoPayment({
+      mpPayment,
+      existingPayment,
+      externalReference,
+    });
+
+    const rawPayload = buildDebugPayload({
+      existingRawPayload: existingPayment.rawPayload,
+      webhookBody: body,
+      providerPaymentId: String(providerPaymentId),
+      mpPayment,
+      securityCheck: securityValidation.checks,
+    });
+
+    if (!securityValidation.ok) {
+      await prisma.payment.update({
+        where: { id: existingPayment.id },
+        data: {
+          providerPaymentId: String(providerPaymentId),
+          status: "security_mismatch",
+          rawPayload,
+        },
+      });
+
+      console.error("mercadopago webhook security mismatch", {
+        paymentId: existingPayment.id,
+        providerPaymentId,
+        checks: securityValidation.checks,
+      });
+
+      return NextResponse.json({
+        ok: true,
+        ignored: "security_mismatch",
+        paymentId: existingPayment.id,
       });
     }
 
@@ -206,7 +305,6 @@ export async function POST(request: Request) {
       paymentId: existingPayment.id,
       status: "approved",
       activationCodeId: activationCode.id,
-      code: activationCode.code,
     });
   } catch (error) {
     console.error("mercadopago webhook error", error);
