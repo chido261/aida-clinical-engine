@@ -37,6 +37,13 @@ import {
 } from "@/app/lib/aidaMemory";
 
 import { shouldBypassLicense } from "@/app/lib/runtimeConfig";
+import { interpretAidaClinicalText } from "@/app/lib/aida/clinicalInterpreter";
+import { classifyAidaReadings } from "@/app/lib/aida/clinicalClassifier";
+import { composeAidaClinicalResponseDirective } from "@/app/lib/aida/clinicalResponseComposer";
+import type {
+  AidaDetectedSymptom,
+  AidaReadingMoment,
+} from "@/app/lib/aida/clinicalInterpreter";
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
@@ -237,6 +244,59 @@ function extractGlucose(text: string): number | null {
   return nums[nums.length - 1];
 }
 
+function mapAidaMomentToLegacyMoment(moment: AidaReadingMoment): Moment {
+  if (moment === "FASTING") return "AYUNO";
+  if (moment === "POST_MEAL") return "POSTCOMIDA";
+  if (moment === "BEDTIME") return "NOCHE";
+  return "DESCONOCIDO";
+}
+
+function mapAidaSymptomsToLegacySymptoms(symptoms: AidaDetectedSymptom[]): string[] {
+  const result: string[] = [];
+
+  if (symptoms.includes("LOW_SYMPTOMS")) {
+    result.push("low_symptoms");
+  }
+
+  if (symptoms.includes("VOMITING")) {
+    result.push("vomiting");
+  }
+
+  if (symptoms.includes("CHEST_OR_BREATHING")) {
+    result.push("respiratory_or_chest");
+  }
+
+  if (
+    symptoms.includes("SEVERE_WEAKNESS") ||
+    symptoms.includes("CONFUSION_OR_FAINTING")
+  ) {
+    result.push("low_symptoms");
+  }
+
+  return Array.from(new Set(result));
+}
+
+function buildClinicalResponseDirectiveContext(params: {
+  situation: string;
+  priority: string;
+  instructionsForGpt: string;
+  forbidden: string[];
+  expectedResponseGoals: string[];
+}) {
+  return `Directiva clínica AIDA:
+Situación: ${params.situation}
+Prioridad: ${params.priority}
+
+Instrucciones para responder:
+${params.instructionsForGpt}
+
+Prohibido:
+${params.forbidden.map((item) => `- ${item}`).join("\n")}
+
+Objetivos de respuesta:
+${params.expectedResponseGoals.map((item) => `- ${item}`).join("\n")}`;
+}
+
 function extractSymptoms(text: string): string[] {
   const t = text.toLowerCase();
   const symptoms: string[] = [];
@@ -334,11 +394,28 @@ export async function POST(req: Request) {
       .join("\n");
 
     // ✅ Detectores DEL MENSAJE ACTUAL
-    const glucoseNow = extractGlucose(lastUserMsg);
-    const hasGlucoseNow = glucoseNow !== null;
+const clinicalInterpretation = interpretAidaClinicalText(lastUserMsg);
+const clinicalClassification = classifyAidaReadings({
+  readings: clinicalInterpretation.readings,
+  symptoms: clinicalInterpretation.symptoms,
+});
+const clinicalResponseDirective = composeAidaClinicalResponseDirective({
+  interpretation: clinicalInterpretation,
+  classification: clinicalClassification,
+});
 
-    const confirmation = isConfirmation(lastUserMsg);
-    const detected = (detectMomentFromText(lastUserMsg) ?? "DESCONOCIDO") as Moment;
+const primaryClinicalReading =
+  clinicalInterpretation.readings.length > 0
+    ? clinicalInterpretation.readings[clinicalInterpretation.readings.length - 1]
+    : null;
+
+const glucoseNow = primaryClinicalReading?.glucose ?? extractGlucose(lastUserMsg);
+const hasGlucoseNow = glucoseNow !== null;
+
+const confirmation = isConfirmation(lastUserMsg);
+const detected = primaryClinicalReading
+  ? mapAidaMomentToLegacyMoment(primaryClinicalReading.moment)
+  : ((detectMomentFromText(lastUserMsg) ?? "DESCONOCIDO") as Moment);
 
     const pendingFollowUpTypeFromState =
       ((await ensureUserState(userId)).pendingFollowUpType ?? null) as PendingFollowUpType;
@@ -350,7 +427,10 @@ export async function POST(req: Request) {
           ? "POSTCOMIDA"
           : "DESCONOCIDO";
           
-    const symptoms = extractSymptoms(lastUserMsg);
+          const symptoms =
+          clinicalInterpretation.symptoms.length > 0
+            ? mapAidaSymptomsToLegacySymptoms(clinicalInterpretation.symptoms)
+            : extractSymptoms(lastUserMsg);
 
     // 1) Bypass de seguridad
     const bypass = applySafetyBypass(lastUserMsg, historyPlain);
@@ -588,17 +668,20 @@ if (lastReadingToUpdate && lastReadingToUpdate.moment === "DESCONOCIDO") {
 }
 
     // 5) Guardar lectura normal (si hay número)
-if (glucoseNow !== null) {
-  await saveReading({
-    userId,
-    glucose: glucoseNow,
-    moment,
-    symptoms,
-  });
+if (clinicalInterpretation.readings.length > 0) {
+  for (const reading of clinicalInterpretation.readings) {
+    await saveReading({
+      userId,
+      glucose: reading.glucose,
+      moment: mapAidaMomentToLegacyMoment(reading.moment),
+      symptoms,
+    });
+  }
 
-  // Si venimos de hipoglucemia y la nueva lectura ya está en rango seguro,
+  // Si venimos de hipoglucemia y la nueva lectura principal ya está en rango seguro,
   // cerramos el seguimiento antes de cualquier otra regla.
   if (
+    glucoseNow !== null &&
     glucoseNow >= 90 &&
     (clinicalState === "HYPO_ACTIVE" ||
       clinicalState === "RECOVERING_FROM_HYPO" ||
@@ -617,6 +700,41 @@ if (glucoseNow !== null) {
       },
     });
   }
+} else if (glucoseNow !== null) {
+  await saveReading({
+    userId,
+    glucose: glucoseNow,
+    moment,
+    symptoms,
+  });
+}
+
+// 5.1) Respuesta clínica determinística del nuevo motor AIDA
+if (
+  clinicalResponseDirective.shouldUseDeterministicResponse &&
+  clinicalResponseDirective.deterministicResponse
+) {
+  if (clinicalClassification.hasMedicalWarning) {
+    await prisma.userState.update({
+      where: { id: userId },
+      data: {
+        clinicalState: "HYPO_ACTIVE",
+        lastEventType: "HYPOGLYCEMIA",
+        lastEventAt: new Date(),
+        pendingFollowUpType: "HYPO_RECHECK_15MIN",
+        pendingFollowUpAt: new Date(),
+        lastRecommendation: "Aplicar protocolo 15-15 y volver a medir en 15 minutos.",
+      },
+    });
+  }
+
+  return jsonOK({
+    ok: true,
+    reply: clinicalResponseDirective.deterministicResponse,
+    bypass: false,
+    clinicalDirective: true,
+    ui: uiBase,
+  });
 }
 
 // 5.5) Reportes manuales
