@@ -1,5 +1,5 @@
 {
-  "version": "1.0",
+  "version": "1.1",
   "updatedAt": "2026-06-11",
   "name": "AIDA Clinical Rules",
   "description": "Reglas clínicas internas editables para orientar respuestas, niveles y criterios de seguridad de AIDA.",
@@ -7,6 +7,7 @@
     "mission": "Acompañar al usuario a mejorar sus patrones glucémicos mediante educación, seguimiento, registro y hábitos sostenibles.",
     "medicalBoundary": "AIDA no diagnostica, no ajusta medicamentos, no indica dosis y no sustituye consulta médica.",
     "mainObjective": "Ayudar al usuario a normalizar progresivamente sus indicadores metabólicos y preparar información clara para revisión con su profesional de salud.",
+    "medicationBoundary": "AIDA no debe sugerir usar, suspender, aumentar o disminuir medicamentos. Si el usuario tiene tratamiento indicado, debe seguir la indicación de su médico. Si hay lecturas bajas o elevadas repetidas, AIDA puede sugerir revisión médica.",
     "responsePriority": [
       "seguridad_clinica",
       "seguimiento_del_evento_actual",
@@ -27,6 +28,7 @@
       "prometer resultados",
       "decir que el usuario puede suspender medicamentos",
       "dar dosis o ajustes de medicamentos",
+      "sugerir usar medicamentos cuando la lectura esta en rango saludable",
       "usar lenguaje excesivamente tecnico",
       "responder promociones si hay evento clinico activo"
     ],
@@ -57,6 +59,61 @@
       "description": "Hay lectura numerica pero no se sabe si fue ayuno, postcomida o noche."
     }
   },
+  "baseGlucoseCriteria": {
+    "hypoglycemia": {
+      "max": 69,
+      "label": "Hipoglucemia",
+      "description": "Toda lectura menor de 70 mg/dL se considera hipoglucemia, con o sin medicamentos.",
+      "action": "ACTIVATE_15_15_PROTOCOL"
+    },
+    "fastingHealthyRange": {
+      "min": 70,
+      "max": 100,
+      "label": "Ayuno saludable",
+      "description": "Ayuno de 70 a 100 mg/dL se considera dentro de rango saludable para el sistema AIDA.",
+      "medicationGuidance": "No sugerir medicamentos para bajar glucosa si la lectura esta en rango saludable."
+    },
+    "postMealHealthyRange": {
+      "min": 100,
+      "max": 140,
+      "label": "Postcomida saludable",
+      "description": "Postcomida de 100 a 140 mg/dL se considera dentro de rango saludable para el sistema AIDA.",
+      "medicationGuidance": "No sugerir medicamentos para bajar glucosa si la lectura esta en rango saludable."
+    },
+    "postMealHyperglycemia": {
+      "min": 141,
+      "label": "Hiperglucemia postcomida",
+      "description": "Despues de comidas, una lectura mayor de 140 mg/dL se considera elevada y requiere revisar plato, horarios y patron.",
+      "medicationGuidance": "AIDA no ajusta medicamentos. Si el usuario tiene tratamiento indicado, debe seguir indicacion medica. Si las elevaciones se repiten, sugerir revision medica."
+    }
+  },
+  "operationalLevels": [
+    {
+      "level": 1,
+      "label": "En rango saludable",
+      "description": "Lectura dentro de objetivo para su momento. Mantener patron y evitar medidas innecesarias para bajar mas la glucosa."
+    },
+    {
+      "level": 2,
+      "label": "Dato incompleto o requiere contexto",
+      "description": "Hay lectura, pero falta momento, sintomas, tiempo desde comida o contexto para interpretarla bien."
+    },
+    {
+      "level": 3,
+      "label": "Fuera de rango funcional",
+      "description": "Lectura elevada o patron que requiere revisar comida, cena, sueno, estres, hidratacion o actividad."
+    },
+    {
+      "level": 4,
+      "label": "Alto o repetido",
+      "description": "Lectura alta o posible patron repetido que requiere seguimiento mas cuidadoso y posible revision medica si persiste."
+    },
+    {
+      "level": 5,
+      "label": "Seguridad clinica",
+      "description": "Hipoglucemia, lectura muy alta con sintomas o datos de alarma. Priorizar seguridad y atencion medica cuando corresponda."
+    }
+  ],
   "glucoseLevels": [
     {
       "id": "hypoglycemia",
@@ -70,21 +127,10 @@
       "requiresMedicalWarning": true
     },
     {
-      "id": "low_caution",
-      "level": 3,
-      "label": "Bajo con precaucion",
-      "min": 70,
-      "max": 89,
-      "appliesTo": ["FASTING", "POST_MEAL", "BEDTIME", "UNKNOWN"],
-      "action": "STABILIZE_AND_RECHECK_IF_NEEDED",
-      "requiresFollowUp": true,
-      "requiresMedicalWarning": false
-    },
-    {
-      "id": "fasting_target",
+      "id": "fasting_healthy",
       "level": 1,
-      "label": "Ayuno en objetivo",
-      "min": 90,
+      "label": "Ayuno saludable",
+      "min": 70,
       "max": 100,
       "appliesTo": ["FASTING"],
       "action": "MAINTAIN_PATTERN",
@@ -92,21 +138,10 @@
       "requiresMedicalWarning": false
     },
     {
-      "id": "fasting_acceptable",
-      "level": 2,
-      "label": "Ayuno aceptable",
-      "min": 101,
-      "max": 110,
-      "appliesTo": ["FASTING"],
-      "action": "OBSERVE_PATTERN",
-      "requiresFollowUp": false,
-      "requiresMedicalWarning": false
-    },
-    {
       "id": "fasting_elevated",
       "level": 3,
       "label": "Ayuno elevado",
-      "min": 111,
+      "min": 101,
       "max": 130,
       "appliesTo": ["FASTING"],
       "action": "REVIEW_DINNER_SLEEP_STRESS",
@@ -125,9 +160,9 @@
       "requiresMedicalWarning": false
     },
     {
-      "id": "postmeal_target",
+      "id": "postmeal_healthy",
       "level": 1,
-      "label": "Postcomida en objetivo",
+      "label": "Postcomida saludable",
       "min": 100,
       "max": 140,
       "appliesTo": ["POST_MEAL"],
@@ -136,9 +171,20 @@
       "requiresMedicalWarning": false
     },
     {
-      "id": "postmeal_elevated",
+      "id": "postmeal_low_context",
+      "level": 2,
+      "label": "Postcomida baja o requiere contexto",
+      "min": 70,
+      "max": 99,
+      "appliesTo": ["POST_MEAL"],
+      "action": "CHECK_CONTEXT_AND_SYMPTOMS",
+      "requiresFollowUp": true,
+      "requiresMedicalWarning": false
+    },
+    {
+      "id": "postmeal_hyperglycemia",
       "level": 3,
-      "label": "Postcomida elevada",
+      "label": "Hiperglucemia postcomida",
       "min": 141,
       "max": 180,
       "appliesTo": ["POST_MEAL"],
@@ -158,6 +204,50 @@
       "requiresMedicalWarning": false
     },
     {
+      "id": "bedtime_stable",
+      "level": 1,
+      "label": "Noche estable",
+      "min": 90,
+      "max": 120,
+      "appliesTo": ["BEDTIME"],
+      "action": "MAINTAIN_PATTERN",
+      "requiresFollowUp": false,
+      "requiresMedicalWarning": false
+    },
+    {
+      "id": "bedtime_low_context",
+      "level": 2,
+      "label": "Noche baja o requiere contexto",
+      "min": 70,
+      "max": 89,
+      "appliesTo": ["BEDTIME"],
+      "action": "CHECK_CONTEXT_AND_SYMPTOMS",
+      "requiresFollowUp": true,
+      "requiresMedicalWarning": false
+    },
+    {
+      "id": "bedtime_elevated",
+      "level": 3,
+      "label": "Noche elevada",
+      "min": 121,
+      "max": 180,
+      "appliesTo": ["BEDTIME"],
+      "action": "REVIEW_DINNER_SLEEP_STRESS",
+      "requiresFollowUp": true,
+      "requiresMedicalWarning": false
+    },
+    {
+      "id": "unknown_moment",
+      "level": 2,
+      "label": "Lectura sin momento definido",
+      "min": 70,
+      "max": 250,
+      "appliesTo": ["UNKNOWN"],
+      "action": "ASK_MOMENT_CLARIFICATION",
+      "requiresFollowUp": false,
+      "requiresMedicalWarning": false
+    },
+    {
       "id": "very_high",
       "level": 5,
       "label": "Muy alta",
@@ -167,6 +257,26 @@
       "action": "SAFETY_CHECK_AND_MEDICAL_REFERRAL_IF_SYMPTOMS",
       "requiresFollowUp": true,
       "requiresMedicalWarning": true
+    }
+  ],
+  "medicationRules": [
+    {
+      "id": "no_medication_suggestion_in_healthy_range",
+      "description": "Si la lectura esta en rango saludable, AIDA no debe sugerir usar medicamentos para bajar glucosa.",
+      "appliesWhen": ["FASTING_70_100", "POST_MEAL_100_140"],
+      "action": "MAINTAIN_PATTERN_AND_AVOID_EXTRA_LOWERING_ACTIONS"
+    },
+    {
+      "id": "no_dose_adjustment",
+      "description": "AIDA no ajusta dosis, no suspende y no indica iniciar medicamentos.",
+      "appliesAlways": true,
+      "action": "REFER_TO_MEDICAL_PLAN_OR_MEDICAL_REVIEW"
+    },
+    {
+      "id": "repeated_highs_medical_review",
+      "description": "Si hay lecturas elevadas repetidas, AIDA puede sugerir revision medica sin indicar ajustes.",
+      "appliesWhen": ["REPEATED_FASTING_ABOVE_100", "REPEATED_POST_MEAL_ABOVE_140"],
+      "action": "SUGGEST_MEDICAL_REVIEW"
     }
   ],
   "safetyStopRules": [
@@ -212,7 +322,8 @@
         "Pedir descripcion del plato.",
         "Identificar alimentos que pudieron elevar glucosa.",
         "Reconocer elementos adecuados del plato.",
-        "Sugerir ajuste concreto para la siguiente comida."
+        "Sugerir ajuste concreto para la siguiente comida.",
+        "No sugerir medicamento si el usuario esta en rango saludable."
       ],
       "followUpRequired": true
     }
