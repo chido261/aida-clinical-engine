@@ -188,9 +188,17 @@ La última lectura que tengo registrada fue una glucosa baja de ${readingWithMom
 
   if (relation === "today") {
     if (!moment) {
+      if (clinicalState === "HYPO_ACTIVE") {
+        return `Hola ${name} 👋
+
+Hoy registraste ${reading} después de una glucosa baja.
+
+Antes de seguir, dime cómo te sientes y cuánto marca tu glucosa ahora.`;
+      }
+
       return `Hola ${name} 👋
 
-Hoy registraste ${reading}. No quedó identificado si fue en ayunas, después de comer o antes de dormir, así que dime qué te gustaría revisar ahora.`;
+Hoy registraste ${reading}. Podemos revisar esta lectura y darle contexto según cómo te sientes o en qué momento la tomaste.`;
     }
 
     if (partOfDay === "morning") {

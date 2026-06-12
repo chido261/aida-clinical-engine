@@ -699,6 +699,17 @@ if (clinicalInterpretation.readings.length > 0) {
         lastRecommendation: null,
       },
     });
+  
+    return jsonOK({
+      ok: true,
+      reply:
+        `Perfecto, ${glucoseNow} mg/dL ya es una lectura estable después de la hipoglucemia.\n\n` +
+        `Como también te sientes bien, cerramos este seguimiento por ahora.\n\n` +
+        `Mantente atento si vuelve mareo, temblor, sudor frío o debilidad; si pasa, vuelve a medirte y dime el número.`,
+      bypass: false,
+      clinicalResolved: true,
+      ui: uiBase,
+    });
   }
 } else if (glucoseNow !== null) {
   await saveReading({
@@ -773,7 +784,13 @@ if (wantsSummary) {
 }
 
     // ✅ 6) Motor clínico PRIMERO
-    if (glucoseNow !== null && clinicalInterpretation.readings.length <= 1) {
+    if (
+      glucoseNow !== null &&
+      clinicalInterpretation.readings.length <= 1 &&
+      clinicalResponseDirective.priority !== "clarification" &&
+      clinicalResponseDirective.priority !== "maintenance" &&
+      clinicalResponseDirective.priority !== "follow_up"
+    ) {
       const clinicalDecision = applyClinicalDecisionEngine({
         glucose: glucoseNow,
         moment,

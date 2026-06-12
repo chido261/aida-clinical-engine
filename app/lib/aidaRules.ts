@@ -318,22 +318,9 @@ export function applySafetyBypass(userText: string, historyText?: string): RuleR
     return { bypass: true, reply, reason: "chest_or_breathing_urgent" };
   }
 
-  // HIPO: <70 con o sin síntomas (≤54 enfatiza)
-  if (glucoseNow !== null && glucoseNow < 70) {
-    const intro =
-      glucoseNow <= 54
-        ? `Ok, tranquilo(a). ${glucoseNow} es una hipoglucemia importante. ⚠️`
-        : `Ok, tranquilo(a). ${glucoseNow} está por debajo del rango saludable. ⚠️`;
-
-    const reply =
-      `${intro}\n` +
-      `Así que aplicaremos rápidamente el Protocolo 15-15 ahora:\n` +
-      `1) Toma 15 g de carbohidrato de absorción rápida (1 cda de miel o 150 ml de jugo de frutas).\n` +
-      `2) Espera 15 min y vuelve a medir.\n` +
-      `Si sigues <70, repite la dosis. Si hay síntomas fuertes o te sientes peor, ve a urgencias. 🚑`;
-
-    return { bypass: true, reply, reason: "hypo_lt70" };
-  }
+   // HIPO: <70
+  // Ya lo maneja el nuevo motor clínico AIDA con respuesta determinística.
+  // No responder aquí para evitar duplicidad o mensajes inconsistentes.
 
   // 70–80 con síntomas -> tratar como hipo
   const hypoSymptoms = detectHypoSymptoms(userText);
