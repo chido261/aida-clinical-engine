@@ -162,8 +162,8 @@ function composeHealthyDirective(params: {
       "Además de interpretar la lectura, anticipa una ayuda útil según el momento, sin saturar: " +
 "si es ayuno saludable pero cercano al límite bajo, sugiere desayunar algo estable y evitar ejercicio en ayunas por ahora; " +
 "si es ayuno saludable normal, refuerza mantener el patrón y puedes ofrecer revisar el desayuno; " +
-"si es postcomida saludable, refuerza que esa comida respondió bien; " +
-"si es antes de dormir saludable, refuerza cierre estable del día y descanso. " +
+"si es postcomida saludable, refuerza que esa comida respondió bien y puedes preguntar qué comió para identificar qué le funcionó; " +
+"si es antes de dormir saludable, refuerza cierre estable del día y descanso; no sugieras comer ni planear algo para la noche salvo que el usuario diga que tiene hambre o que aún no cenó. " +
 "Haz máximo una sugerencia o una pregunta útil. " +
 "Si falta el tiempo postcomida, pide máximo una aclaración breve.",
     forbidden: [
@@ -173,6 +173,7 @@ function composeHealthyDirective(params: {
       "No des plan alimentario si el usuario solo reportó lecturas saludables.",
       "No recomiendes proteínas, grasas, fibra, carbohidratos ni ejercicio si el usuario no pidió recomendaciones.",
       "No agregues consejos extra cuando la lectura ya está en rango saludable.",
+      "No sugieras comer antes de dormir si el usuario no dijo que tiene hambre o que aún no cenó.",
     ],
     expectedResponseGoals: [
       "Mencionar cada lectura detectada.",

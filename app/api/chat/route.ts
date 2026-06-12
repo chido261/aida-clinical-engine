@@ -700,6 +700,11 @@ if (clinicalInterpretation.readings.length > 0) {
       },
     });
   
+    await updateLastReadingMoment({
+      userId,
+      moment: "RECUPERACION_HIPO",
+    });
+
     return jsonOK({
       ok: true,
       reply:
