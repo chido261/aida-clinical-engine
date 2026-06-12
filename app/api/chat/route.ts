@@ -773,7 +773,7 @@ if (wantsSummary) {
 }
 
     // ✅ 6) Motor clínico PRIMERO
-    if (glucoseNow !== null) {
+    if (glucoseNow !== null && clinicalInterpretation.readings.length <= 1) {
       const clinicalDecision = applyClinicalDecisionEngine({
         glucose: glucoseNow,
         moment,
@@ -915,6 +915,15 @@ if (wantsSummary) {
     )}`;
 
     const situationDirective = buildSituationDirective(moment, confirmation, hasGlucoseNow);
+
+    const clinicalDirectiveContext = buildClinicalResponseDirectiveContext({
+      situation: clinicalResponseDirective.situation,
+      priority: clinicalResponseDirective.priority,
+      instructionsForGpt: clinicalResponseDirective.instructionsForGpt,
+      forbidden: clinicalResponseDirective.forbidden,
+      expectedResponseGoals: clinicalResponseDirective.expectedResponseGoals,
+    });
+
     const pendingFollowUpDirective =
     userState.pendingFollowUpType === "POSTMEAL_PLATE_REVIEW" && glucoseNow === null
       ? `Contexto activo: venimos de una lectura postcomida elevada y AIDA pidió revisar qué comió el usuario.
@@ -935,6 +944,7 @@ Responde sobre ESA comida:
         { role: "system", content: onboardingContext },
         { role: "system", content: protocolContext },
         { role: "system", content: situationDirective },
+        { role: "system", content: clinicalDirectiveContext },
         ...(pendingFollowUpDirective
           ? [{ role: "system" as const, content: pendingFollowUpDirective }]
           : []),
