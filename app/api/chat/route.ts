@@ -478,6 +478,79 @@ const detected = primaryClinicalReading
     const clinicalState = (userState.clinicalState ?? null) as ClinicalState;
     const uiBase = buildUI(userState);
 
+    const saysWillWalkAfterPostmeal =
+    /(ir[eé] a caminar|voy a caminar|saldr[eé] a caminar|caminar[eé]|har[eé] una caminata|más tarde te cuento|mas tarde te cuento)/i.test(
+      lastUserMsg
+    );
+
+    const hasRecentPostmealElevatedContext =
+    userState.pendingFollowUpType === "POSTMEAL_PLATE_REVIEW" ||
+    userState.lastEventType === "POSTMEAL_ELEVATED" ||
+    /postcomida|despu[eé]s de comer|lectura est[aá] por arriba|glucosa est[aá] por arriba|158|hidr[aá]tate|caminata ligera/i.test(
+      historyPlain
+    );
+
+  if (
+    glucoseNow === null &&
+    saysWillWalkAfterPostmeal &&
+    hasRecentPostmealElevatedContext
+  ) {
+    await prisma.userState.update({
+      where: { id: userId },
+      data: {
+        clinicalState: null,
+        lastEventType: "POSTMEAL_ELEVATED",
+        lastEventAt: new Date(),
+        pendingFollowUpType: "POSTMEAL_WALK_RECHECK",
+        pendingFollowUpAt: new Date(),
+        lastRecommendation:
+          "Te sugerí hidratarte con agua natural y caminar ligero 10–15 minutos si te sientes bien. Después, dime cómo te sientes o cuánto marca tu glucosa si puedes medirte.",
+      },
+    });
+
+    return jsonOK({
+      ok: true,
+      bypass: false,
+      clinicalFollowUp: true,
+      reply:
+        `Perfecto, David. Haz la caminata ligera solo si te sientes bien y mantente hidratado con agua natural.\n\n` +
+        `Más tarde dime cómo te sientes o cuánto marca tu glucosa si puedes medirte.`,
+      ui: uiBase,
+    });
+  }
+
+    const mentionsWalkAfterPostmeal =
+    /(camin[eé]|caminar|caminata|fui a caminar|ya camin[eé]|ya camine)/i.test(lastUserMsg);
+
+  if (
+    glucoseNow !== null &&
+    userState.pendingFollowUpType === "POSTMEAL_WALK_RECHECK" &&
+    mentionsWalkAfterPostmeal
+  ) {
+    await prisma.userState.update({
+      where: { id: userId },
+      data: {
+        clinicalState: null,
+        lastEventType: "POSTMEAL_WALK_RESOLVED",
+        lastEventAt: new Date(),
+        pendingFollowUpType: null,
+        pendingFollowUpAt: null,
+        lastRecommendation: null,
+      },
+    });
+
+    return jsonOK({
+      ok: true,
+      bypass: false,
+      clinicalResolved: true,
+      reply:
+        `Perfecto, David. Bajar a ${glucoseNow} mg/dL después de caminar es una buena respuesta.\n\n` +
+        `De momento no necesitas comer. Mantente hidratado con agua natural y sigue tranquilo.\n\n` +
+        `Cuando toque tu siguiente comida por horario o hambre real, retomamos la estructura del protocolo.`,
+      ui: uiBase,
+    });
+  }
+
     // 2.1) Intercept clínico determinístico para hipoglucemia activa
     const asksLastReading =
   /(última medición|ultima medicion|última lectura|ultima lectura|última glucosa|ultima glucosa|último nivel|ultimo nivel|último registro|ultimo registro|cuál fue mi última|cual fue mi ultima|cuál fue mi ultima|cual fue mi última|qué fue lo último|que fue lo ultimo|cuánto fue mi última|cuanto fue mi ultima|cuánto fue mi ultima|cuanto fue mi última|de cuánto fue mi última|de cuanto fue mi ultima|sabes de cuánto fue|sabes de cuanto fue|de cuánto fue mi medición|de cuanto fue mi medicion|de cuánto fue mi glucosa|de cuanto fue mi glucosa|en cuánto estaba|en cuanto estaba|cuánto traía|cuanto traia|cuánto tenía|cuanto tenia)/i.test(
@@ -885,7 +958,7 @@ if (wantsSummary) {
       }
     }
 
-    // Progress context
+     // Progress context
     const progressMetrics = await getProgressMetrics(userId);
     const progressContext = buildProgressContext(progressMetrics);
 

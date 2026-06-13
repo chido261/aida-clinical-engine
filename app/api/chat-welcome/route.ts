@@ -135,11 +135,18 @@ Dime cómo te sientes y cuánto marca tu glucosa ahora.`;
           ? "Hoy"
           : "La última vez";
 
-    return `Hola ${name} 👋
-
-${timePhrase} tu lectura postcomida quedó un poco alta y te recomendé caminar 10–15 minutos para ayudar a bajarla.
-
-¿Ya caminaste? Si ya te mediste de nuevo, dime cuánto marca ahora.`;
+          const recommendation = (
+            userState.lastRecommendation?.trim() ||
+            "Te sugerí hidratarte con agua natural y caminar ligero 10–15 minutos si te sentías bien"
+          ).replace(/[.。]+$/, "");
+          
+          return `Hola ${name} 👋
+          
+          ${timePhrase} registraste una lectura postcomida elevada y dejamos un seguimiento pendiente.
+          
+          ${recommendation}.
+          
+          Antes de seguir, dime: ¿ya caminaste o te volviste a medir?`;
   }
 
   return null;
