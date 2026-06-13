@@ -13,13 +13,26 @@ export function applyPhaseRules(
 ): PhaseRuleResult {
   const lower = text.toLowerCase();
 
+  const mentionsTortilla = /(tortilla|tortillas)/i.test(lower);
+
+  const mentionsMealContext =
+    /(com[ií]|comida|desayun[eé]|desayuno|cen[eé]|cena|almorc[eé]|almuerzo|pollo|ensalada|arroz|jugo|carne|huevo|pescado|at[uú]n|queso|verdura|verduras|nopal|frijol|frijoles|pan|pasta|papa|camote)/i.test(
+      lower
+    );
+
   // 🌮 TORTILLA
-  if (/(tortilla|tortillas)/i.test(lower)) {
+  if (mentionsTortilla) {
     if (phase === "FASE_1") {
+      if (mentionsMealContext) {
+        return { handled: false };
+      }
+
       return {
         handled: true,
         response:
-          "En este momento del Protocolo Funcional es mejor evitar la tortilla. Primero buscamos estabilidad y quitar picos.\nVamos paso a paso.",
+          "En Protocolo 1, la tortilla queda fuera por ahora porque cuenta como cereal y puede dificultar la estabilidad de glucosa.\n\n" +
+          "Más adelante, en Protocolo 2, se puede valorar su reintroducción si tus lecturas se mantienen estables.\n\n" +
+          "Por ahora, mantén la base del plato con proteína, grasas saludables y vegetales con fibra.",
       };
     }
 

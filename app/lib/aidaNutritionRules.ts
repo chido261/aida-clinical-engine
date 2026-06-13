@@ -1,8 +1,9 @@
 export type NutritionContext = {
-    moment: "AYUNO" | "POSTCOMIDA" | "NOCHE";
-    glucose?: number;
-    symptoms?: string[];
-  };
+  moment: "AYUNO" | "POSTCOMIDA" | "NOCHE" | "DESCONOCIDO";
+  glucose?: number;
+  symptoms?: string[];
+  pendingFollowUpType?: string | null;
+};
   
   export type RuleResult = {
     handled: boolean;
@@ -15,14 +16,22 @@ export type NutritionContext = {
   ): RuleResult {
     const text = userText.toLowerCase();
   
-    // ❌ TORTILLA
-    if (/(tortilla)/i.test(text)) {
-      return {
-        handled: true,
-        response:
-          "En este momento, la tortilla cuenta como cereal y es mejor evitarla para mantener la glucosa estable.\n\nSi necesitas envolver alimentos, usa lechuga o nopal. Seguimos paso a paso.",
-      };
-    }
+        // ❌ TORTILLA EN PROTOCOLO 1
+  const mentionsTortilla = /(tortilla|tortillas)/i.test(text);
+  const mentionsOtherFoods =
+    /(pollo|ensalada|arroz|jugo|carne|huevo|pescado|at[uú]n|queso|verdura|verduras|nopal|frijol|frijoles|pan|pasta|papa|camote)/i.test(
+      text
+    );
+
+  if (mentionsTortilla && !mentionsOtherFoods) {
+    return {
+      handled: true,
+      response:
+        "En Protocolo 1, la tortilla queda fuera por ahora porque cuenta como cereal y puede dificultar la estabilidad de glucosa.\n\n" +
+        "Más adelante, en Protocolo 2, se puede valorar su reintroducción si tus lecturas se mantienen estables.\n\n" +
+        "Por ahora, mantén la base del plato con proteína, grasas saludables y vegetales con fibra.",
+    };
+  }
   
     // ❌ COMPENSAR CON EJERCICIO
     if (/(caminar|ejercicio).*(compensar|quemar)/i.test(text)) {

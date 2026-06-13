@@ -238,14 +238,15 @@ function composePostMealHyperglycemiaDirective(params: {
     deterministicResponse: null,
     instructionsForGpt:
       `Situación clínica: glucosa elevada después de comer.\n\nLecturas:\n${readingsBlock}\n\n` +
-      "Responde en 3 a 5 líneas. " +
+      "Responde en 3 a 5 líneas, breve y sin alarmar. " +
       "Di que la lectura está por arriba del rango saludable en postcomida, sin decir 'a las 2 horas' salvo que el usuario haya dicho explícitamente ese tiempo. " +
       "No inventes el tiempo exacto de la medición. " +
-      "Sugiere agua y caminata ligera de 10 a 15 minutos solo si se siente bien. " +
-      "Haz una sola pregunta para revisar qué comió o cuánto tiempo pasó después de comer. " +
+      "En este primer mensaje NO indiques caminata todavía, porque primero necesitamos saber si el usuario se siente bien o qué comió. " +
+      "Haz una sola pregunta útil: si se siente bien y qué comió, o qué comió y cuánto tiempo pasó desde que comió. " +
       "No ajustes medicamentos.",
     forbidden: [
       ...buildForbiddenRules(),
+      "No sugieras caminata en este primer mensaje si todavía no sabes si el usuario se siente bien.",
       "No digas que fue a las 2 horas si el usuario no lo especificó.",
       "No inventes horario postcomida.",
       "No digas 'rango ideal'.",
@@ -255,8 +256,8 @@ function composePostMealHyperglycemiaDirective(params: {
     expectedResponseGoals: [
       "Identificar hiperglucemia postcomida.",
       "No inventar tiempo después de comer.",
-      "Sugerir agua y caminata ligera solo si es seguro.",
-      "Pedir máximo una información útil.",
+      "Pedir contexto antes de sugerir caminata.",
+      "Preguntar máximo una cosa útil para decidir el siguiente paso.",
       "No indicar medicamentos ni dosis.",
     ],
   };

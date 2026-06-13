@@ -902,6 +902,7 @@ if (wantsSummary) {
         moment,
         glucose: glucoseNow ?? undefined,
         symptoms,
+        pendingFollowUpType: userState.pendingFollowUpType ?? null,
       } as any
     );
 
@@ -932,9 +933,24 @@ if (wantsSummary) {
       ? `Datos base del usuario (onboarding):\n${JSON.stringify(onboarding)}`
       : "No hay datos de onboarding.";
 
-    const protocolContext = `Reglas del protocolo actual (usar como referencia educativa, no repetir literal):\n${JSON.stringify(
-      protocol
-    )}`;
+      const protocolContext = `Protocolo activo de AIDA:
+      ${JSON.stringify(protocol)}
+      
+      Instrucción obligatoria:
+      - Responde siempre de acuerdo con el protocolo activo.
+      - No contradigas las restricciones del protocolo.
+      - En Protocolo 1, los carbohidratos se mantienen restringidos: 75% proteína + grasas saludables y 25% carbohidratos.
+      - En Protocolo 1, los carbohidratos deben venir principalmente de vegetales con fibra, vegetales simples y vegetales con poco almidón.
+      - En Protocolo 1 están excluidos cereales, granos, tortilla, pan, arroz, pasta, avena, maíz, papa, camote, jugos, azúcar y bebidas endulzadas.
+      - No suavices la tortilla como opción permitida en Protocolo 1.
+      - La tortilla puede valorarse hasta Protocolo 2, si existe estabilidad glucémica.
+      - Si el usuario menciona un alimento excluido, explica brevemente que no forma parte del Protocolo 1 y ofrece una alternativa compatible.
+      - Si el usuario comió algo excluido y su glucosa salió saludable, reconoce la lectura, pero aclara que el protocolo busca consistencia y por eso se mantiene la restricción.
+      - Si el usuario comió algo excluido y su glucosa salió elevada, relaciona prudentemente el alimento con una posible elevación y sugiere volver a la estructura del protocolo.
+      - No regañes.
+      - No hables de medicamentos.
+      - No cambies el tema.
+      - Haz máximo una recomendación concreta o una pregunta útil.`;
 
     const situationDirective = buildSituationDirective(moment, confirmation, hasGlucoseNow);
 

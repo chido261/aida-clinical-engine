@@ -1,38 +1,248 @@
 {
-    "name": "Fase 1 - Vencer los antojos",
-    "plate_ratio": {
-      "carbs_percent": 25,
-      "protein_fat_percent": 75
+  "name": "Fase 1 - Vencer los antojos",
+  "objective": "Estabilizar glucosa, reducir antojos y mejorar la respuesta metabólica inicial mediante restricción controlada de carbohidratos.",
+  "plate_ratio": {
+    "carbs_percent": 25,
+    "protein_fat_percent": 75,
+    "description": "El plato se trabaja con aproximadamente 75% de proteína y grasas saludables, y 25% de carbohidratos provenientes principalmente de vegetales con fibra y bajo almidón."
+  },
+  "protocol_focus": {
+    "active_protocol": "PROTOCOL_1",
+    "carbohydrate_strategy": "Restricción inicial de carbohidratos para favorecer estabilidad glucémica.",
+    "main_carbohydrate_sources": [
+      "vegetales con fibra",
+      "vegetales simples",
+      "vegetales con poco almidón"
+    ],
+    "excluded_until_protocol_2": [
+      "tortilla",
+      "pan",
+      "arroz",
+      "pasta",
+      "avena",
+      "maíz",
+      "trigo",
+      "cereales",
+      "granos",
+      "papa",
+      "camote",
+      "jugos",
+      "bebidas endulzadas",
+      "azúcar"
+    ],
+    "reintroduction_note": "La tortilla y otros carbohidratos excluidos no se recomiendan en Protocolo 1. Su reintroducción se evalúa hasta Protocolo 2, cuando el usuario haya mostrado mejor estabilidad glucémica."
+  },
+  "timing_rules": {
+    "morning": {
+      "avoid_categories": [
+        "cereales",
+        "granos",
+        "pan_pasta_semolas_trigo",
+        "tortilla",
+        "papa",
+        "camote"
+      ]
     },
-    "timing_rules": {
-      "morning": {
-        "avoid_categories": ["cereales", "pan_pasta_semolas_trigo"]
-      },
-      "lunch": {
-        "allowed_starches": ["legumbres", "verduras_con_almidon (25% del plato)"]
-      },
-      "night": {
-        "avoid_categories": ["cereales", "pan_pasta_semolas_trigo"]
-      }
+    "lunch": {
+      "allowed_starches": [
+        "legumbres en porción controlada",
+        "verduras con poco almidón dentro del 25% del plato"
+      ],
+      "avoid_categories": [
+        "cereales",
+        "granos",
+        "tortilla",
+        "pan",
+        "arroz",
+        "pasta",
+        "papa",
+        "camote"
+      ]
     },
-    "carbs": {
-      "legumes": {
-        "allowed": true,
-        "portion": "1/2 a 3/4 taza",
-        "notes": "Únicos almidones permitidos en fase 1."
-      },
-      "fruits": {
-        "allowed_non_tropical": true,
-        "recommended_per_day": "2 a 3",
-        "timing": "2 horas después del almuerzo, máximo 5:00 PM",
-        "avoid": ["tropicales", "secas", "jugo"]
-      }
+    "night": {
+      "avoid_categories": [
+        "cereales",
+        "granos",
+        "pan_pasta_semolas_trigo",
+        "tortilla",
+        "papa",
+        "camote"
+      ]
+    }
+  },
+  "carbs": {
+    "legumes": {
+      "allowed": true,
+      "portion": "1/2 a 3/4 taza",
+      "timing": "Preferentemente en comida.",
+      "notes": "Únicos almidones permitidos en fase 1, siempre en porción controlada y observando respuesta de glucosa."
     },
-    "avoid": {
-      "cereals_list": ["alforfón", "amaranto", "arroz", "avena", "cebada", "maíz", "mijo", "quinoa", "trigo"],
-      "starchy_vegetables_list": ["betabel", "calabaza bellota", "calabaza de invierno", "calabaza de ranúnculo", "calabaza japonesa", "calabaza moscada", "camote", "chícharo", "ñame/yuca", "papa blanca"],
-      "desserts_high_carb": ["bebidas endulzadas", "caramelos", "helado", "jugo", "nieve", "papas a la francesa", "papas fritas", "productos horneados"],
-      "sugars": ["azúcar", "dextrosa", "fructosa", "glucosa", "maltodextrina", "miel de agave", "jarabes", "sacarosa"]
+    "fruits": {
+      "allowed_non_tropical": true,
+      "recommended_per_day": "2 a 3",
+      "timing": "2 horas después del desayuno y antes de 5:00 PM",
+      "avoid": [
+        "tropicales",
+        "secas",
+        "jugo"
+      ]
+    }
+  },
+  "avoid": {
+    "cereals_list": [
+      "alforfón",
+      "amaranto",
+      "arroz",
+      "avena",
+      "cebada",
+      "maíz",
+      "mijo",
+      "quinoa",
+      "trigo"
+    ],
+    "starchy_vegetables_list": [
+      "betabel",
+      "calabaza bellota",
+      "calabaza de invierno",
+      "calabaza de ranúnculo",
+      "calabaza japonesa",
+      "calabaza moscada",
+      "camote",
+      "chícharo",
+      "ñame/yuca",
+      "papa blanca"
+    ],
+    "desserts_high_carb": [
+      "bebidas endulzadas",
+      "caramelos",
+      "helado",
+      "jugo",
+      "nieve",
+      "papas a la francesa",
+      "papas fritas",
+      "productos horneados"
+    ],
+    "sugars": [
+      "azúcar",
+      "dextrosa",
+      "fructosa",
+      "glucosa",
+      "maltodextrina",
+      "miel de agave",
+      "jarabes",
+      "sacarosa"
+    ]
+  },
+  "response_guidance": {
+    "general_instruction": "AIDA debe responder de acuerdo con el protocolo activo, usando la IA para redactar de forma natural, breve y educativa.",
+    "if_user_mentions_excluded_food": "Explicar que ese alimento no se usa en Protocolo 1 porque puede dificultar la estabilidad de glucosa. No regañar. Ofrecer una alternativa compatible.",
+    "if_user_mentions_tortilla": "Indicar que la tortilla está excluida en Protocolo 1 y que se podrá valorar más adelante en Protocolo 2 si hay estabilidad glucémica.",
+    "if_user_ate_excluded_food_and_glucose_is_healthy": "Reconocer que la lectura puede estar bien en ese momento, pero explicar que el protocolo busca consistencia y por eso se mantiene la restricción en Protocolo 1.",
+    "if_user_ate_excluded_food_and_glucose_is_high": "Relacionar de forma prudente el alimento excluido con una posible elevación, sugerir volver a la estructura del protocolo y no hablar de medicamentos.",
+    "tone": [
+      "claro",
+      "breve",
+      "educativo",
+      "sin regaño",
+      "sin saturar",
+      "con una sola acción concreta"
+    ]
+  },
+  "conversation_style": {
+    "core_tone": [
+      "humano",
+      "cercano",
+      "empático",
+      "tipo coach",
+      "sin regaño",
+      "sin dramatizar",
+      "orientado a volver al camino"
+    ],
+    "response_formula": {
+      "default": [
+        "Reconoce lo que el usuario hizo o reportó.",
+        "Interpreta según glucosa, momento y protocolo activo.",
+        "Refuerza lo que sí estuvo bien.",
+        "Corrige con amabilidad lo que se salió del protocolo.",
+        "Da una sola acción concreta para la siguiente comida o el siguiente paso."
+      ],
+      "healthy_glucose_with_protocol_deviation": [
+        "Felicita o reconoce que por hoy el cuerpo respondió bien.",
+        "Aclara que la lectura saludable no significa confiarse con alimentos fuera del protocolo.",
+        "Refuerza los elementos correctos del plato, como proteína, grasas saludables o vegetales.",
+        "Recuerda que en Protocolo 1 buscamos apoyar al cuerpo lo más posible y evitar picos.",
+        "Sugiere volver a la estructura del protocolo en la próxima comida."
+      ],
+      "elevated_glucose_with_protocol_deviation": [
+        "Empatiza con el usuario y evita regañar.",
+        "Reconoce que en esta fase puede haber tropiezos o antojos.",
+        "Identifica de forma clara los alimentos fuera del protocolo que pudieron influir.",
+        "Explica que la combinación de varios carbohidratos o bebidas azucaradas puede elevar más la glucosa.",
+        "Cuando ya se conoce qué comió el usuario y la lectura postcomida está elevada, no esperes a que pregunte qué hacer.",
+        "Incluye una acción inmediata segura: hidratarse con agua natural, no agregar más carbohidratos por ahora y caminar ligero 10 a 15 minutos si se siente bien.",
+        "Aclara que si se siente mal o presenta mareo intenso, debilidad marcada, vómito, dolor de pecho, falta de aire o confusión, debe buscar atención médica.",
+        "Cierra invitando a volver al camino en la siguiente comida con proteína, grasas saludables, vegetales con fibra y agua natural."
+      ],
+      "immediate_action_after_elevated_postmeal": [
+        "Si el usuario pregunta qué hacer en el momento después de una postcomida elevada, responde con acciones inmediatas seguras.",
+        "Primero confirma seguridad: si se siente bien y no tiene síntomas fuertes, puede hacer acción ligera.",
+        "Indica hidratarse con agua natural.",
+        "Indica no seguir comiendo carbohidratos por ahora.",
+        "Si se siente bien, puede caminar ligero 10 a 15 minutos.",
+        "Si tiene mareo intenso, debilidad marcada, vómito, dolor de pecho, falta de aire, confusión o se siente mal, debe buscar atención médica.",
+        "No sugieras medicamentos ni ajustes de dosis.",
+        "No conviertas esto en plan alimentario largo.",
+        "Cierra con una acción para la siguiente comida: volver a proteína, grasas saludables y vegetales con fibra."
+      ],
+      "craving_or_slip": [
+        "Usa un tono comprensivo.",
+        "Puede decir que parece que hoy ganaron los antojos, pero sin culpar.",
+        "Recuérdale al usuario que un tropiezo no cancela el progreso.",
+        "Enfoca la respuesta en retomar el protocolo desde la siguiente comida."
+      ]
+    },
+    "preferred_phrases": {
+      "healthy_with_tortilla_or_excluded_food": [
+        "Muy bien, por hoy tu cuerpo respondió bien.",
+        "La lectura quedó en rango saludable, eso es buena señal.",
+        "El pollo y la ensalada fueron una buena base.",
+        "Solo no te confíes con la tortilla en esta fase.",
+        "Recuerda que en Protocolo 1 buscamos apoyar al cuerpo lo más posible y evitar picos."
+      ],
+      "elevated_with_multiple_excluded_foods": [
+        "Parece que hoy vencieron los antojos, pero todos podemos tropezar en esta fase.",
+        "Lo importante es volver al camino desde la siguiente comida.",
+        "Arroz, tortillas y jugo juntos pueden explicar esa subida.",
+        "De momento, hidrátate con agua natural y no agregues más carbohidratos por ahora.",
+        "Si te sientes bien, haz una caminata ligera de 10 a 15 minutos.",
+        "Para la siguiente comida vuelve a proteína, grasas saludables, vegetales con fibra y agua natural."
+      ],
+      "what_to_do_now_after_elevated_postmeal": [
+        "De momento, hidrátate con agua natural.",
+        "No agregues más carbohidratos por ahora.",
+        "Si te sientes bien, haz una caminata ligera de 10 a 15 minutos.",
+        "Si te sientes mal o aparecen síntomas fuertes, busca atención médica.",
+        "En la siguiente comida volvemos a la estructura del protocolo."
+      ]
+    },
+    "avoid_phrases": [
+      "hiciste mal",
+      "no debiste",
+      "fallaste",
+      "te equivocaste",
+      "eso está prohibido",
+      "rango ideal",
+      "para AIDA"
+    ],
+    "question_policy": {
+      "max_questions_per_response": 1,
+      "avoid_question_when_action_is_clear": true,
+      "use_question_only_if_more_context_is_needed": true
+    },
+    "examples_for_style_only": {
+      "healthy_glucose_with_tortilla": "Muy bien, David. Por hoy tu cuerpo respondió bien y la lectura quedó en rango saludable. El pollo y la ensalada fueron una buena base. Solo no te confíes con las tortillas, porque en esta Fase de control buscamos apoyar al cuerpo lo más posible y evitar picos. Para la próxima, conserva proteína + ensalada y cambia la tortilla por más vegetales o nopal.",
+      "elevated_glucose_with_rice_tortilla_juice": "Wow David, parece que hoy vencieron los antojos, pero todos podemos tropezar en esta fase. Lo importante es volver al camino. Arroz, tortillas y jugo juntos pueden explicar esa subida porque están fuera del Protocolo 1. De momento, hidrátate con agua natural y no agregues más carbohidratos por ahora. Si te sientes bien, haz una caminata ligera de 10 a 15 minutos. En la siguiente comida vuelve a proteína + grasas saludables + vegetales con fibra y agua natural.",
+      "what_to_do_now_after_elevated_postmeal": "De momento, hidrátate con agua natural y no agregues más carbohidratos por ahora. Si te sientes bien, haz una caminata ligera de 10 a 15 minutos. Si aparece malestar fuerte, dolor de pecho, falta de aire, vómito o confusión, busca atención médica. En la siguiente comida volvemos a proteína, grasas saludables y vegetales con fibra."
     }
   }
-  
+}
