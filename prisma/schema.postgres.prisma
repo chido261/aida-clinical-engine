@@ -7,7 +7,7 @@ datasource db {
 }
 
 model UserState {
-  id        String   @id // deviceId (NO default demo-user)
+  id        String   @id
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -28,7 +28,14 @@ model UserState {
   baselineAvgGlucose Int?
   baselineSetAt      DateTime?
 
-  // rate limit / uso diario (lo usaremos con FECHA LOCAL MX)
+  // protocolo / fase actual
+  activeProtocol          String   @default("PROTOCOL_1")
+  activePhase             String   @default("FASE_1")
+  protocolStartedAt       DateTime?
+  eligibleForNextProtocol Boolean  @default(false)
+  protocolReviewReason    String?
+
+  // rate limit / uso diario
   dailyMsgDate  String?
   dailyMsgCount Int?
 
@@ -39,20 +46,20 @@ model UserState {
   // trial
   trialStartedAt DateTime?
   trialEndsAt    DateTime?
-  licenseStatus  String   @default("trial") // trial | active | maintenance | expired
+  licenseStatus  String   @default("trial")
 
   // full / licencia activa
-  fullStartedAt DateTime?
-  fullEndsAt    DateTime?
-  activePlan       String? // mensual | 3-meses | anual | manual
-  activePlanSource String? // payment | activation-code | activation-request | manual-extension | promo | admin
+  fullStartedAt    DateTime?
+  fullEndsAt       DateTime?
+  activePlan       String?
+  activePlanSource String?
 
   // OTP / licencia
-  phoneE164       String?  // +52...
+  phoneE164       String?
   phoneVerifiedAt DateTime?
 
-  // estado clínico persistente (motor conversacional)
-  clinicalState String? // HYPO_ACTIVE | RECOVERING_FROM_HYPO | null
+  // estado clínico persistente
+  clinicalState String?
 
   // seguimiento conversacional persistente
   lastEventType       String?
@@ -61,13 +68,20 @@ model UserState {
   pendingFollowUpAt   DateTime?
   lastRecommendation  String?
 
-  // resumen diario (1 vez por día)
+  // objetivo actual del asesor
+  currentNutritionGoal String?
+
+  // resumen diario
   dailySummaryDate  String?
   dailySummaryCount Int?
 
   @@index([phoneE164])
   @@index([licenseStatus])
   @@index([onboardingDoneAt])
+  @@index([activeProtocol])
+  @@index([activePhase])
+  @@index([clinicalState])
+  @@index([pendingFollowUpType])
 }
 
 model Reading {
@@ -75,19 +89,108 @@ model Reading {
   userId    String
   glucose   Int
   moment    String
+
   symptoms  String?
   createdAt DateTime @default(now())
 
+  // contexto clínico
+  eventType     String?
+  nutritionGoal String?
+  relatedMealId Int?
+
   @@index([userId])
   @@index([createdAt])
+  @@index([moment])
+  @@index([eventType])
+  @@index([nutritionGoal])
+}
+
+model ClinicalEvent {
+  id     Int    @id @default(autoincrement())
+  userId String
+  type   String
+
+  status String @default("OPEN")
+
+  openedAt DateTime @default(now())
+  closedAt DateTime?
+
+  glucoseAtOpen  Int?
+  glucoseAtClose Int?
+  moment         String?
+  nutritionGoal  String?
+
+  pendingFollowUpType String?
+  lastRecommendation  String?
+  resolutionNote      String?
+
+  @@index([userId])
+  @@index([type])
+  @@index([status])
+  @@index([openedAt])
+}
+
+model MealLog {
+  id        Int      @id @default(autoincrement())
+  userId    String
+  createdAt DateTime @default(now())
+
+  mealMoment String?
+
+  rawText String
+
+  detectedFoods         String?
+  protocolAllowedFoods  String?
+  protocolExcludedFoods String?
+
+  activeProtocol String @default("PROTOCOL_1")
+  activePhase    String @default("FASE_1")
+
+  protocolCompliant Boolean?
+  nutritionGoal     String?
+  relatedReadingId  Int?
+
+  advisorNote String?
+
+  @@index([userId])
+  @@index([createdAt])
+  @@index([activeProtocol])
+  @@index([protocolCompliant])
+  @@index([nutritionGoal])
+}
+
+model ProtocolProgress {
+  id       Int    @id @default(autoincrement())
+  userId   String
+  protocol String
+  phase    String
+
+  startedAt DateTime @default(now())
+  endedAt   DateTime?
+
+  status String @default("ACTIVE")
+
+  stableDaysCount      Int @default(0)
+  postMealInRangeCount Int @default(0)
+  fastingInRangeCount  Int @default(0)
+  hypoEventsCount      Int @default(0)
+  highEventsCount      Int @default(0)
+
+  eligibleForNextProtocol Boolean @default(false)
+  reviewReason            String?
+
+  @@index([userId])
+  @@index([protocol])
+  @@index([phase])
+  @@index([status])
 }
 
 model UsageDaily {
   id            Int      @id @default(autoincrement())
   userId        String
-  dateLocal     String   // YYYY-MM-DD (America/Mexico_City)
+  dateLocal     String
   count         Int      @default(0)
-  licenseStatus String   // trial | active | maintenance | expired
+  licenseStatus String
   updatedAt     DateTime @updatedAt
 
   @@unique([userId, dateLocal])
@@ -95,14 +198,14 @@ model UsageDaily {
 }
 
 model ActivationRequest {
-  id        Int      @id @default(autoincrement())
-  deviceId  String
-  name      String
-  phone     String
-  plan      String   // mensual | 3-meses | anual
-  price     Int      // 500 | 1500 | 3000
-  duration  Int      // días: 30 | 90 | 365
-  status    String   @default("pending") // pending | paid | activated | cancelled
+  id       Int    @id @default(autoincrement())
+  deviceId String
+  name     String
+  phone    String
+  plan     String
+  price    Int
+  duration Int
+  status   String @default("pending")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -113,24 +216,24 @@ model ActivationRequest {
 }
 
 model Payment {
-  id                Int       @id @default(autoincrement())
-  provider          String    // mercadopago
+  id                Int     @id @default(autoincrement())
+  provider          String
   providerPaymentId String?
-  providerRef       String?   // preferenceId, externalReference u otro identificador
-  status            String    @default("created") // created | pending | approved | rejected | cancelled | refunded
+  providerRef       String?
+  status            String  @default("created")
   amount            Int
-  currency          String    @default("MXN")
-  plan              String    // mensual | 3-meses | anual
+  currency          String  @default("MXN")
+  plan              String
   durationDays      Int
   phoneE164         String
   deviceId          String?
   activationCodeId  Int?
 
-  rawPayload        String?
+  rawPayload String?
 
-  createdAt         DateTime  @default(now())
-  updatedAt         DateTime  @updatedAt
-  approvedAt        DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  approvedAt DateTime?
 
   @@index([provider])
   @@index([providerPaymentId])
@@ -141,21 +244,21 @@ model Payment {
 }
 
 model ActivationCode {
-  id              Int       @id @default(autoincrement())
-  code            String    @unique
+  id              Int    @id @default(autoincrement())
+  code            String @unique
   phoneE164       String
-  plan            String    // mensual | 3-meses | anual
-  status          String    @default("active") // active | expired | cancelled
+  plan            String
+  status          String @default("active")
   currentDeviceId String?
-  createdBy       String    @default("payment") // payment | admin | manual
+  createdBy       String @default("payment")
   lastPaymentId   Int?
 
-  fullStartedAt   DateTime?
-  fullEndsAt      DateTime?
+  fullStartedAt DateTime?
+  fullEndsAt    DateTime?
 
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
-  activatedAt     DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  activatedAt DateTime?
 
   @@index([phoneE164])
   @@index([status])
@@ -164,12 +267,12 @@ model ActivationCode {
 }
 
 model DeviceSession {
-  id               Int       @id @default(autoincrement())
+  id               Int      @id @default(autoincrement())
   phoneE164        String
   deviceId         String
   activationCodeId Int
-  active           Boolean   @default(true)
-  createdAt        DateTime  @default(now())
+  active           Boolean  @default(true)
+  createdAt        DateTime @default(now())
   disabledAt       DateTime?
 
   @@index([phoneE164])
