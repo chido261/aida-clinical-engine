@@ -43,7 +43,7 @@ import { composeAidaClinicalResponseDirective } from "@/app/lib/aida/clinicalRes
 import { buildAidaAdvisorDecision } from "@/app/lib/aida/aidaDecisionEngine";
 import { applyAidaDecisionToMemory } from "@/app/lib/aida/aidaDecisionMemory";
 import { evaluateAndSaveProtocolProgression } from "@/app/lib/aida/protocolProgressionMemory";
-import { buildGeneratedMealOptionsDirective } from "@/app/lib/aida/mealPlanGenerator";
+import { runNutritionEngine } from "@/app/lib/aida/nutritionEngine";
 import type {
   AidaDetectedSymptom,
   AidaReadingMoment,
@@ -1030,12 +1030,15 @@ if (wantsSummary) {
       expectedResponseGoals: clinicalResponseDirective.expectedResponseGoals,
     });
 
-    const protocolMealOptionsDirective = /(?:dame|quiero|sugiere|recomienda|opciones|ideas|platillos|men[uú]).*(?:desayuno|comida|almuerzo|cena|colaci[oó]n|semana)/i.test(lastUserMsg)
-    ? buildGeneratedMealOptionsDirective({
-        text: lastUserMsg,
-        activeProtocol: userState.activeProtocol ?? "PROTOCOL_1",
-      })
-    : null;
+    const nutritionEngineResult = runNutritionEngine({
+      text: lastUserMsg,
+      activeProtocol: userState.activeProtocol ?? "PROTOCOL_1",
+      activePhase: userState.activePhase ?? "FASE_1",
+    });
+    
+    const nutritionDirective = nutritionEngineResult.handled
+      ? nutritionEngineResult.directive
+      : null;
 
     const pendingFollowUpDirective =
     userState.pendingFollowUpType === "POSTMEAL_PLATE_REVIEW" && glucoseNow === null
@@ -1058,8 +1061,8 @@ Responde sobre ESA comida:
         { role: "system", content: protocolContext },
         { role: "system", content: situationDirective },
         { role: "system", content: clinicalDirectiveContext },
-        ...(protocolMealOptionsDirective
-          ? [{ role: "system" as const, content: protocolMealOptionsDirective }]
+        ...(nutritionDirective
+          ? [{ role: "system" as const, content: nutritionDirective }]
           : []),
         ...(pendingFollowUpDirective
           ? [{ role: "system" as const, content: pendingFollowUpDirective }]
