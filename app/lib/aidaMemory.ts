@@ -42,8 +42,19 @@ export async function saveReading(params: {
   glucose: number;
   moment: string;
   symptoms?: string[];
+  eventType?: string | null;
+  nutritionGoal?: string | null;
+  relatedMealId?: number | null;
 }) {
-  const { userId, glucose, moment, symptoms } = params;
+  const {
+    userId,
+    glucose,
+    moment,
+    symptoms,
+    eventType,
+    nutritionGoal,
+    relatedMealId,
+  } = params;
 
   return prisma.reading.create({
     data: {
@@ -51,6 +62,9 @@ export async function saveReading(params: {
       glucose,
       moment,
       symptoms: symptoms?.length ? symptoms.join(",") : null,
+      eventType: eventType ?? null,
+      nutritionGoal: nutritionGoal ?? null,
+      relatedMealId: relatedMealId ?? null,
     },
   });
 }
@@ -87,6 +101,207 @@ export async function updateLastReadingMoment(params: {
 }
 
 /* =========================================
+   COMIDAS
+========================================= */
+
+export async function saveMealLog(params: {
+  userId: string;
+  rawText: string;
+  mealMoment?: string | null;
+  detectedFoods?: string[] | null;
+  protocolAllowedFoods?: string[] | null;
+  protocolExcludedFoods?: string[] | null;
+  activeProtocol?: string | null;
+  activePhase?: string | null;
+  protocolCompliant?: boolean | null;
+  nutritionGoal?: string | null;
+  relatedReadingId?: number | null;
+  advisorNote?: string | null;
+}) {
+  return prisma.mealLog.create({
+    data: {
+      userId: params.userId,
+      rawText: params.rawText,
+      mealMoment: params.mealMoment ?? "DESCONOCIDO",
+      detectedFoods: params.detectedFoods?.length
+        ? params.detectedFoods.join(",")
+        : null,
+      protocolAllowedFoods: params.protocolAllowedFoods?.length
+        ? params.protocolAllowedFoods.join(",")
+        : null,
+      protocolExcludedFoods: params.protocolExcludedFoods?.length
+        ? params.protocolExcludedFoods.join(",")
+        : null,
+      activeProtocol: params.activeProtocol ?? "PROTOCOL_1",
+      activePhase: params.activePhase ?? "FASE_1",
+      protocolCompliant: params.protocolCompliant ?? null,
+      nutritionGoal: params.nutritionGoal ?? null,
+      relatedReadingId: params.relatedReadingId ?? null,
+      advisorNote: params.advisorNote ?? null,
+    },
+  });
+}
+
+export async function getLastMealLog(userId: string) {
+  return prisma.mealLog.findFirst({
+    where: { userId },
+    orderBy: { createdAt: "desc" },
+  });
+}
+
+/* =========================================
+   EVENTOS CLÍNICOS
+========================================= */
+
+export async function openClinicalEvent(params: {
+  userId: string;
+  type: string;
+  glucoseAtOpen?: number | null;
+  moment?: string | null;
+  nutritionGoal?: string | null;
+  pendingFollowUpType?: string | null;
+  lastRecommendation?: string | null;
+}) {
+  return prisma.clinicalEvent.create({
+    data: {
+      userId: params.userId,
+      type: params.type,
+      status: "OPEN",
+      glucoseAtOpen: params.glucoseAtOpen ?? null,
+      moment: params.moment ?? null,
+      nutritionGoal: params.nutritionGoal ?? null,
+      pendingFollowUpType: params.pendingFollowUpType ?? null,
+      lastRecommendation: params.lastRecommendation ?? null,
+    },
+  });
+}
+
+export async function closeLastClinicalEvent(params: {
+  userId: string;
+  type?: string | null;
+  glucoseAtClose?: number | null;
+  resolutionNote?: string | null;
+}) {
+  const lastEvent = await prisma.clinicalEvent.findFirst({
+    where: {
+      userId: params.userId,
+      status: "OPEN",
+      ...(params.type ? { type: params.type } : {}),
+    },
+    orderBy: { openedAt: "desc" },
+  });
+
+  if (!lastEvent) return null;
+
+  return prisma.clinicalEvent.update({
+    where: { id: lastEvent.id },
+    data: {
+      status: "RESOLVED",
+      closedAt: new Date(),
+      glucoseAtClose: params.glucoseAtClose ?? null,
+      resolutionNote: params.resolutionNote ?? null,
+    },
+  });
+}
+
+export async function getLastOpenClinicalEvent(userId: string) {
+  return prisma.clinicalEvent.findFirst({
+    where: {
+      userId,
+      status: "OPEN",
+    },
+    orderBy: { openedAt: "desc" },
+  });
+}
+
+/* =========================================
+   PROTOCOLO
+========================================= */
+
+export async function ensureProtocolProgress(params: {
+  userId: string;
+  protocol?: string;
+  phase?: string;
+}) {
+  const protocol = params.protocol ?? "PROTOCOL_1";
+  const phase = params.phase ?? "FASE_1";
+
+  const current = await prisma.protocolProgress.findFirst({
+    where: {
+      userId: params.userId,
+      protocol,
+      phase,
+      status: "ACTIVE",
+    },
+    orderBy: { startedAt: "desc" },
+  });
+
+  if (current) return current;
+
+  return prisma.protocolProgress.create({
+    data: {
+      userId: params.userId,
+      protocol,
+      phase,
+      status: "ACTIVE",
+    },
+  });
+}
+
+export async function updateProtocolProgressCounters(params: {
+  userId: string;
+  protocol?: string;
+  phase?: string;
+  stableDaysCount?: number;
+  postMealInRangeCount?: number;
+  fastingInRangeCount?: number;
+  hypoEventsCount?: number;
+  highEventsCount?: number;
+  eligibleForNextProtocol?: boolean;
+  reviewReason?: string | null;
+}) {
+  const progress = await ensureProtocolProgress({
+    userId: params.userId,
+    protocol: params.protocol,
+    phase: params.phase,
+  });
+
+  return prisma.protocolProgress.update({
+    where: { id: progress.id },
+    data: {
+      stableDaysCount:
+        params.stableDaysCount !== undefined
+          ? params.stableDaysCount
+          : progress.stableDaysCount,
+      postMealInRangeCount:
+        params.postMealInRangeCount !== undefined
+          ? params.postMealInRangeCount
+          : progress.postMealInRangeCount,
+      fastingInRangeCount:
+        params.fastingInRangeCount !== undefined
+          ? params.fastingInRangeCount
+          : progress.fastingInRangeCount,
+      hypoEventsCount:
+        params.hypoEventsCount !== undefined
+          ? params.hypoEventsCount
+          : progress.hypoEventsCount,
+      highEventsCount:
+        params.highEventsCount !== undefined
+          ? params.highEventsCount
+          : progress.highEventsCount,
+      eligibleForNextProtocol:
+        params.eligibleForNextProtocol !== undefined
+          ? params.eligibleForNextProtocol
+          : progress.eligibleForNextProtocol,
+      reviewReason:
+        params.reviewReason !== undefined
+          ? params.reviewReason
+          : progress.reviewReason,
+    },
+  });
+}
+
+/* =========================================
    USER STATE + WINDOWS
 ========================================= */
 
@@ -97,26 +312,10 @@ function normalizeStatus(s?: string | null): LicenseStatus {
   return "trial";
 }
 
-/**
- * Regla:
- * - LOCAL normal: siempre active, sin paywall.
- * - LOCAL con AIDA_LICENSE_TEST_MODE=true: se comporta como nube para probar trial/expired/full.
- * - CLOUD:
- *   - si no existe: crear trial 7d.
- *   - si active: validar ventana FULL 90d.
- *   - si maintenance: validar ventana maintenance.
- *   - si trial: si venció => expired.
- *
- * Nota:
- * maintenance y active son estados que normalmente se asignan al pagar.
- * Aquí solo hacemos creación y expiración automática consistente.
- */
 export async function ensureUserState(userId: string) {
   const existing = await prisma.userState.findUnique({ where: { id: userId } });
   const now = new Date();
 
-  // 🔧 LOCAL normal -> siempre activo
-  // 🧪 LOCAL con AIDA_LICENSE_TEST_MODE=true -> se comporta como nube
   if (shouldBypassLicense) {
     if (!existing) {
       return prisma.userState.create({
@@ -127,6 +326,9 @@ export async function ensureUserState(userId: string) {
           licenseStatus: "active",
           fullStartedAt: now,
           fullEndsAt: addDaysExact(now, FULL_DAYS),
+          activeProtocol: "PROTOCOL_1",
+          activePhase: "FASE_1",
+          protocolStartedAt: now,
         },
       });
     }
@@ -141,9 +343,6 @@ export async function ensureUserState(userId: string) {
     return existing;
   }
 
-  // 🌩️ CLOUD o 🧪 LOCAL TEST MODE
-
-  // 1) No existe -> Trial 7d
   if (!existing) {
     return prisma.userState.create({
       data: {
@@ -151,13 +350,15 @@ export async function ensureUserState(userId: string) {
         trialStartedAt: now,
         trialEndsAt: addDaysExact(now, TRIAL_DAYS),
         licenseStatus: "trial",
+        activeProtocol: "PROTOCOL_1",
+        activePhase: "FASE_1",
+        protocolStartedAt: now,
       },
     });
   }
 
   const status = normalizeStatus(existing.licenseStatus);
 
-  // 2) Completar fechas faltantes según status
   if (status === "trial" && (!existing.trialStartedAt || !existing.trialEndsAt)) {
     return prisma.userState.update({
       where: { id: userId },
@@ -191,7 +392,6 @@ export async function ensureUserState(userId: string) {
     });
   }
 
-  // 3) Expiración automática exacta
   const nowMs = now.getTime();
 
   if (status === "trial") {
@@ -227,7 +427,6 @@ export async function ensureUserState(userId: string) {
     return existing;
   }
 
-  // Expired: no tocar
   return existing;
 }
 
@@ -349,7 +548,7 @@ export function getWindowInfo(userState: {
 }
 
 /* =========================================
-   EXPIRATION CHECK (used by /api/chat)
+   EXPIRATION CHECK
 ========================================= */
 
 export function isTrialExpired(userState: { licenseStatus: string; trialEndsAt: Date | null }) {
@@ -363,12 +562,6 @@ export function isTrialExpired(userState: { licenseStatus: string; trialEndsAt: 
   return Date.now() >= userState.trialEndsAt.getTime();
 }
 
-/**
- * Expired lock logic (retención):
- * - Si expired: mantenemos datos 7 días.
- * - Luego, en otro sprint, podemos borrar user + readings.
- * - Aquí solo devolvemos si todavía está en ventana de retención.
- */
 export function getExpiredRetentionInfo(userState: {
   licenseStatus: string;
   updatedAt: Date;

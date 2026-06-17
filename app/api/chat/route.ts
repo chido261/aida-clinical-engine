@@ -40,6 +40,10 @@ import { shouldBypassLicense } from "@/app/lib/runtimeConfig";
 import { interpretAidaClinicalText } from "@/app/lib/aida/clinicalInterpreter";
 import { classifyAidaReadings } from "@/app/lib/aida/clinicalClassifier";
 import { composeAidaClinicalResponseDirective } from "@/app/lib/aida/clinicalResponseComposer";
+import { buildAidaAdvisorDecision } from "@/app/lib/aida/aidaDecisionEngine";
+import { applyAidaDecisionToMemory } from "@/app/lib/aida/aidaDecisionMemory";
+import { evaluateAndSaveProtocolProgression } from "@/app/lib/aida/protocolProgressionMemory";
+import { buildGeneratedMealOptionsDirective } from "@/app/lib/aida/mealPlanGenerator";
 import type {
   AidaDetectedSymptom,
   AidaReadingMoment,
@@ -478,78 +482,61 @@ const detected = primaryClinicalReading
     const clinicalState = (userState.clinicalState ?? null) as ClinicalState;
     const uiBase = buildUI(userState);
 
-    const saysWillWalkAfterPostmeal =
-    /(ir[eé] a caminar|voy a caminar|saldr[eé] a caminar|caminar[eé]|har[eé] una caminata|más tarde te cuento|mas tarde te cuento)/i.test(
-      lastUserMsg
-    );
-
-    const hasRecentPostmealElevatedContext =
-    userState.pendingFollowUpType === "POSTMEAL_PLATE_REVIEW" ||
-    userState.lastEventType === "POSTMEAL_ELEVATED" ||
-    /postcomida|despu[eé]s de comer|lectura est[aá] por arriba|glucosa est[aá] por arriba|158|hidr[aá]tate|caminata ligera/i.test(
-      historyPlain
-    );
-
-  if (
-    glucoseNow === null &&
-    saysWillWalkAfterPostmeal &&
-    hasRecentPostmealElevatedContext
-  ) {
-    await prisma.userState.update({
-      where: { id: userId },
-      data: {
-        clinicalState: null,
-        lastEventType: "POSTMEAL_ELEVATED",
-        lastEventAt: new Date(),
-        pendingFollowUpType: "POSTMEAL_WALK_RECHECK",
-        pendingFollowUpAt: new Date(),
-        lastRecommendation:
-          "Te sugerí hidratarte con agua natural y caminar ligero 10–15 minutos si te sientes bien. Después, dime cómo te sientes o cuánto marca tu glucosa si puedes medirte.",
+    const advisorDecision = buildAidaAdvisorDecision({
+      text: lastUserMsg,
+      historyPlain,
+      interpretation: clinicalInterpretation,
+      userState: {
+        activeProtocol: userState.activeProtocol ?? null,
+        activePhase: userState.activePhase ?? null,
+        clinicalState: userState.clinicalState ?? null,
+        lastEventType: userState.lastEventType ?? null,
+        pendingFollowUpType: userState.pendingFollowUpType ?? null,
       },
     });
 
-    return jsonOK({
-      ok: true,
-      bypass: false,
-      clinicalFollowUp: true,
-      reply:
-        `Perfecto, David. Haz la caminata ligera solo si te sientes bien y mantente hidratado con agua natural.\n\n` +
-        `Más tarde dime cómo te sientes o cuánto marca tu glucosa si puedes medirte.`,
-      ui: uiBase,
-    });
-  }
+    const userName = onboarding?.name?.trim() || userState.name?.trim() || "David";
 
-    const mentionsWalkAfterPostmeal =
-    /(camin[eé]|caminar|caminata|fui a caminar|ya camin[eé]|ya camine)/i.test(lastUserMsg);
+    if (
+      advisorDecision.followUpAction === "OPEN_POSTMEAL_WALK_RECHECK" &&
+      glucoseNow === null
+    ) {
+      await applyAidaDecisionToMemory({
+        userId,
+        decision: advisorDecision,
+      });
 
-  if (
-    glucoseNow !== null &&
-    userState.pendingFollowUpType === "POSTMEAL_WALK_RECHECK" &&
-    mentionsWalkAfterPostmeal
-  ) {
-    await prisma.userState.update({
-      where: { id: userId },
-      data: {
-        clinicalState: null,
-        lastEventType: "POSTMEAL_WALK_RESOLVED",
-        lastEventAt: new Date(),
-        pendingFollowUpType: null,
-        pendingFollowUpAt: null,
-        lastRecommendation: null,
-      },
-    });
+      return jsonOK({
+        ok: true,
+        bypass: false,
+        clinicalFollowUp: true,
+        reply:
+          `Perfecto, ${userName}. Haz la caminata ligera solo si te sientes bien y mantente hidratado con agua natural.\n\n` +
+          `Más tarde dime cómo te sientes o cuánto marca tu glucosa si puedes medirte.`,
+        ui: uiBase,
+      });
+    }
 
-    return jsonOK({
-      ok: true,
-      bypass: false,
-      clinicalResolved: true,
-      reply:
-        `Perfecto, David. Bajar a ${glucoseNow} mg/dL después de caminar es una buena respuesta.\n\n` +
-        `De momento no necesitas comer. Mantente hidratado con agua natural y sigue tranquilo.\n\n` +
-        `Cuando toque tu siguiente comida por horario o hambre real, retomamos la estructura del protocolo.`,
-      ui: uiBase,
-    });
-  }
+    if (
+      advisorDecision.responseIntent === "POSTMEAL_RECOVERY_AFTER_WALK" &&
+      glucoseNow !== null
+    ) {
+      await applyAidaDecisionToMemory({
+        userId,
+        decision: advisorDecision,
+      });
+
+      return jsonOK({
+        ok: true,
+        bypass: false,
+        clinicalResolved: true,
+        reply:
+          `Perfecto, ${userName}. Bajar a ${glucoseNow} mg/dL después de caminar es una buena respuesta.\n\n` +
+          `De momento no necesitas comer. Mantente hidratado con agua natural y sigue tranquilo.\n\n` +
+          `Cuando toque tu siguiente comida por horario o hambre real, retomamos la estructura del protocolo.`,
+        ui: uiBase,
+      });
+    }
 
     // 2.1) Intercept clínico determinístico para hipoglucemia activa
     const asksLastReading =
@@ -798,6 +785,14 @@ if (clinicalInterpretation.readings.length > 0) {
   });
 }
 
+if (glucoseNow !== null) {
+  await evaluateAndSaveProtocolProgression({
+    userId,
+    activeProtocol: userState.activeProtocol ?? "PROTOCOL_1",
+    activePhase: userState.activePhase ?? "FASE_1",
+  });
+}
+
 // 5.1) Respuesta clínica determinística del nuevo motor AIDA
 if (
   clinicalResponseDirective.shouldUseDeterministicResponse &&
@@ -1035,6 +1030,13 @@ if (wantsSummary) {
       expectedResponseGoals: clinicalResponseDirective.expectedResponseGoals,
     });
 
+    const protocolMealOptionsDirective = /(?:dame|quiero|sugiere|recomienda|opciones|ideas|platillos|men[uú]).*(?:desayuno|comida|almuerzo|cena|colaci[oó]n|semana)/i.test(lastUserMsg)
+    ? buildGeneratedMealOptionsDirective({
+        text: lastUserMsg,
+        activeProtocol: userState.activeProtocol ?? "PROTOCOL_1",
+      })
+    : null;
+
     const pendingFollowUpDirective =
     userState.pendingFollowUpType === "POSTMEAL_PLATE_REVIEW" && glucoseNow === null
       ? `Contexto activo: venimos de una lectura postcomida elevada y AIDA pidió revisar qué comió el usuario.
@@ -1056,6 +1058,9 @@ Responde sobre ESA comida:
         { role: "system", content: protocolContext },
         { role: "system", content: situationDirective },
         { role: "system", content: clinicalDirectiveContext },
+        ...(protocolMealOptionsDirective
+          ? [{ role: "system" as const, content: protocolMealOptionsDirective }]
+          : []),
         ...(pendingFollowUpDirective
           ? [{ role: "system" as const, content: pendingFollowUpDirective }]
           : []),
