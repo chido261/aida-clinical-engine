@@ -36,7 +36,7 @@ export const PROTOCOL_FOOD_CATALOG: FoodItem[] = [
 
   // Grasas saludables
   { name: "aguacate", category: "HEALTHY_FAT", allowedProtocols: ["PROTOCOL_1"], preferredMeals: ["DESAYUNO", "COMIDA", "CENA"], synonyms: ["guacamole", "guacamole natural"] },
-  { name: "aceite de oliva", category: "HEALTHY_FAT", allowedProtocols: ["PROTOCOL_1"], preferredMeals: ["COMIDA", "CENA"] },
+  { name: "aceite de oliva", category: "HEALTHY_FAT", allowedProtocols: ["PROTOCOL_1"], preferredMeals: ["COMIDA", "CENA"], tags: ["onlyIfRequested"] },
   { name: "aceitunas", category: "HEALTHY_FAT", allowedProtocols: ["PROTOCOL_1"], preferredMeals: ["CENA", "COLACION"] },
   { name: "almendras", category: "HEALTHY_FAT", allowedProtocols: ["PROTOCOL_1"], preferredMeals: ["COLACION"], tags: ["smallPortion"] },
 

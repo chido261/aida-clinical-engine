@@ -963,20 +963,29 @@ if (wantsSummary) {
       return jsonOK({ ok: true, reply: phaseRule.response, bypass: false, ui: uiBase });
     }
 
-    // Reglas nutricionales
-    const ruleResult = applyNutritionRules(
-      lastUserMsg,
-      {
-        moment,
-        glucose: glucoseNow ?? undefined,
-        symptoms,
-        pendingFollowUpType: userState.pendingFollowUpType ?? null,
-      } as any
-    );
+    // Reglas nutricionales antiguas:
+// Se dejan como respaldo, pero NO deben interceptar solicitudes de opciones,
+// menús o bebidas que ahora maneja Nutrition Engine.
+const legacyNutritionBlocked =
+/\b(dame|quiero|sugiere|recomienda|opciones|ideas|platillos|men[uú]|semana|semanal|bebida|agua|jamaica|desayuno|comida|cena|colaci[oó]n)\b/i.test(
+  lastUserMsg
+);
 
-    if (ruleResult?.handled && ruleResult?.response) {
-      return jsonOK({ ok: true, reply: ruleResult.response, bypass: false, ui: uiBase });
-    }
+if (!legacyNutritionBlocked) {
+const ruleResult = applyNutritionRules(
+  lastUserMsg,
+  {
+    moment,
+    glucose: glucoseNow ?? undefined,
+    symptoms,
+    pendingFollowUpType: userState.pendingFollowUpType ?? null,
+  } as any
+);
+
+if (ruleResult?.handled && ruleResult?.response) {
+  return jsonOK({ ok: true, reply: ruleResult.response, bypass: false, ui: uiBase });
+}
+}
 
     // Memoria reciente (para prompt)
     const last = await getLastReading(userId);
@@ -1039,6 +1048,47 @@ if (wantsSummary) {
     const nutritionDirective = nutritionEngineResult.handled
       ? nutritionEngineResult.directive
       : null;
+
+      if (
+        nutritionEngineResult.handled &&
+        nutritionEngineResult.responseMode === "DETERMINISTIC" &&
+        nutritionEngineResult.reply
+      ) {
+        return jsonOK({
+          ok: true,
+          reply: nutritionEngineResult.reply,
+          bypass: false,
+          nutritionEngine: true,
+          ui: uiBase,
+        });
+      }
+      
+      if (nutritionDirective) {
+        const nutritionMessages: ChatMessage[] = [
+          { role: "system", content: systemPrompt },
+          { role: "system", content: protocolContext },
+          { role: "system", content: nutritionDirective },
+          { role: "user", content: lastUserMsg },
+        ];
+      
+        const nutritionResp = await openai.chat.completions.create({
+          model: "gpt-4.1-mini",
+          messages: nutritionMessages,
+          temperature: 0.15,
+        });
+      
+        const nutritionReply =
+          nutritionResp.choices?.[0]?.message?.content ??
+          "No pude generar respuesta en este momento.";
+      
+        return jsonOK({
+          ok: true,
+          reply: nutritionReply,
+          bypass: false,
+          nutritionEngine: true,
+          ui: uiBase,
+        });
+      }
 
     const pendingFollowUpDirective =
     userState.pendingFollowUpType === "POSTMEAL_PLATE_REVIEW" && glucoseNow === null

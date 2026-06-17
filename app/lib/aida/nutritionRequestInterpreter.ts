@@ -139,12 +139,12 @@ function detectRequestType(text: string): NutritionRequestType {
     return "WEEKLY_MENU";
   }
 
-  if (/\b(puedo tomar|puedo beber|agua|bebida|jamaica|cafe|café|te|té)\b/i.test(t)) {
-    return "BEVERAGE_CHECK";
-  }
-
   if (/\b(dame|quiero|sugiere|recomienda|opciones|ideas|platillos|desayunos|comidas|cenas|colaciones)\b/i.test(t)) {
     return "MEAL_OPTIONS";
+  }
+  
+  if (/\b(puedo tomar|puedo beber|agua|bebida|jamaica|cafe|café|te|té)\b/i.test(t)) {
+    return "BEVERAGE_CHECK";
   }
 
   if (/\b(comi|comí|desayune|desayuné|cene|cené|almorce|almorcé)\b/i.test(t)) {
