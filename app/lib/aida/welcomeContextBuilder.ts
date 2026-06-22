@@ -36,7 +36,9 @@ function getPartOfDay(now: DateTime) {
 
 function getDayRelation(date: Date, now: DateTime) {
   const value = DateTime.fromJSDate(date).setZone(MX_TZ);
-  const diffDays = Math.floor(now.startOf("day").diff(value.startOf("day"), "days").days);
+  const diffDays = Math.floor(
+    now.startOf("day").diff(value.startOf("day"), "days").days
+  );
 
   if (diffDays <= 0) return "today";
   if (diffDays === 1) return "yesterday";
@@ -61,9 +63,39 @@ function buildReadingMomentLabel(moment: string) {
   if (moment === "ANTES_COMER") return "antes de comer";
   if (moment === "POSTCOMIDA") return "postcomida";
   if (moment === "NOCHE") return "antes de dormir";
-  if (moment === "RECUPERACION_HIPO") return "después de recuperarte de una hipoglucemia";
+  if (moment === "RECUPERACION_HIPO") {
+    return "después de recuperarte de una hipoglucemia";
+  }
   if (moment === "POSTMEAL_RECOVERY") return "después de caminar";
   return "";
+}
+
+function isPendingFollowUpFresh(params: {
+  pendingFollowUpType: string | null;
+  pendingFollowUpAt: Date | null;
+  now: DateTime;
+}) {
+  const { pendingFollowUpType, pendingFollowUpAt, now } = params;
+
+  if (!pendingFollowUpType || !pendingFollowUpAt) return false;
+
+  const elapsedMinutes = getElapsedMinutes(pendingFollowUpAt, now);
+
+  if (
+    pendingFollowUpType === "HYPO_RECHECK_15MIN" ||
+    pendingFollowUpType === "HYPO_STABILITY_RECHECK"
+  ) {
+    return elapsedMinutes <= 12 * 60;
+  }
+
+  if (
+    pendingFollowUpType === "POSTMEAL_PLATE_REVIEW" ||
+    pendingFollowUpType === "POSTMEAL_WALK_RECHECK"
+  ) {
+    return elapsedMinutes <= 4 * 60;
+  }
+
+  return elapsedMinutes <= 4 * 60;
 }
 
 export function buildPendingFollowUpWelcome(params: {
@@ -72,6 +104,14 @@ export function buildPendingFollowUpWelcome(params: {
 }) {
   const { name, userState } = params;
   const now = getNowMx();
+
+  const isFresh = isPendingFollowUpFresh({
+    pendingFollowUpType: userState.pendingFollowUpType,
+    pendingFollowUpAt: userState.pendingFollowUpAt,
+    now,
+  });
+
+  if (!isFresh) return null;
 
   if (
     userState.pendingFollowUpType === "HYPO_RECHECK_15MIN" &&

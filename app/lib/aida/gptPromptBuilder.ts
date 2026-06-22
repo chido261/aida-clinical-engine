@@ -17,6 +17,54 @@ function humanizePhase(phase: string | null | undefined) {
   return phase ?? "etapa actual";
 }
 
+function buildConversationContextBlock(brainResult: AidaBrainResult) {
+  const conversation = brainResult.context.conversation;
+
+  const hasConversationContext =
+    conversation.clinicalSummary ||
+    conversation.activeGlucoseTopics ||
+    conversation.currentGoal ||
+    conversation.detectedPatterns ||
+    conversation.medicationContext ||
+    conversation.lastConcern ||
+    conversation.lastAidaRecommendation ||
+    conversation.pendingConversationFollowUp;
+
+  if (!hasConversationContext) {
+    return "No hay contexto conversacional glucémico persistente registrado.";
+  }
+
+  return [
+    "Contexto conversacional glucémico persistente:",
+    conversation.clinicalSummary
+      ? `- Resumen clínico-conversacional: ${conversation.clinicalSummary}`
+      : null,
+    conversation.activeGlucoseTopics
+      ? `- Temas activos sobre glucosa: ${conversation.activeGlucoseTopics}`
+      : null,
+    conversation.currentGoal
+      ? `- Objetivo actual: ${conversation.currentGoal}`
+      : null,
+    conversation.detectedPatterns
+      ? `- Patrones detectados: ${conversation.detectedPatterns}`
+      : null,
+    conversation.medicationContext
+      ? `- Medicamentos/contexto farmacológico: ${conversation.medicationContext}`
+      : null,
+    conversation.lastConcern
+      ? `- Última preocupación relevante: ${conversation.lastConcern}`
+      : null,
+    conversation.lastAidaRecommendation
+      ? `- Última recomendación importante de AIDA: ${conversation.lastAidaRecommendation}`
+      : null,
+    conversation.pendingConversationFollowUp
+      ? `- Pendiente conversacional: ${conversation.pendingConversationFollowUp}`
+      : null,
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
 export function buildAidaGptPrompt(
   brainResult: AidaBrainResult
 ): AidaGptPromptPayload {
@@ -26,6 +74,12 @@ export function buildAidaGptPrompt(
     "Eres AIDA, un asesor educativo y metabólico especializado en control de glucosa y diabetes tipo 2.",
     "",
     "Tu función es responder de forma profesional, clara, humana y accionable.",
+    "",
+    "Objetivo central de AIDA:",
+    "- Ayudar al usuario a mejorar su control glucémico.",
+    "- Apoyar la reducción de HbA1c hacia niveles normales cuando sea posible.",
+    "- Acompañar patrones de glucosa, alimentación, adherencia, síntomas y seguimiento.",
+    "- No ajustar medicamentos ni indicar dosis; cuando el tema sea farmacológico, orientar de forma educativa y segura.",
     "",
     "Reglas obligatorias:",
     "- No ajustes medicamentos.",
@@ -45,6 +99,8 @@ export function buildAidaGptPrompt(
     "- Si el usuario menciona 'antes de comer', 'antes de cenar' o 'antes del desayuno', considéralo una lectura preprandial válida.",
     "- Nunca solicites aclarar información que ya aparece en la decisión clínica o en el plan de conversación.",
     "- Si existe una lectura con momento identificado, enfócate en interpretar la lectura y orientar la siguiente acción.",
+    "- Usa el contexto conversacional glucémico persistente solo si ayuda a responder mejor.",
+    "- No menciones el contexto persistente como si fuera una base de datos; úsalo de forma natural.",
     "- Responde en español natural.",
     "",
     "Reglas de seguridad clínica:",
@@ -80,6 +136,8 @@ export function buildAidaGptPrompt(
     `- Promedio base registrado: ${context.profile.baselineAvgGlucose ?? "No registrado"}`,
     `- Plan del usuario: ${humanizeProtocol(context.profile.activeProtocol)}`,
     `- Etapa del usuario: ${humanizePhase(context.profile.activePhase)}`,
+    "",
+    buildConversationContextBlock(brainResult),
     "",
     "Progreso:",
     context.progressContext,

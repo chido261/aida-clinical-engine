@@ -14,6 +14,8 @@ import {
   type ProgressMetrics,
 } from "@/app/lib/aidaProgress";
 
+import { getConversationContext } from "@/app/lib/aida/conversationContextMemory";
+
 export type AidaContextProfile = {
   userId: string;
   name: string | null;
@@ -42,9 +44,22 @@ export type AidaContextFollowUp = {
   lastOpenClinicalEvent: any | null;
 };
 
+export type AidaContextConversation = {
+  clinicalSummary: string | null;
+  activeGlucoseTopics: string | null;
+  currentGoal: string | null;
+  detectedPatterns: string | null;
+  medicationContext: string | null;
+  lastConcern: string | null;
+  lastAidaRecommendation: string | null;
+  pendingConversationFollowUp: string | null;
+  metadataJson: string | null;
+};
+
 export type AidaContext = {
   profile: AidaContextProfile;
   followUp: AidaContextFollowUp;
+  conversation: AidaContextConversation;
   lastReading: any | null;
   recentReadings: any[];
   lastMeal: any | null;
@@ -65,12 +80,14 @@ export async function buildAidaContext(params: {
     lastMeal,
     lastOpenClinicalEvent,
     progressMetrics,
+    conversationContext,
   ] = await Promise.all([
     getLastReading(userId),
     getRecentReadings(userId, 14),
     getLastMealLog(userId),
     getLastOpenClinicalEvent(userId),
     getProgressMetrics(userId),
+    getConversationContext(userId),
   ]);
 
   const progressContext = buildProgressContext(progressMetrics);
@@ -102,6 +119,20 @@ export async function buildAidaContext(params: {
       pendingFollowUpAt: userState.pendingFollowUpAt ?? null,
       lastRecommendation: userState.lastRecommendation ?? null,
       lastOpenClinicalEvent,
+    },
+
+    conversation: {
+      clinicalSummary: conversationContext?.clinicalSummary ?? null,
+      activeGlucoseTopics: conversationContext?.activeGlucoseTopics ?? null,
+      currentGoal: conversationContext?.currentGoal ?? null,
+      detectedPatterns: conversationContext?.detectedPatterns ?? null,
+      medicationContext: conversationContext?.medicationContext ?? null,
+      lastConcern: conversationContext?.lastConcern ?? null,
+      lastAidaRecommendation:
+        conversationContext?.lastAidaRecommendation ?? null,
+      pendingConversationFollowUp:
+        conversationContext?.pendingConversationFollowUp ?? null,
+      metadataJson: conversationContext?.metadataJson ?? null,
     },
 
     lastReading,

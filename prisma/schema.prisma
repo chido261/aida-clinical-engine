@@ -287,3 +287,43 @@ model DeviceSession {
   @@index([activationCodeId])
   @@index([active])
 }
+
+model ConversationContext {
+  id        Int      @id @default(autoincrement())
+  userId    String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Resumen clínico-conversacional útil para control glucémico
+  clinicalSummary String?
+
+  // Temas activos relacionados con glucosa
+  activeGlucoseTopics String?
+
+  // Objetivo actual del usuario
+  currentGoal String?
+  // Ej: bajar HbA1c, reducir picos postcomida, evitar hipoglucemias, mejorar ayuno
+
+  // Patrones detectados por conversación
+  detectedPatterns String?
+  // Ej: picos después de cena, antojos de pan, hipoglucemias nocturnas
+
+  // Medicamentos mencionados o confirmados en conversación
+  medicationContext String?
+
+  // Última preocupación relevante del usuario
+  lastConcern String?
+
+  // Última recomendación importante dada por AIDA
+  lastAidaRecommendation String?
+
+  // Pendiente conversacional útil para seguimiento
+  pendingConversationFollowUp String?
+
+  // JSON serializado para datos estructurados flexibles.
+  // Se usa String para mantener compatibilidad con SQLite.
+  metadataJson String?
+
+  @@index([userId])
+  @@index([updatedAt])
+}

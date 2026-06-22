@@ -51,6 +51,7 @@ import type {
 
 import { runAidaBrain } from "@/app/lib/aida/aidaBrain";
 import { composeAidaResponse } from "@/app/lib/aida/responseComposer";
+import { updateAidaConversationContextAfterResponse } from "@/app/lib/aida/conversationContextUpdater";
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
@@ -714,6 +715,11 @@ if (USE_AIDA_V2) {
   }
 
   const finalResponse = await composeAidaResponse(brainResult);
+
+  await updateAidaConversationContextAfterResponse({
+    brainResult,
+    reply: finalResponse.reply,
+  });
 
   return jsonOK({
     ok: true,
