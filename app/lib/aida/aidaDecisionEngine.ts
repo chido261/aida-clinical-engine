@@ -25,6 +25,8 @@ export type AidaClinicalEventType =
   | "FASTING_ELEVATED"
   | "FASTING_IN_RANGE"
   | "POSTMEAL_IN_RANGE"
+  | "PREMEAL_ELEVATED"
+  | "PREMEAL_IN_RANGE"
   | "STABLE_READING"
   | "UNKNOWN_READING"
   | "NONE";
@@ -55,6 +57,7 @@ export type AidaResponseIntent =
   | "POSTMEAL_ELEVATED_WITH_MEAL"
   | "POSTMEAL_RECOVERY_AFTER_WALK"
   | "FASTING_REVIEW"
+  | "PREMEAL_REVIEW"
   | "STABLE_READING_COACHING"
   | "MOMENT_CLARIFICATION"
   | "MEAL_REVIEW"
@@ -87,6 +90,7 @@ export function mapAidaMomentToLegacyMoment(
   moment: AidaReadingMoment
 ): AidaLegacyMoment {
   if (moment === "FASTING") return "AYUNO";
+  if (moment === "PRE_MEAL") return "ANTES_COMER";
   if (moment === "POST_MEAL") return "POSTCOMIDA";
   if (moment === "BEDTIME") return "NOCHE";
   return "DESCONOCIDO";
@@ -344,6 +348,35 @@ export function buildAidaAdvisorDecision(params: {
           : primaryGlucose >= 101
             ? "Lectura en ayuno ligeramente elevada."
             : "Lectura en ayuno dentro de rango saludable.",
+    };
+  }
+
+  if (readingMoment === "ANTES_COMER") {
+    const preMealEvent =
+      primaryGlucose >= 140 ? "PREMEAL_ELEVATED" : "PREMEAL_IN_RANGE";
+
+    const nutritionGoal =
+      primaryGlucose >= 140 ? "LOWER_GLUCOSE" : "MAINTAIN_GLUCOSE";
+
+    return {
+      primaryGlucose,
+      readingMoment,
+      detectedSymptoms: symptoms,
+      clinicalEvent: preMealEvent,
+      nutritionGoal,
+      followUpAction: "NONE",
+      responseIntent: "PREMEAL_REVIEW",
+      shouldSaveReading: true,
+      shouldOpenClinicalEvent: primaryGlucose >= 180,
+      shouldCloseClinicalEvent: false,
+      activeProtocol,
+      activePhase,
+      needsMomentClarification: false,
+      needsMealContext: false,
+      reason:
+        primaryGlucose >= 140
+          ? "Lectura antes de comer elevada; conviene orientar la siguiente comida."
+          : "Lectura antes de comer en rango razonable para decidir la siguiente comida.",
     };
   }
 

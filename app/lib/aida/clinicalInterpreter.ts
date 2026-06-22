@@ -2,6 +2,7 @@
 
 export type AidaReadingMoment =
   | "FASTING"
+  | "PRE_MEAL"
   | "POST_MEAL"
   | "BEDTIME"
   | "UNKNOWN";
@@ -68,6 +69,14 @@ function detectMomentInText(text: string): {
   }
 
   if (
+    /\b(antes de comer|antes de la comida|antes de desayunar|antes del desayuno|antes de almorzar|antes del almuerzo|antes de cenar|antes de la cena|previo a comer|previo a la comida|previo a cenar|previo a la cena)\b/.test(
+      normalized
+    )
+  ) {
+    return { moment: "PRE_MEAL", confidence: "high" };
+  }
+
+  if (
     /\b(postcomida|post comida|despues de comer|despues de desayunar|despues del desayuno|despues de almorzar|despues de la comida|despues de cenar|despues tuve|despues me salio|despues marque|2h|2 horas|dos horas)\b/.test(
       normalized
     )
@@ -94,9 +103,7 @@ function extractReadingMatches(text: string): ReadingMatch[] {
     const rawValue = match[1];
     const glucose = Number(rawValue);
 
-    if (!isValidGlucose(glucose)) {
-      continue;
-    }
+    if (!isValidGlucose(glucose)) continue;
 
     readings.push({
       glucose,
@@ -152,6 +159,16 @@ function inferMomentByPosition(params: {
   const prefix = normalizeText(getPrefixForReading(text, current));
   const suffix = normalizeText(getSuffixForReading(text, current));
 
+  const localContext = `${prefix.slice(-120)} ${suffix.slice(0, 100)}`;
+
+  if (
+    /\b(antes de comer|antes de la comida|antes de desayunar|antes del desayuno|antes de almorzar|antes del almuerzo|antes de cenar|antes de la cena|previo a comer|previo a la comida|previo a cenar|previo a la cena)\b/.test(
+      localContext
+    )
+  ) {
+    return { moment: "PRE_MEAL", confidence: "medium" };
+  }
+
   if (
     currentIndex === 0 &&
     /\b(desperte|desperté|al despertar|amaneci|amanecí|amanecer|ayuno|ayunas|en ayunas)\b/.test(
@@ -176,13 +193,8 @@ function inferMomentByPosition(params: {
     /\b(despues|después)\b/.test(normalized);
 
   if (mentionsWakeThenMealThenAfter && matches.length >= 2) {
-    if (currentIndex === 0) {
-      return { moment: "FASTING", confidence: "medium" };
-    }
-
-    if (currentIndex === 1) {
-      return { moment: "POST_MEAL", confidence: "medium" };
-    }
+    if (currentIndex === 0) return { moment: "FASTING", confidence: "medium" };
+    if (currentIndex === 1) return { moment: "POST_MEAL", confidence: "medium" };
   }
 
   return { moment: "UNKNOWN", confidence: "low" };
@@ -192,9 +204,7 @@ function repairSequentialMoments(
   readings: AidaInterpretedReading[],
   originalText: string
 ): AidaInterpretedReading[] {
-  if (readings.length < 2) {
-    return readings;
-  }
+  if (readings.length < 2) return readings;
 
   const normalized = normalizeText(originalText);
   const next = [...readings];
@@ -215,25 +225,12 @@ function repairSequentialMoments(
     );
 
   if (mentionsFasting && mentionsPostMeal && next.length >= 2) {
-    next[0] = {
-      ...next[0],
-      moment: "FASTING",
-      confidence: next[0].confidence === "high" ? "high" : "medium",
-    };
-
-    next[1] = {
-      ...next[1],
-      moment: "POST_MEAL",
-      confidence: next[1].confidence === "high" ? "high" : "medium",
-    };
+    next[0] = { ...next[0], moment: "FASTING", confidence: "medium" };
+    next[1] = { ...next[1], moment: "POST_MEAL", confidence: "medium" };
   }
 
   if (mentionsNight && next.length >= 3) {
-    next[2] = {
-      ...next[2],
-      moment: "BEDTIME",
-      confidence: next[2].confidence === "high" ? "high" : "medium",
-    };
+    next[2] = { ...next[2], moment: "BEDTIME", confidence: "medium" };
   }
 
   return next;
@@ -326,9 +323,7 @@ export function interpretAidaClinicalText(text: string): AidaClinicalInterpretat
 export function getPrimaryReading(
   interpretation: AidaClinicalInterpretation
 ): AidaInterpretedReading | null {
-  if (!interpretation.readings.length) {
-    return null;
-  }
+  if (!interpretation.readings.length) return null;
 
   return interpretation.readings[interpretation.readings.length - 1] ?? null;
 }
