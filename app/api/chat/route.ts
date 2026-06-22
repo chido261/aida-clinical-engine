@@ -49,6 +49,9 @@ import type {
   AidaReadingMoment,
 } from "@/app/lib/aida/clinicalInterpreter";
 
+import { runAidaBrain } from "@/app/lib/aida/aidaBrain";
+import { composeAidaResponse } from "@/app/lib/aida/responseComposer";
+
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 type ChatMessage = {
@@ -680,6 +683,47 @@ return jsonOK({
 
     // 4) Baseline
     const baselineResult = await detectAndSaveBaseline({ userId, text: lastUserMsg });
+
+// =========================================
+// AIDA V2 - Cerebro central
+// Sustituye gradualmente el motor anterior.
+// Respaldo histórico disponible en GitHub.
+// Fecha de integración inicial: 2026-06-21
+// =========================================
+
+const USE_AIDA_V2 = true;
+
+if (USE_AIDA_V2) {
+  const brainResult = await runAidaBrain({
+    userId,
+    text: lastUserMsg,
+    historyPlain,
+  });
+
+  await applyAidaDecisionToMemory({
+    userId,
+    decision: brainResult.clinical.advisorDecision,
+  });
+
+  if (brainResult.decision.shouldSaveReading) {
+    await evaluateAndSaveProtocolProgression({
+      userId,
+      activeProtocol: userState.activeProtocol ?? "PROTOCOL_1",
+      activePhase: userState.activePhase ?? "FASE_1",
+    });
+  }
+
+  const finalResponse = await composeAidaResponse(brainResult);
+
+  return jsonOK({
+    ok: true,
+    reply: finalResponse.reply,
+    bypass: false,
+    aidaV2: true,
+    responseSource: finalResponse.source,
+    ui: uiBase,
+  });
+}
 
     // 4.5) Tomar previousGlucose ANTES de guardar nueva lectura
     const lastBeforeSave = glucoseNow !== null ? await getLastReading(userId) : null;

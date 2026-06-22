@@ -3,8 +3,6 @@
 import {
   getAllowedFoodsForProtocol,
   getExcludedFoodsForProtocol,
-  findFoodInCatalog,
-  type FoodItem,
   type MealType,
 } from "@/app/lib/aida/protocolFoodCatalog";
 import { buildGeneratedMealOptionsDirective } from "@/app/lib/aida/mealPlanGenerator";
@@ -28,14 +26,14 @@ type RecipeTemplate = {
 };
 
 const RECIPE_TEMPLATES: RecipeTemplate[] = [
-  // RES / CARNE
   {
     id: "beef_nopales",
     mealTypes: ["COMIDA", "CENA"],
     proteinKey: "carne de res",
     title: "Carne de res con nopales y jitomate",
     ingredients: ["carne de res", "nopales", "jitomate"],
-    preparation: "Cocina la carne de res. Agrega los nopales y el jitomate hasta que todo quede integrado.",
+    preparation:
+      "Cocina la carne de res. Agrega los nopales y el jitomate hasta que todo quede integrado.",
   },
   {
     id: "beef_fajitas",
@@ -43,7 +41,8 @@ const RECIPE_TEMPLATES: RecipeTemplate[] = [
     proteinKey: "carne de res",
     title: "Fajitas de res con pimiento y calabacita",
     ingredients: ["carne de res", "pimiento", "calabacita"],
-    preparation: "Corta la carne de res en tiras. Cocina junto con pimiento y calabacita hasta que quede lista.",
+    preparation:
+      "Corta la carne de res en tiras. Cocina junto con pimiento y calabacita hasta que quede lista.",
   },
   {
     id: "beef_mushrooms",
@@ -51,7 +50,8 @@ const RECIPE_TEMPLATES: RecipeTemplate[] = [
     proteinKey: "carne de res",
     title: "Bistec con champiñones y brócoli",
     ingredients: ["bistec", "champiñones", "brócoli"],
-    preparation: "Cocina el bistec. Añade champiñones y brócoli hasta que queden suaves.",
+    preparation:
+      "Cocina el bistec. Añade champiñones y brócoli hasta que queden suaves.",
   },
   {
     id: "beef_picadillo",
@@ -59,7 +59,8 @@ const RECIPE_TEMPLATES: RecipeTemplate[] = [
     proteinKey: "carne de res",
     title: "Picadillo de res con chayote y calabacita",
     ingredients: ["carne molida magra", "chayote", "calabacita"],
-    preparation: "Cocina la carne molida magra. Agrega chayote y calabacita en cubos hasta que queden cocidos.",
+    preparation:
+      "Cocina la carne molida magra. Agrega chayote y calabacita en cubos hasta que queden cocidos.",
   },
   {
     id: "beef_lettuce_bowl",
@@ -67,10 +68,9 @@ const RECIPE_TEMPLATES: RecipeTemplate[] = [
     proteinKey: "carne de res",
     title: "Tazón de res con lechuga, pepino y aguacate",
     ingredients: ["carne de res", "lechuga", "pepino", "aguacate"],
-    preparation: "Cocina la carne de res. Sirve sobre lechuga y pepino, y acompaña con aguacate.",
+    preparation:
+      "Cocina la carne de res. Sirve sobre lechuga y pepino, y acompaña con aguacate.",
   },
-
-  // POLLO
   {
     id: "chicken_nopales",
     mealTypes: ["DESAYUNO", "COMIDA", "CENA"],
@@ -85,7 +85,8 @@ const RECIPE_TEMPLATES: RecipeTemplate[] = [
     proteinKey: "pollo",
     title: "Pollo con champiñones y espinaca",
     ingredients: ["pollo", "champiñones", "espinaca"],
-    preparation: "Cocina el pollo. Agrega champiñones y espinaca hasta que queden suaves.",
+    preparation:
+      "Cocina el pollo. Agrega champiñones y espinaca hasta que queden suaves.",
   },
   {
     id: "chicken_broccoli",
@@ -93,17 +94,17 @@ const RECIPE_TEMPLATES: RecipeTemplate[] = [
     proteinKey: "pollo",
     title: "Pollo con brócoli y calabacita",
     ingredients: ["pollo", "brócoli", "calabacita"],
-    preparation: "Cocina el pollo. Añade brócoli y calabacita hasta que queden listos.",
+    preparation:
+      "Cocina el pollo. Añade brócoli y calabacita hasta que queden listos.",
   },
-
-  // HUEVO
   {
     id: "egg_nopales",
     mealTypes: ["DESAYUNO", "CENA"],
     proteinKey: "huevo",
     title: "Huevos con nopales y jitomate",
     ingredients: ["huevo", "nopales", "jitomate"],
-    preparation: "Cocina los nopales con jitomate. Agrega el huevo y mezcla hasta que quede cocido.",
+    preparation:
+      "Cocina los nopales con jitomate. Agrega el huevo y mezcla hasta que quede cocido.",
   },
   {
     id: "egg_spinach",
@@ -111,7 +112,8 @@ const RECIPE_TEMPLATES: RecipeTemplate[] = [
     proteinKey: "huevo",
     title: "Huevos con espinaca y champiñones",
     ingredients: ["huevo", "espinaca", "champiñones"],
-    preparation: "Cocina la espinaca y los champiñones. Agrega el huevo y cocina hasta que quede listo.",
+    preparation:
+      "Cocina la espinaca y los champiñones. Agrega el huevo y cocina hasta que quede listo.",
   },
   {
     id: "egg_avocado",
@@ -121,8 +123,6 @@ const RECIPE_TEMPLATES: RecipeTemplate[] = [
     ingredients: ["huevo", "jitomate", "aguacate"],
     preparation: "Cocina el huevo con jitomate y sirve con aguacate.",
   },
-
-  // PAVO / QUESO / PESCADO
   {
     id: "turkey_rolls",
     mealTypes: ["DESAYUNO", "CENA"],
@@ -173,6 +173,14 @@ function normalize(text: string) {
     .trim();
 }
 
+function getMealTypeLabel(mealType: MealType) {
+  if (mealType === "DESAYUNO") return "desayuno";
+  if (mealType === "COMIDA") return "comida";
+  if (mealType === "CENA") return "cena";
+  if (mealType === "COLACION") return "colación";
+  return "comida";
+}
+
 function detectVarietyComplaint(text: string) {
   return /(no est[aá] variado|no es variado|se parecen|muy repetido|m[aá]s variedad|mas variedad|opciones distintas|otras opciones|c[aá]mbialas|cambialas)/i.test(
     text
@@ -208,7 +216,7 @@ function detectRequestedProteinKey(text: string) {
   if (t.includes("carne")) return "carne de res";
   if (t.includes("bagre")) return "pescado";
   if (t.includes("pescado")) return "pescado";
-  if (t.includes("atun") || t.includes("atún")) return "atún";
+  if (t.includes("atun")) return "atún";
   if (t.includes("sardina")) return "sardina";
   if (t.includes("queso")) return "queso fresco";
 
@@ -216,15 +224,17 @@ function detectRequestedProteinKey(text: string) {
 }
 
 function wantsBeverage(text: string) {
-  return /\b(bebida|agua|jamaica|café|cafe|té|te|infusión|infusion)\b/i.test(text);
+  return /\b(bebida|agua|jamaica|café|cafe|té|te|infusión|infusion)\b/i.test(
+    text
+  );
 }
 
 function getSafeBeverage(text: string) {
   const t = normalize(text);
 
   if (t.includes("jamaica")) return "agua de jamaica sin azúcar";
-  if (t.includes("cafe") || t.includes("café")) return "café sin azúcar";
-  if (t.includes("te") || t.includes("té")) return "té sin azúcar";
+  if (t.includes("cafe")) return "café sin azúcar";
+  if (t.includes("te")) return "té sin azúcar";
 
   return "agua de jamaica sin azúcar";
 }
@@ -264,12 +274,12 @@ function buildFallbackRecipe(params: {
   blockedFoods: string[];
   offset: number;
 }) {
+  const blocked = params.blockedFoods.map(normalize);
+
   const allowed = getAllowedFoodsForProtocol({
     protocol: params.activeProtocol,
     mealType: params.mealType,
-  }).filter(
-    (food) => !params.blockedFoods.map(normalize).includes(normalize(food.name))
-  );
+  }).filter((food) => !blocked.includes(normalize(food.name)));
 
   const proteins = allowed.filter((food) => food.category === "PROTEIN");
   const vegetables = allowed.filter((food) => food.category === "VEGETABLE");
@@ -280,8 +290,10 @@ function buildFallbackRecipe(params: {
   );
 
   const protein = proteins[params.offset % Math.max(proteins.length, 1)];
-  const vegetable1 = vegetables[(params.offset + 1) % Math.max(vegetables.length, 1)];
-  const vegetable2 = vegetables[(params.offset + 3) % Math.max(vegetables.length, 1)];
+  const vegetable1 =
+    vegetables[(params.offset + 1) % Math.max(vegetables.length, 1)];
+  const vegetable2 =
+    vegetables[(params.offset + 3) % Math.max(vegetables.length, 1)];
   const fat = fats[(params.offset + 2) % Math.max(fats.length, 1)];
 
   const ingredients = [
@@ -292,9 +304,15 @@ function buildFallbackRecipe(params: {
   ].filter(Boolean) as string[];
 
   return {
-    title: `${protein?.name ?? "Proteína"} con ${vegetable1?.name ?? "vegetales"}`,
+    title: `${protein?.name ?? "Proteína"} con ${
+      vegetable1?.name ?? "vegetales"
+    }`,
     ingredients,
-    preparation: `Cocina ${protein?.name ?? "la proteína"} con ${vegetable1?.name ?? "vegetales"}${vegetable2?.name ? ` y ${vegetable2.name}` : ""}. ${fat?.name ? `Sirve con ${fat.name}.` : ""}`.trim(),
+    preparation: `Cocina ${protein?.name ?? "la proteína"} con ${
+      vegetable1?.name ?? "vegetales"
+    }${vegetable2?.name ? ` y ${vegetable2.name}` : ""}. ${
+      fat?.name ? `Sirve con ${fat.name}.` : ""
+    }`.trim(),
   };
 }
 
@@ -303,6 +321,7 @@ function buildDeterministicMealOptions(params: {
   activeProtocol: string;
 }) {
   const request = interpretNutritionRequest(params.text);
+
   const mealType =
     request.mealType === "DESAYUNO" ||
     request.mealType === "COMIDA" ||
@@ -382,29 +401,36 @@ function buildDeterministicMealOptions(params: {
     : "";
 
   const excludedLine = request.excludedRequestedFoods.length
-    ? `\n\nAjusté la solicitud porque ${request.excludedRequestedFoods.join(", ")} no entra por ahora en Protocolo 1.`
+    ? `\n\nAjusté tu solicitud porque ${request.excludedRequestedFoods.join(
+        ", "
+      )} no entra por ahora en tu plan actual.`
     : "";
 
-  return `Aquí tienes ${count} opciones para ${mealType.toLowerCase()} dentro del protocolo:\n\n${selected
+  return `Aquí tienes ${count} opciones para ${getMealTypeLabel(
+    mealType
+  )} adecuadas para tu etapa actual:\n\n${selected
     .map(
       (option, index) =>
-        `${index + 1}. ${option.title}\nIngredientes: ${option.ingredients.join(", ")}.\nPreparación: ${option.preparation}`
+        `${index + 1}. ${option.title}\nIngredientes: ${option.ingredients.join(
+          ", "
+        )}.\nPreparación: ${option.preparation}`
     )
     .join("\n\n")}${beverageLine}${avoidedLine}${excludedLine}`;
 }
 
-function buildDeterministicBeverageReply(params: {
-  text: string;
-}) {
+function buildDeterministicBeverageReply(params: { text: string }) {
   const request = interpretNutritionRequest(params.text);
   const beverage = request.beverage ?? getSafeBeverage(params.text);
 
   if (request.sugarAdded === true) {
-    return `No te la recomiendo si lleva azúcar. Mejor elige una versión sin azúcar, como agua de jamaica sin azúcar, café sin azúcar o té sin azúcar.`;
+    return "No te la recomiendo si lleva azúcar. Mejor elige una versión sin azúcar, como agua de jamaica sin azúcar, café sin azúcar o té sin azúcar.";
   }
 
-  if (request.sugarAdded === null && /agua fresca|bebida preparada/i.test(params.text)) {
-    return `Puede ser opción solo si es sin azúcar. Confírmame que no lleva azúcar, miel, jarabe ni endulzante añadido.`;
+  if (
+    request.sugarAdded === null &&
+    /agua fresca|bebida preparada/i.test(params.text)
+  ) {
+    return "Puede ser opción solo si es sin azúcar. Confírmame que no lleva azúcar, miel, jarabe ni endulzante añadido.";
   }
 
   return `Sí, puedes acompañar con ${beverage} si es sin azúcar. Evita agregar miel, azúcar o jarabes.`;
@@ -477,7 +503,8 @@ export function runNutritionEngine(params: {
       responseMode: "NONE",
       reply: null,
       directive: null,
-      reason: "La solicitud nutricional fue detectada, pero aún no tiene respuesta generada.",
+      reason:
+        "La solicitud nutricional fue detectada, pero aún no tiene respuesta generada.",
     };
   }
 
