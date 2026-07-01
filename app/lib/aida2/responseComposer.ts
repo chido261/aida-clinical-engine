@@ -1,6 +1,7 @@
 // app/lib/aida2/responseComposer.ts
 
 import type { Aida2WorkPlan } from "@/app/lib/aida2/brain";
+import type { Aida2ConversationStrategy } from "@/app/lib/aida2/conversationStrategy";
 import type { Aida2ContextModuleOutput } from "@/app/lib/aida2/modules/contextModule";
 
 export function buildAida2ComposerPrompt(params: {
@@ -8,8 +9,15 @@ export function buildAida2ComposerPrompt(params: {
   history: string;
   userMessage: string;
   contextModule?: Aida2ContextModuleOutput;
+  conversationStrategy?: Aida2ConversationStrategy;
 }) {
-  const { workPlan, history, userMessage, contextModule } = params;
+  const {
+    workPlan,
+    history,
+    userMessage,
+    contextModule,
+    conversationStrategy,
+  } = params;
 
   return [
     workPlan.purpose,
@@ -26,15 +34,60 @@ export function buildAida2ComposerPrompt(params: {
       workPlan.understanding.asksForPreviousContext ? "Sí" : "No"
     }`,
     "",
+    "Pensamiento del Cerebro:",
+    `- Objetivo del usuario: ${workPlan.thinking.userGoal}`,
+    `- Objetivo clínico: ${workPlan.thinking.clinicalGoal}`,
+    `- Acción principal: ${workPlan.thinking.mainAction}`,
+    `- Principio de decisión: ${workPlan.thinking.decisionPrinciple}`,
+    "",
+    "Contexto que AIDA utilizará:",
+    workPlan.thinking.knownContextToUse.map((item) => `- ${item}`).join("\n"),
+    "",
+    "Información faltante:",
+    workPlan.thinking.missingInformation.length
+      ? workPlan.thinking.missingInformation
+          .map((item) => `- ${item}`)
+          .join("\n")
+      : "- Ninguna",
+    "",
+    "Información adicional requerida:",
+    workPlan.thinking.extraDataNeeded.length
+      ? workPlan.thinking.extraDataNeeded
+          .map((item) => `- ${item}`)
+          .join("\n")
+      : "- Ninguna",
+    "",
+    `Observación detectada: ${
+      workPlan.thinking.newRelevantObservation ?? "Ninguna"
+    }`,
+    "",
     "Decisión del Cerebro:",
     `- Prioridad: ${workPlan.decision.priority}`,
     `- Objetivo de respuesta: ${workPlan.decision.responseGoal}`,
     `- Módulos a consultar: ${workPlan.decision.modulesToRun.join(", ")}`,
     "",
+    "Estrategia conversacional:",
+    conversationStrategy
+      ? [
+          `- Objetivo de estilo: ${conversationStrategy.styleGoal}`,
+          "Orden de respuesta:",
+          conversationStrategy.responseOrder
+            .map((item) => `- ${item}`)
+            .join("\n"),
+          "Debe seguir:",
+          conversationStrategy.mustFollow.map((item) => `- ${item}`).join("\n"),
+          "Debe evitar:",
+          conversationStrategy.mustAvoid.map((item) => `- ${item}`).join("\n"),
+          `Cierre conversacional: ${conversationStrategy.closingStyle}`,
+        ].join("\n")
+      : "Sin estrategia conversacional disponible.",
+    "",
     "Información entregada por contextModule:",
     contextModule
       ? [
-          `- Debe usar historial: ${contextModule.shouldUseHistory ? "Sí" : "No"}`,
+          `- Debe usar historial: ${
+            contextModule.shouldUseHistory ? "Sí" : "No"
+          }`,
           `- Tiene historial: ${contextModule.hasHistory ? "Sí" : "No"}`,
           `- Resumen: ${contextModule.summary}`,
           "Notas:",
@@ -68,6 +121,6 @@ export function buildAida2ComposerPrompt(params: {
     userMessage,
     "",
     "Instrucción final:",
-    "Redacta una respuesta natural para el usuario. No expliques el plan interno. No menciones módulos, intención detectada ni decisiones internas.",
+    "Redacta una respuesta natural para el usuario. No expliques el plan interno. No menciones módulos, intención detectada, decisiones internas ni estrategia conversacional. Responde como AIDA, no como sistema.",
   ].join("\n");
 }

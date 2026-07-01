@@ -5,8 +5,9 @@ export const runtime = "nodejs";
 import { NextResponse } from "next/server";
 import OpenAI from "openai";
 import { buildAida2WorkPlan } from "@/app/lib/aida2/brain";
+import { runAida2Modules } from "@/app/lib/aida2/moduleRunner";
+import { buildAida2ConversationStrategy } from "@/app/lib/aida2/conversationStrategy";
 import { buildAida2ComposerPrompt } from "@/app/lib/aida2/responseComposer";
-import { runContextModule } from "@/app/lib/aida2/modules/contextModule";
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
@@ -61,9 +62,15 @@ export async function POST(req: Request) {
       history,
     });
 
-    const contextModule = runContextModule({
+    const moduleResults = runAida2Modules({
       workPlan,
       history,
+      userMessage: lastUserMessage,
+    });
+
+    const conversationStrategy = buildAida2ConversationStrategy({
+      workPlan,
+      moduleResults,
       userMessage: lastUserMessage,
     });
 
@@ -71,7 +78,8 @@ export async function POST(req: Request) {
       workPlan,
       history,
       userMessage: lastUserMessage,
-      contextModule,
+      contextModule: moduleResults.context,
+      conversationStrategy,
     });
 
     const response = await openai.chat.completions.create({
@@ -92,9 +100,8 @@ export async function POST(req: Request) {
       reply,
       aida2: true,
       workPlan,
-      modules: {
-        context: contextModule,
-      },
+      modules: moduleResults,
+      conversationStrategy,
     });
   } catch (error: any) {
     console.error("API /api/chat2 ERROR:", error);

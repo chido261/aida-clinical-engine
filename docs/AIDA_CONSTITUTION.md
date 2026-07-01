@@ -88,6 +88,71 @@ Este proceso genera el WorkPlan.
 
 ---
 
+---
+
+# 4.1 DECISION ENGINE
+
+El Decision Engine es el componente responsable de traducir el WorkPlan en un plan de ejecución.
+
+El Brain no debe decidir qué módulos técnicos ejecutar.
+
+El Brain piensa y construye el WorkPlan.
+
+El Decision Engine lee el WorkPlan y determina:
+
+- Qué módulos deben ejecutarse.
+- En qué orden deben ejecutarse.
+- Qué información debe buscarse.
+- Qué datos ya están disponibles en el contexto base.
+- Qué consultas deben evitarse por optimización.
+
+El Decision Engine no redacta respuestas.
+
+El Decision Engine no conversa con el usuario.
+
+El Decision Engine no consulta directamente la base de datos.
+
+Su única función es convertir el pensamiento del Brain en una estrategia operativa para el Module Runner.
+
+Flujo correcto:
+
+Brain
+
+↓
+
+WorkPlan
+
+↓
+
+Decision Engine
+
+↓
+
+Module Runner
+
+↓
+
+Módulos
+
+↓
+
+Response Composer
+
+↓
+
+GPT
+
+Regla principal:
+
+El Brain piensa.
+El Decision Engine decide la ejecución.
+El Module Runner ejecuta.
+Los módulos informan.
+El Response Composer organiza.
+GPT comunica.
+
+---
+
 # 5. CONTEXTO BASE
 
 Al iniciar una sesión AIDA carga únicamente la información necesaria para trabajar.

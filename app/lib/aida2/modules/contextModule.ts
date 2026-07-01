@@ -1,9 +1,11 @@
 // app/lib/aida2/modules/contextModule.ts
 
 import type { Aida2WorkPlan } from "@/app/lib/aida2/brain";
+import type { Aida2ExecutionPlan } from "@/app/lib/aida2/decisionEngine";
 
 export type Aida2ContextModuleInput = {
   workPlan: Aida2WorkPlan;
+  executionPlan: Aida2ExecutionPlan;
   history: string;
   userMessage: string;
 };
@@ -30,7 +32,7 @@ export function runContextModule(
   input: Aida2ContextModuleInput
 ): Aida2ContextModuleOutput {
   const history = cleanHistory(input.history);
-  const shouldUseHistory = input.workPlan.decision.shouldUseHistory;
+  const shouldUseHistory = input.executionPlan.shouldUseHistory;
   const asksForPreviousContext =
     input.workPlan.understanding.asksForPreviousContext;
 
