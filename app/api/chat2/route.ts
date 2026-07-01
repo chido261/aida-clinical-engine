@@ -6,6 +6,7 @@ import { NextResponse } from "next/server";
 import OpenAI from "openai";
 import { buildAida2WorkPlan } from "@/app/lib/aida2/brain";
 import { buildAida2ComposerPrompt } from "@/app/lib/aida2/responseComposer";
+import { runContextModule } from "@/app/lib/aida2/modules/contextModule";
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
@@ -60,10 +61,17 @@ export async function POST(req: Request) {
       history,
     });
 
+    const contextModule = runContextModule({
+      workPlan,
+      history,
+      userMessage: lastUserMessage,
+    });
+
     const systemPrompt = buildAida2ComposerPrompt({
       workPlan,
       history,
       userMessage: lastUserMessage,
+      contextModule,
     });
 
     const response = await openai.chat.completions.create({
@@ -84,6 +92,9 @@ export async function POST(req: Request) {
       reply,
       aida2: true,
       workPlan,
+      modules: {
+        context: contextModule,
+      },
     });
   } catch (error: any) {
     console.error("API /api/chat2 ERROR:", error);

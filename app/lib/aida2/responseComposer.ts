@@ -1,13 +1,15 @@
 // app/lib/aida2/responseComposer.ts
 
 import type { Aida2WorkPlan } from "@/app/lib/aida2/brain";
+import type { Aida2ContextModuleOutput } from "@/app/lib/aida2/modules/contextModule";
 
 export function buildAida2ComposerPrompt(params: {
   workPlan: Aida2WorkPlan;
   history: string;
   userMessage: string;
+  contextModule?: Aida2ContextModuleOutput;
 }) {
-  const { workPlan, history, userMessage } = params;
+  const { workPlan, history, userMessage, contextModule } = params;
 
   return [
     workPlan.purpose,
@@ -28,6 +30,19 @@ export function buildAida2ComposerPrompt(params: {
     `- Prioridad: ${workPlan.decision.priority}`,
     `- Objetivo de respuesta: ${workPlan.decision.responseGoal}`,
     `- Módulos a consultar: ${workPlan.decision.modulesToRun.join(", ")}`,
+    "",
+    "Información entregada por contextModule:",
+    contextModule
+      ? [
+          `- Debe usar historial: ${contextModule.shouldUseHistory ? "Sí" : "No"}`,
+          `- Tiene historial: ${contextModule.hasHistory ? "Sí" : "No"}`,
+          `- Resumen: ${contextModule.summary}`,
+          "Notas:",
+          contextModule.notes.map((item) => `- ${item}`).join("\n"),
+          "Contexto relevante:",
+          contextModule.relevantContext ?? "Sin contexto relevante.",
+        ].join("\n")
+      : "contextModule no ejecutado.",
     "",
     "Plan de seguridad:",
     `- Riesgo: ${workPlan.safety.riskLevel}`,
