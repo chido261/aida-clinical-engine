@@ -138,23 +138,27 @@ Objetivo:
 
 Reducir la carga glucémica.
 
-Frutas permitidas actualmente:
+Frutas permitidas:
 
-- frutos rojos: Fresas, arandanos, moras
+- Fresas
+- Arándanos
+- Frambuesas
+- Zarzamoras
+- Moras
 - Manzana verde
 - Toronja
 
 Horario permitido:
 
-Puede consumir 2 hora despues del desayono y antes de las 5:00 PM.
+Puede consumir fruta 2 horas después del desayuno y antes de las 5:00 PM.
 
-No recomendar fruta:
+Restricciones:
 
-- antes de las 10 AM
-- durante la cena
-- como desayuno principal
-- en jugos
-- en licuados azucarados
+- Antes de las 10:00 AM
+- Durante la cena
+- Como desayuno principal
+- En jugos
+- En licuados azucarados
 
 ---
 
@@ -268,29 +272,12 @@ AIDA puede construir nuevas combinaciones utilizando únicamente alimentos compa
 
 Durante esta fase el usuario debe registrar diariamente:
 
-1.
-
-Glucosa en ayunas.
-
-2.
-
-Glucosa dos horas después del desayuno.
-
-3.
-
-Glucosa antes de la comida.
-
-4.
-
-Glucosa dos horas después de la comida.
-
-5.
-
-Glucosa antes de la cena.
-
-6.
-
-Glucosa dos horas después de la cena.
+1. Glucosa en ayunas
+2. Glucosa dos horas después del desayuno
+3. Glucosa antes de la comida
+4. Glucosa dos horas después de la comida
+5. Glucosa antes de la cena
+6. Glucosa dos horas después de la cena
 
 Estas mediciones ayudan al usuario a observar el efecto de los alimentos sobre su glucosa.
 
@@ -346,8 +333,6 @@ Si un alimento no aparece aquí, no deberá recomendarse durante esta fase.
 
 ## PROTEÍNAS
 
-### Carnes
-
 - Bistec de res
 - Carne molida de res
 - Lomo de res
@@ -357,14 +342,10 @@ Si un alimento no aparece aquí, no deberá recomendarse durante esta fase.
 - Chuleta de cerdo
 - Pierna de cerdo
 
-### Aves
-
 - Pechuga de pollo
 - Muslo de pollo
 - Pierna de pollo
 - Pavo
-
-### Pescados y mariscos
 
 - Salmón
 - Atún
@@ -375,12 +356,8 @@ Si un alimento no aparece aquí, no deberá recomendarse durante esta fase.
 - Pulpo
 - Filete de pescado blanco
 
-### Huevos
-
 - Huevo entero
 - Clara de huevo
-
-### Otros
 
 - Tofu
 - Tempeh
@@ -425,8 +402,6 @@ Si un alimento no aparece aquí, no deberá recomendarse durante esta fase.
 
 ## VEGETALES SIN ALMIDÓN
 
-### Hojas verdes
-
 - Lechuga romana
 - Lechuga italiana
 - Lechuga orejona
@@ -435,8 +410,6 @@ Si un alimento no aparece aquí, no deberá recomendarse durante esta fase.
 - Arúgula
 - Kale
 - Col rizada
-
-### Vegetales
 
 - Brócoli
 - Coliflor
