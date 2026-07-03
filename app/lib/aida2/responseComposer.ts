@@ -78,6 +78,10 @@ export function buildAida2ComposerPrompt(params: {
           conversationStrategy.mustFollow.map((item) => `- ${item}`).join("\n"),
           "Debe evitar:",
           conversationStrategy.mustAvoid.map((item) => `- ${item}`).join("\n"),
+          "Pistas de lenguaje natural:",
+          conversationStrategy.naturalLanguageHints
+            .map((item) => `- ${item}`)
+            .join("\n"),
           `Cierre conversacional: ${conversationStrategy.closingStyle}`,
         ].join("\n")
       : "Sin estrategia conversacional disponible.",
@@ -121,6 +125,14 @@ export function buildAida2ComposerPrompt(params: {
     userMessage,
     "",
     "Instrucción final:",
-    "Redacta una respuesta natural para el usuario. No expliques el plan interno. No menciones módulos, intención detectada, decisiones internas ni estrategia conversacional. Responde como AIDA, no como sistema.",
+    [
+      "Redacta una respuesta natural para el usuario.",
+      "No expliques el plan interno.",
+      "No menciones módulos, intención detectada, decisiones internas ni estrategia conversacional.",
+      "Responde como AIDA, no como sistema.",
+      "Cierra con una acción concreta, no con una pregunta automática.",
+      "Solo termina con pregunta si realmente falta un dato indispensable para responder.",
+      "Evita frases tipo: '¿Quieres que te ayude...?', '¿Quieres que te sugiera...?' o '¿Quieres que armemos...?' cuando ya diste una recomendación útil.",
+    ].join(" "),
   ].join("\n");
 }

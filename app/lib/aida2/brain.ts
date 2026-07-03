@@ -203,9 +203,25 @@ function detectSevereSymptoms(message: string) {
   );
 }
 
-function detectPossibleUnregisteredMedication(message: string) {
-  return /\b(trayenta|linagliptina|jardiance|empagliflozina|ozempic|semaglutida|insulina|glibenclamida|galvus|vildagliptina)\b/i.test(
-    message
+function detectMedicationProfileUpdateCandidate(message: string) {
+  const text = normalize(message);
+
+  const mentionsKnownMedication =
+    /\b(trayenta|linagliptina|jardiance|empagliflozina|ozempic|semaglutida|insulina|glibenclamida|galvus|vildagliptina|metformina|dapagliflozina)\b/i.test(
+      text
+    );
+
+  if (!mentionsKnownMedication) return false;
+
+  const deniesCurrentUse =
+    /\b(no lo tomo|no la tomo|no los tomo|no las tomo|no lo estoy tomando|no la estoy tomando|no estoy tomando|todav[ií]a no|a[uú]n no)\b/i.test(
+      text
+    );
+
+  if (deniesCurrentUse) return false;
+
+  return /\b(tomo|estoy tomando|uso|estoy usando|me indicaron|me recetaron|me mandaron|me dieron|empec[eé]|inici[eé]|agregaron|mi tratamiento|mis medicamentos|medicamento actual|tratamiento actual)\b/i.test(
+    text
   );
 }
 
@@ -485,7 +501,7 @@ function buildMainAction(
   if (safety.requiresImmediateSafetyFocus) return "PRIORITIZE_SAFETY";
   if (missingInformation.length > 0) return "ASK_MINIMUM_MISSING_DATA";
   if (understanding.intent === "FOLLOW_UP_CONTEXT") return "RESUME_FOLLOW_UP";
-  if (detectPossibleUnregisteredMedication(understanding.rawMessage)) {
+  if (detectMedicationProfileUpdateCandidate(understanding.rawMessage)) {
     return "SUGGEST_PROFILE_UPDATE";
   }
 
@@ -497,6 +513,9 @@ function buildThinkingPlan(
   safety: Aida2SafetyPlan
 ): Aida2ThinkingPlan {
   const missingInformation = buildMissingInformation(understanding, safety);
+  const shouldSuggestProfileUpdate = detectMedicationProfileUpdateCandidate(
+    understanding.rawMessage
+  );
 
   return {
     userGoal: buildUserGoal(understanding),
@@ -509,10 +528,8 @@ function buildThinkingPlan(
     ],
     missingInformation,
     extraDataNeeded: buildExtraDataNeeded(understanding, safety),
-    newRelevantObservation: detectPossibleUnregisteredMedication(
-      understanding.rawMessage
-    )
-      ? "El usuario mencionó un medicamento que podría requerir confirmación en Perfil."
+    newRelevantObservation: shouldSuggestProfileUpdate
+      ? "El usuario mencionó un medicamento que parece formar parte de su tratamiento y podría requerir confirmación en Perfil."
       : null,
     mainAction: buildMainAction(understanding, safety, missingInformation),
     decisionPrinciple:
@@ -564,16 +581,26 @@ function buildResponsePlan(
     tone.push("FOLLOW_UP");
   }
 
+  const mustDo = [
+    "Responder al mensaje actual, no a un tema inventado.",
+    "Usar el contexto solo si ayuda a dar continuidad.",
+    "Dar una sola acción concreta o una orientación clara.",
+    "Mantener la respuesta apropiada para una persona con diabetes tipo 2.",
+    `Guiar la respuesta según la acción principal: ${thinking.mainAction}.`,
+  ];
+
+  if (understanding.intent === "MEDICATION_EDUCATION") {
+    mustDo.push(
+      "Dar educación general sin indicar dosis ni autorizar combinaciones por cuenta propia.",
+      "Si el usuario pregunta por un medicamento de marca conocido, mencionar el nombre genérico cuando se conozca. Ejemplo: Trayenta es linagliptina.",
+      "Distinguir entre medicamento mencionado, medicamento indicado por el médico y medicamento que el usuario realmente está tomando."
+    );
+  }
+
   return {
     tone,
     length: decision.priority === "HIGH" ? "SHORT" : "MEDIUM",
-    mustDo: [
-      "Responder al mensaje actual, no a un tema inventado.",
-      "Usar el contexto solo si ayuda a dar continuidad.",
-      "Dar una sola acción concreta o una orientación clara.",
-      "Mantener la respuesta apropiada para una persona con diabetes tipo 2.",
-      `Guiar la respuesta según la acción principal: ${thinking.mainAction}.`,
-    ],
+    mustDo,
     mustAvoid: [
       "No escribir respuestas largas sin necesidad.",
       "No cambiar de tema al cierre.",
