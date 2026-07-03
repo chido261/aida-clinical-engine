@@ -8,8 +8,167 @@ type ChatMessage = {
   content: string;
 };
 
+type RenderLine =
+  | {
+      type: "paragraph";
+      text: string;
+    }
+  | {
+      type: "space";
+    }
+  | {
+      type: "bullet";
+      text: string;
+    }
+  | {
+      type: "number";
+      number: string;
+      text: string;
+    };
+
 function safeReadText(value: unknown) {
   return typeof value === "string" ? value : "";
+}
+
+function normalizeMessage(content: string) {
+  return content
+    .replace(/(?<!\w)\s+(?=\d+\.\s)/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+function parseContent(content: string): RenderLine[] {
+  const normalized = normalizeMessage(content);
+  const rawLines = normalized.split("\n");
+
+  const result: RenderLine[] = [];
+  let paragraphBuffer: string[] = [];
+
+  function flushParagraph() {
+    if (!paragraphBuffer.length) return;
+
+    result.push({
+      type: "paragraph",
+      text: paragraphBuffer.join(" "),
+    });
+
+    paragraphBuffer = [];
+  }
+
+  rawLines.forEach((rawLine) => {
+    const line = rawLine.trim();
+
+    if (!line) {
+      flushParagraph();
+
+      if (result.length && result[result.length - 1].type !== "space") {
+        result.push({ type: "space" });
+      }
+
+      return;
+    }
+
+    const numberedMatch = line.match(/^(\d+)\.\s+(.+)$/);
+
+    if (numberedMatch) {
+      flushParagraph();
+
+      result.push({
+        type: "number",
+        number: numberedMatch[1],
+        text: numberedMatch[2],
+      });
+
+      return;
+    }
+
+    if (/^[-•]\s+/.test(line)) {
+      flushParagraph();
+
+      result.push({
+        type: "bullet",
+        text: line.replace(/^[-•]\s+/, ""),
+      });
+
+      return;
+    }
+
+    paragraphBuffer.push(line);
+  });
+
+  flushParagraph();
+
+  return result.filter((line, index, array) => {
+    if (line.type !== "space") return true;
+    if (index === 0 || index === array.length - 1) return false;
+    return true;
+  });
+}
+
+function renderMessageContent(content: string) {
+  const lines = parseContent(content);
+
+  return lines.map((line, index) => {
+    if (line.type === "space") {
+      return <div key={index} style={{ height: 4 }} />;
+    }
+
+    const previous = lines[index - 1];
+    const isAfterSpace = previous?.type === "space";
+    const isFirst = index === 0;
+
+    if (line.type === "number") {
+      return (
+        <div
+          key={index}
+          style={{
+            display: "flex",
+            gap: 8,
+            marginTop: isFirst || isAfterSpace ? 0 : 8,
+            paddingLeft: 8,
+          }}
+        >
+          <span
+            style={{
+              minWidth: 18,
+              fontWeight: 600,
+            }}
+          >
+            {line.number}.
+          </span>
+          <span>{line.text}</span>
+        </div>
+      );
+    }
+
+    if (line.type === "bullet") {
+      return (
+        <div
+          key={index}
+          style={{
+            display: "flex",
+            gap: 8,
+            marginTop: isFirst || isAfterSpace ? 0 : 8,
+            paddingLeft: 8,
+          }}
+        >
+          <span>•</span>
+          <span>{line.text}</span>
+        </div>
+      );
+    }
+
+    return (
+      <p
+        key={index}
+        style={{
+          margin: isFirst || isAfterSpace ? 0 : "10px 0 0",
+        }}
+      >
+        {line.text}
+      </p>
+    );
+  });
 }
 
 export default function Chat2Page() {
@@ -127,7 +286,7 @@ export default function Chat2Page() {
           flex: 1,
           display: "flex",
           flexDirection: "column",
-          gap: 10,
+          gap: 12,
         }}
       >
         {messages.map((message, index) => {
@@ -140,15 +299,14 @@ export default function Chat2Page() {
                 alignSelf: isUser ? "flex-end" : "flex-start",
                 maxWidth: "85%",
                 borderRadius: 16,
-                padding: "10px 12px",
+                padding: "12px 14px",
                 background: isUser ? "#111827" : "#f3f4f6",
                 color: isUser ? "white" : "#111827",
-                whiteSpace: "pre-wrap",
                 fontSize: 15,
-                lineHeight: 1.4,
+                lineHeight: 1.58,
               }}
             >
-              {message.content}
+              {renderMessageContent(message.content)}
             </div>
           );
         })}
@@ -158,10 +316,11 @@ export default function Chat2Page() {
             style={{
               alignSelf: "flex-start",
               borderRadius: 16,
-              padding: "10px 12px",
+              padding: "12px 14px",
               background: "#f3f4f6",
               color: "#111827",
               fontSize: 15,
+              lineHeight: 1.58,
             }}
           >
             Pensando...

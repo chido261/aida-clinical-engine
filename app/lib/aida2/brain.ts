@@ -568,6 +568,8 @@ function buildResponsePlan(
   thinking: Aida2ThinkingPlan
 ): Aida2ResponsePlan {
   const tone: Aida2ResponseTone[] = ["CALM", "PRACTICAL"];
+  const shouldSuggestProfileUpdate =
+    thinking.mainAction === "SUGGEST_PROFILE_UPDATE";
 
   if (decision.priority === "HIGH") {
     tone.push("DIRECT", "SAFETY");
@@ -595,20 +597,40 @@ function buildResponsePlan(
       "Si el usuario pregunta por un medicamento de marca conocido, mencionar el nombre genérico cuando se conozca. Ejemplo: Trayenta es linagliptina.",
       "Distinguir entre medicamento mencionado, medicamento indicado por el médico y medicamento que el usuario realmente está tomando."
     );
+
+    if (shouldSuggestProfileUpdate) {
+      mustDo.push(
+        "Si el usuario dice claramente que toma o usa el medicamento, puedes hablar como medicamento actual y sugerir confirmarlo en Perfil."
+      );
+    } else {
+      mustDo.push(
+        "Si el usuario solo pregunta por un medicamento y no dice que lo toma, habla en general.",
+        "En ese caso usa frases como: 'si tu médico te lo indica', 'si llegas a usarlo' o 'si tu doctor decide iniciarlo'."
+      );
+    }
+  }
+
+  const mustAvoid = [
+    "No escribir respuestas largas sin necesidad.",
+    "No cambiar de tema al cierre.",
+    "No ofrecer menús, aderezos u opciones si el usuario no las pidió.",
+    "No inventar datos del usuario.",
+    "No mencionar módulos internos, workplan o decisiones internas.",
+    "No ajustar, suspender ni modificar medicamentos.",
+  ];
+
+  if (understanding.intent === "MEDICATION_EDUCATION" && !shouldSuggestProfileUpdate) {
+    mustAvoid.push(
+      "No asumir que el usuario toma el medicamento solo porque preguntó por él.",
+      "No decir 'sigue tomándolo', 'sigue tomándola', 'continúa tomándolo' o frases similares si el usuario no confirmó que lo usa."
+    );
   }
 
   return {
     tone,
     length: decision.priority === "HIGH" ? "SHORT" : "MEDIUM",
     mustDo,
-    mustAvoid: [
-      "No escribir respuestas largas sin necesidad.",
-      "No cambiar de tema al cierre.",
-      "No ofrecer menús, aderezos u opciones si el usuario no las pidió.",
-      "No inventar datos del usuario.",
-      "No mencionar módulos internos, workplan o decisiones internas.",
-      "No ajustar, suspender ni modificar medicamentos.",
-    ],
+    mustAvoid,
     closingInstruction:
       understanding.intent === "FOLLOW_UP_CONTEXT"
         ? "Cerrar retomando el mismo objetivo y pidiendo confirmación breve."
