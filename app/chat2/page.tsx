@@ -171,35 +171,86 @@ function renderMessageContent(content: string) {
   });
 }
 
+const FALLBACK_WELCOME =
+  "Hola, soy AIDA2 👋\n\nEstoy lista para ayudarte con comida, glucosa, ejercicio, protocolos y medicamentos en diabetes tipo 2.";
+
 export default function Chat2Page() {
   const [deviceId, setDeviceId] = useState("");
-  const [messages, setMessages] = useState<ChatMessage[]>([
-    {
-      role: "assistant",
-      content:
-        "Hola, soy AIDA2 👋\n\nEstoy en modo limpio de desarrollo. Puedo orientarte sobre comida, ejercicio, glucosa, protocolos y medicamentos en diabetes tipo 2.",
-    },
-  ]);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [isSending, setIsSending] = useState(false);
+  const [isLoadingWelcome, setIsLoadingWelcome] = useState(true);
 
   const bottomRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
-    setDeviceId(getDeviceId());
+    const id = getDeviceId();
+    setDeviceId(id);
   }, []);
 
   useEffect(() => {
+    if (!deviceId) return;
+
+    let cancelled = false;
+
+    async function loadWelcome() {
+      setIsLoadingWelcome(true);
+
+      try {
+        const res = await fetch("/api/chat2/welcome", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ deviceId }),
+        });
+
+        const data = await res.json();
+
+        if (!res.ok || !data?.ok) {
+          throw new Error(safeReadText(data?.error) || "Error al cargar bienvenida");
+        }
+
+        if (cancelled) return;
+
+        setMessages([
+          {
+            role: "assistant",
+            content: safeReadText(data.welcome) || FALLBACK_WELCOME,
+          },
+        ]);
+      } catch {
+        if (cancelled) return;
+
+        setMessages([
+          {
+            role: "assistant",
+            content: FALLBACK_WELCOME,
+          },
+        ]);
+      } finally {
+        if (!cancelled) {
+          setIsLoadingWelcome(false);
+        }
+      }
+    }
+
+    loadWelcome();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [deviceId]);
+
+  useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, isSending]);
+  }, [messages, isSending, isLoadingWelcome]);
 
   const canSend = useMemo(() => {
-    return input.trim().length > 0 && !isSending && !!deviceId;
-  }, [input, isSending, deviceId]);
+    return input.trim().length > 0 && !isSending && !isLoadingWelcome && !!deviceId;
+  }, [input, isSending, isLoadingWelcome, deviceId]);
 
   async function handleSend() {
     const text = input.trim();
-    if (!text || isSending || !deviceId) return;
+    if (!text || isSending || isLoadingWelcome || !deviceId) return;
 
     const nextMessages: ChatMessage[] = [
       ...messages,
@@ -289,6 +340,22 @@ export default function Chat2Page() {
           gap: 12,
         }}
       >
+        {isLoadingWelcome ? (
+          <div
+            style={{
+              alignSelf: "flex-start",
+              borderRadius: 16,
+              padding: "12px 14px",
+              background: "#f3f4f6",
+              color: "#111827",
+              fontSize: 15,
+              lineHeight: 1.58,
+            }}
+          >
+            Cargando contexto...
+          </div>
+        ) : null}
+
         {messages.map((message, index) => {
           const isUser = message.role === "user";
 
@@ -344,6 +411,7 @@ export default function Chat2Page() {
           onKeyDown={onKeyDown}
           placeholder="Escribe aquí..."
           rows={1}
+          disabled={isLoadingWelcome}
           style={{
             flex: 1,
             resize: "none",
@@ -352,6 +420,7 @@ export default function Chat2Page() {
             padding: "10px 12px",
             fontSize: 15,
             outline: "none",
+            opacity: isLoadingWelcome ? 0.7 : 1,
           }}
         />
 

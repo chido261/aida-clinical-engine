@@ -31,6 +31,27 @@ export type Aida2MemoryTurn = {
   createdAt: string;
 };
 
+export type Aida2ConversationContextSnapshot = {
+  isFirstInteraction: boolean;
+  isReturningUser: boolean;
+  contextSummary: string | null;
+  lastInteractionType:
+    | "FOOD_VALIDATION"
+    | "FOOD_RECIPE_REQUEST"
+    | "FOOD_CONCEPT"
+    | "GLUCOSE_READING"
+    | "HYPOGLYCEMIA"
+    | "FOLLOW_UP"
+    | "GENERAL"
+    | null;
+  lastMainTopic: string | null;
+  lastClinicalSituation: string | null;
+  lastGlucoseSituation: string | null;
+  lastMealContext: string | null;
+  lastRecommendedAction: string | null;
+  nextSuggestedFollowUp: string | null;
+};
+
 export type Aida2MemoryMetadata = {
   version: 2;
   activeProtocol: string;
@@ -57,6 +78,7 @@ export type Aida2MemoryMetadata = {
   lastConfirmedTopic: string | null;
   lastCorrectionFromUser: string | null;
   memoryConfidence: "LOW" | "MEDIUM" | "HIGH";
+  conversationContext: Aida2ConversationContextSnapshot;
   lastUpdatedAt: string;
 };
 
@@ -137,6 +159,21 @@ function uniqueText(values: string[]) {
   );
 }
 
+function buildEmptyConversationContext(): Aida2ConversationContextSnapshot {
+  return {
+    isFirstInteraction: true,
+    isReturningUser: false,
+    contextSummary: null,
+    lastInteractionType: null,
+    lastMainTopic: null,
+    lastClinicalSituation: null,
+    lastGlucoseSituation: null,
+    lastMealContext: null,
+    lastRecommendedAction: null,
+    nextSuggestedFollowUp: null,
+  };
+}
+
 function coerceMetadataVersion(
   previous: Partial<Aida2MemoryMetadata> | null
 ): Partial<Aida2MemoryMetadata> | null {
@@ -151,6 +188,8 @@ function coerceMetadataVersion(
     lastConfirmedTopic: previous.lastConfirmedTopic ?? null,
     lastCorrectionFromUser: previous.lastCorrectionFromUser ?? null,
     memoryConfidence: previous.memoryConfidence ?? "MEDIUM",
+    conversationContext:
+      previous.conversationContext ?? buildEmptyConversationContext(),
   };
 }
 
@@ -192,6 +231,8 @@ function buildMetadata(params: {
     lastConfirmedTopic: coerced?.lastConfirmedTopic ?? null,
     lastCorrectionFromUser: coerced?.lastCorrectionFromUser ?? null,
     memoryConfidence: coerced?.memoryConfidence ?? "MEDIUM",
+    conversationContext:
+      coerced?.conversationContext ?? buildEmptyConversationContext(),
     lastUpdatedAt: now,
   } satisfies Aida2MemoryMetadata;
 }
@@ -289,6 +330,7 @@ export async function loadAida2ContextMemory(params: {
 
 export function buildAida2MemoryPrompt(memory: Aida2ContextMemory) {
   const { userState, conversation, metadata } = memory;
+  const context = metadata.conversationContext;
 
   const lines: string[] = [
     "MEMORIA PERSISTENTE DE AIDA:",
@@ -299,6 +341,38 @@ export function buildAida2MemoryPrompt(memory: Aida2ContextMemory) {
     `- Objetivo conversacional actual: ${conversation.currentGoal ?? "mantener estabilidad glucémica"}.`,
     `- Confianza de memoria: ${metadata.memoryConfidence}.`,
   ];
+
+  if (context.contextSummary) {
+    lines.push(`- Contexto resumido: ${context.contextSummary}.`);
+  }
+
+  if (context.lastInteractionType) {
+    lines.push(`- Tipo de última interacción: ${context.lastInteractionType}.`);
+  }
+
+  if (context.lastMainTopic) {
+    lines.push(`- Último tema principal: ${context.lastMainTopic}.`);
+  }
+
+  if (context.lastClinicalSituation) {
+    lines.push(`- Situación clínica reciente: ${context.lastClinicalSituation}.`);
+  }
+
+  if (context.lastGlucoseSituation) {
+    lines.push(`- Situación glucémica reciente: ${context.lastGlucoseSituation}.`);
+  }
+
+  if (context.lastMealContext) {
+    lines.push(`- Contexto alimentario reciente: ${context.lastMealContext}.`);
+  }
+
+  if (context.lastRecommendedAction) {
+    lines.push(`- Última acción recomendada: ${context.lastRecommendedAction}.`);
+  }
+
+  if (context.nextSuggestedFollowUp) {
+    lines.push(`- Seguimiento sugerido: ${context.nextSuggestedFollowUp}.`);
+  }
 
   if (conversation.clinicalSummary) {
     lines.push(`- Resumen clínico: ${conversation.clinicalSummary}.`);
@@ -355,7 +429,8 @@ export function buildAida2MemoryPrompt(memory: Aida2ContextMemory) {
 
   lines.push(
     "- Usa esta memoria como contexto operativo. No la menciones literalmente al usuario.",
-    "- No afirmes recordar algo específico si no aparece en memoria o historial. Si no hay evidencia, di que no tienes el detalle exacto y retoma lo que sí está guardado.",
+    "- Si hay seguimiento sugerido, prioriza retomarlo de forma natural.",
+    "- No afirmes recordar algo específico si no aparece en memoria o historial.",
     "- Si el usuario corrige un recuerdo, acepta la corrección y actualiza el tema."
   );
 
@@ -372,9 +447,11 @@ export function buildConversationStateFromMemory(
     activeTopic:
       pendingAction?.reason ??
       memory.metadata.lastConfirmedTopic ??
+      memory.metadata.conversationContext.lastMainTopic ??
       (lastDecision ? `Validación alimentaria: ${lastDecision.food}` : null),
     activeGoal:
       pendingAction?.reason ??
+      memory.metadata.conversationContext.nextSuggestedFollowUp ??
       "Mantener estabilidad glucémica con decisiones alimentarias compatibles.",
     activeMealType: pendingAction?.mealType ?? null,
 
@@ -451,8 +528,12 @@ function inferKnownPatterns(params: {
     patterns.push("El usuario expresa antojos; conviene resolverlos con sustituciones compatibles, no solo prohibiciones.");
   }
 
-  if (/\b(papa|papas|arroz|pan|tortilla|avena|dulce|galleta)\b/i.test(userMessage)) {
+  if (/\b(papa|papas|arroz|pan|tortilla|avena|dulce|galleta|camote)\b/i.test(userMessage)) {
     patterns.push("El usuario consulta alimentos de alta carga glucémica; conviene explicar y ofrecer alternativas prácticas.");
+  }
+
+  if (/\b(glucosa|az[uú]car|mg\/dl|hipoglucemia|hiper|alta|baja|ayunas|postcomida|despu[eé]s de comer)\b/i.test(userMessage)) {
+    patterns.push("El usuario consulta o reporta datos de glucosa; conviene guardar seguimiento y sugerir próxima revisión.");
   }
 
   return uniqueText(patterns).slice(-8);
@@ -498,6 +579,136 @@ function buildLastConfirmedTopic(params: {
   }
 
   return null;
+}
+
+function inferInteractionType(params: {
+  userMessage: string;
+  workPlan: Aida2WorkPlan;
+}) {
+  const { userMessage, workPlan } = params;
+
+  if (/\b(hipoglucemia|hipo|47|50|55|60|baja|me tiembla|sudor|sudando)\b/i.test(userMessage)) {
+    return "HYPOGLYCEMIA";
+  }
+
+  if (/\b(glucosa|az[uú]car|mg\/dl|ayunas|postcomida|despu[eé]s de comer|antes de comer|alta|baja)\b/i.test(userMessage)) {
+    return "GLUCOSE_READING";
+  }
+
+  if (/\b(receta|recetas|opci[oó]n|opciones|ideas|men[uú]|platillo|preparar)\b/i.test(userMessage)) {
+    return "FOOD_RECIPE_REQUEST";
+  }
+
+  if (/\b(comida chatarra|chatarra|saludable|malo|bueno|conviene|carga gluc[eé]mica)\b/i.test(userMessage)) {
+    return "FOOD_CONCEPT";
+  }
+
+  if (workPlan.foodContext.isFoodRelated) {
+    return "FOOD_VALIDATION";
+  }
+
+  if (/\b(recuerdas|seguimos|continuamos|como te dije|lo anterior|la vez pasada)\b/i.test(userMessage)) {
+    return "FOLLOW_UP";
+  }
+
+  return "GENERAL";
+}
+
+function extractGlucoseText(userMessage: string) {
+  const reading = userMessage.match(/\b(\d{2,3})\s*(?:mg\/dl)?\b/i)?.[1];
+
+  if (!reading) {
+    if (/\b(glucosa|az[uú]car|ayunas|postcomida|hipoglucemia|alta|baja)\b/i.test(userMessage)) {
+      return compact(userMessage, 220);
+    }
+
+    return null;
+  }
+
+  return `El usuario mencionó una glucosa de ${reading} mg/dL.`;
+}
+
+function buildConversationContextAfterResponse(params: {
+  previous: Aida2ConversationContextSnapshot;
+  userMessage: string;
+  assistantReply: string;
+  workPlan: Aida2WorkPlan;
+  foodDecision: Aida2FoodMemoryDecision | null;
+  hasPreviousTurns: boolean;
+}) {
+  const {
+    previous,
+    userMessage,
+    assistantReply,
+    workPlan,
+    foodDecision,
+    hasPreviousTurns,
+  } = params;
+
+  const interactionType = inferInteractionType({ userMessage, workPlan });
+  const mainTopic =
+    foodDecision?.food ??
+    workPlan.foodContext.targetText ??
+    workPlan.thinking.userGoal ??
+    previous.lastMainTopic ??
+    "Conversación general";
+
+  const glucoseSituation = extractGlucoseText(userMessage);
+
+  const mealContext =
+    workPlan.foodContext.targetText || foodDecision
+      ? `Consulta alimentaria sobre ${mainTopic}.`
+      : previous.lastMealContext;
+
+  const clinicalSituation =
+    interactionType === "HYPOGLYCEMIA"
+      ? "Posible evento de hipoglucemia o glucosa baja reportada por el usuario."
+      : interactionType === "GLUCOSE_READING"
+        ? "El usuario reportó o consultó una situación relacionada con glucosa."
+        : previous.lastClinicalSituation;
+
+  const recommendedAction =
+    foodDecision?.decision === "not_recommended"
+      ? `Evitar ${foodDecision.food} y buscar una alternativa compatible.`
+      : compact(assistantReply, 260) ?? previous.lastRecommendedAction;
+
+  const nextFollowUp =
+    interactionType === "HYPOGLYCEMIA"
+      ? "Preguntar cómo sigue y confirmar si la glucosa se estabilizó."
+      : interactionType === "GLUCOSE_READING"
+        ? "Dar seguimiento a la próxima medición de glucosa."
+        : foodDecision?.decision === "not_recommended"
+          ? `Preguntar si desea opciones compatibles para reemplazar ${foodDecision.food}.`
+          : interactionType === "FOOD_RECIPE_REQUEST"
+            ? "Preguntar si la receta fue útil o si necesita otra opción."
+            : previous.nextSuggestedFollowUp;
+
+  const contextSummary =
+    compact(
+      [
+        `Última interacción: ${interactionType}.`,
+        `Tema principal: ${mainTopic}.`,
+        glucoseSituation ? `Glucosa: ${glucoseSituation}` : null,
+        mealContext ? `Alimentación: ${mealContext}` : null,
+        recommendedAction ? `Acción: ${recommendedAction}` : null,
+      ]
+        .filter(Boolean)
+        .join(" "),
+      700
+    ) ?? previous.contextSummary;
+
+  return {
+    isFirstInteraction: false,
+    isReturningUser: hasPreviousTurns,
+    contextSummary,
+    lastInteractionType: interactionType,
+    lastMainTopic: mainTopic,
+    lastClinicalSituation: clinicalSituation,
+    lastGlucoseSituation: glucoseSituation ?? previous.lastGlucoseSituation,
+    lastMealContext: mealContext,
+    lastRecommendedAction: recommendedAction,
+    nextSuggestedFollowUp: nextFollowUp,
+  } satisfies Aida2ConversationContextSnapshot;
 }
 
 export async function updateAida2ContextMemoryAfterResponse(params: {
@@ -554,6 +765,15 @@ export async function updateAida2ContextMemoryAfterResponse(params: {
     previousPatterns: metadata.knownUserPatterns,
   });
 
+  metadata.conversationContext = buildConversationContextAfterResponse({
+    previous: metadata.conversationContext ?? buildEmptyConversationContext(),
+    userMessage,
+    assistantReply,
+    workPlan,
+    foodDecision,
+    hasPreviousTurns: metadata.recentTurns.length > 0,
+  });
+
   metadata.recentTurns = [
     ...metadata.recentTurns,
     buildMemoryTurn({
@@ -569,9 +789,11 @@ export async function updateAida2ContextMemoryAfterResponse(params: {
     where: { userId },
     data: {
       clinicalSummary: compact(
-        memory.conversation.clinicalSummary ??
+        metadata.conversationContext.contextSummary ??
+          memory.conversation.clinicalSummary ??
           "AIDA acompaña al usuario a mantener estabilidad glucémica con decisiones alimentarias, ejercicio y seguimiento."
       ),
+      activeGlucoseTopics: compact(metadata.conversationContext.lastGlucoseSituation),
       currentGoal:
         memory.conversation.currentGoal ??
         "Mantener glucosa en ayunas por debajo de 100 mg/dL y postcomida entre 100 y 140 mg/dL.",
@@ -581,7 +803,10 @@ export async function updateAida2ContextMemoryAfterResponse(params: {
           : memory.conversation.detectedPatterns,
       lastConcern: compact(userMessage, 600),
       lastAidaRecommendation: compact(assistantReply, 900),
-      pendingConversationFollowUp: metadata.pendingAction?.reason ?? null,
+      pendingConversationFollowUp:
+        metadata.conversationContext.nextSuggestedFollowUp ??
+        metadata.pendingAction?.reason ??
+        null,
       metadataJson: JSON.stringify(metadata),
     },
   });
