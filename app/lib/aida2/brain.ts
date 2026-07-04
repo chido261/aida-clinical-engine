@@ -1,5 +1,13 @@
 // app/lib/aida2/brain.ts
 
+import {
+  buildStateFromRecentText,
+  createEmptyAida2ConversationState,
+  isPendingActionReminder,
+  isShortAcceptance,
+  type Aida2ConversationState,
+} from "@/app/lib/aida2/conversationState";
+
 export type Aida2Intent =
   | "FOOD_ADVICE"
   | "EXERCISE_ADVICE"
@@ -81,11 +89,12 @@ export type Aida2MealSpecialistAction =
   | "EXPLAIN_LIMIT"
   | "NONE";
 
-export type Aida2BrainInput = {
-  userId?: string | null;
-  message: string;
-  history?: string | null;
-};
+  export type Aida2BrainInput = {
+    userId?: string | null;
+    message: string;
+    history?: string | null;
+    conversationState?: Aida2ConversationState | null;
+  };
 
 export type Aida2Understanding = {
   rawMessage: string;
@@ -166,6 +175,7 @@ export type Aida2ThinkingPlan = {
 export type Aida2WorkPlan = {
   purpose: string;
   personality: string;
+  conversationState: Aida2ConversationState;
   understanding: Aida2Understanding;
   foodContext: Aida2FoodContext;
   modulePlan: Aida2ModulePlan;
@@ -176,7 +186,13 @@ export type Aida2WorkPlan = {
 };
 
 const FOOD_INTENT_PATTERN =
-  /\b(comer|tomar|beber|desayunar|cenar|almorzar|comida|desayuno|cena|almuerzo|receta|platillo|men[uú]|ingrediente|ingredientes|preparar|preparo|cocinar|agregar|poner|acompañar|acompanar|bebida|alimento|opci[oó]n|opciones|permitido|permitida|conviene|recomiendas|seguro|segura)\b/i;
+  /\b(comer|tomer|tomar|beber|desayunar|cenar|almorzar|comida|desayuno|cena|almuerzo|receta|recetas|platillo|platillos|men[uú]|ingrediente|ingredientes|preparar|preparo|cocinar|cocino|hacer|hacerme|hacerle|armar|armarme|dame|darme|agregar|poner|acompañar|acompanar|bebida|alimento|alimentos|opci[oó]n|opciones|idea|ideas|permitido|permitida|conviene|recomiendas|recomendar|seguro|segura)\b/i;
+
+const FOOD_DESIRE_INTENT_PATTERN =
+  /\b(antojo|antojos|antoja|antojó|antojo|ganas de|se me antoja|se me antoj[oó]|traigo antojo|tengo antojo|tengo ganas)\b/i;
+
+const FOOD_BUILD_REQUEST_PATTERN =
+  /\b(me puedes|puedes|podr[ií]as|quiero|quisiera|dame|hazme|armame|armarme|preparame|prepárame).*\b(receta|recetas|opci[oó]n|opciones|idea|ideas|platillo|platillos|comida|desayuno|cena|men[uú])\b/i;
 
 const EXERCISE_PATTERN =
   /\b(ejercicio|caminar|caminata|entrenar|pesas|cardio|actividad f[ií]sica|correr|gym|gimnasio)\b/i;
@@ -217,8 +233,46 @@ function historyLooksFoodRelated(history?: string | null) {
   return FOOD_INTENT_PATTERN.test(history);
 }
 
-function detectIntent(message: string, history?: string | null): Aida2Intent {
+function messageExpressesFoodIntention(message: string, history?: string | null) {
   const text = normalize(message);
+
+  if (FOOD_INTENT_PATTERN.test(text)) {
+    return true;
+  }
+
+  if (FOOD_DESIRE_INTENT_PATTERN.test(text)) {
+    return true;
+  }
+
+  if (FOOD_BUILD_REQUEST_PATTERN.test(text)) {
+    return true;
+  }
+
+  if (
+    historyLooksFoodRelated(history) &&
+    /\b(y si|con qu[eé]|con que|le agrego|le pongo|agrego|pongo|sin|con|la hago|lo hago|har[eé]|hare|eso|esa|ese|las|los|la|el|otra|otro|dame|opciones|ideas|recetas)\b/i.test(
+      text
+    )
+  ) {
+    return true;
+  }
+
+  return false;
+}
+
+function detectIntent(
+  message: string,
+  history?: string | null,
+  conversationState?: Aida2ConversationState | null
+): Aida2Intent {
+  const text = normalize(message);
+
+  if (
+    conversationState?.pendingAction &&
+    (isShortAcceptance(message) || isPendingActionReminder(message))
+  ) {
+    return "FOOD_ADVICE";
+  }
 
   if (
     /\b(qu[eé] est[aá]bamos trabajando|en qu[eé] quedamos|continuemos|retomemos|seguimiento|pendiente|la vez pasada|lo anterior)\b/i.test(
@@ -228,16 +282,7 @@ function detectIntent(message: string, history?: string | null): Aida2Intent {
     return "FOLLOW_UP_CONTEXT";
   }
 
-  if (FOOD_INTENT_PATTERN.test(text)) {
-    return "FOOD_ADVICE";
-  }
-
-  if (
-    historyLooksFoodRelated(history) &&
-    /\b(y si|con qu[eé]|con que|le agrego|le pongo|lo hago|la hago|entonces|ok|ahora|sin|con|eso|esa|ese|las|los|la|el)\b/i.test(
-      text
-    )
-  ) {
+  if (messageExpressesFoodIntention(message, history)) {
     return "FOOD_ADVICE";
   }
 
@@ -262,9 +307,16 @@ function detectIntent(message: string, history?: string | null): Aida2Intent {
 
 function detectConversationMode(
   message: string,
-  history?: string | null
+  history?: string | null,
+  conversationState?: Aida2ConversationState | null
 ): Aida2ConversationMode {
   const text = normalize(message);
+  if (
+    conversationState?.pendingAction &&
+    (isShortAcceptance(message) || isPendingActionReminder(message))
+  ) {
+    return "FOLLOW_UP";
+  }
 
   if (
     /\b(pero dijiste|me dijiste|antes dijiste|te contradices|contradicci[oó]n|corrige|corregir|no era|no dije|eso no)\b/i.test(
@@ -300,19 +352,27 @@ function detectFoodQuestionType(message: string): Aida2FoodQuestionType {
   const text = normalize(message);
 
   if (
-    /\b(puedo comer|puedo tomar|puedo beber|puedo desayunar|puedo cenar|qu[eé] tal|es bueno|es malo|conviene|recomiendas|est[aá] permitido|est[aá] permitida|seguro|segura)\b/i.test(
+    /\b(tiene|lleva|ingrediente|ingredientes|hecho con|hecha con|preparado con|preparada con)\b/i.test(
+      text
+    )
+  ) {
+    return "VALIDATE_PREPARATION";
+  }
+
+  if (
+    /\b(receta|recetas|men[uú]|opci[oó]n|opciones|idea|ideas|armar|armarme|hazme|hacerme|preparar|preparame|prepárame)\b/i.test(
+      text
+    )
+  ) {
+    return "RECIPE_REQUEST";
+  }
+
+  if (
+    /\b(puedo comer|puedo tomar|puedo beber|puedo desayunar|puedo cenar|qu[eé] tal|es bueno|es malo|conviene|recomiendas|est[aá] permitido|est[aá] permitida|seguro|segura|tengo antojo|tengo ganas|se me antoja)\b/i.test(
       text
     )
   ) {
     return "CAN_I_EAT";
-  }
-
-  if (
-    /\b(y si|si le agrego|si le pongo|le agrego|le pongo|agregar|poner|con|sin)\b/i.test(
-      text
-    )
-  ) {
-    return "ADD_TO_PREVIOUS_MEAL";
   }
 
   if (
@@ -323,16 +383,12 @@ function detectFoodQuestionType(message: string): Aida2FoodQuestionType {
     return "WHAT_TO_PAIR";
   }
 
-  if (/\b(receta|recetas|men[uú]|opci[oó]n|opciones|ideas)\b/i.test(text)) {
-    return "RECIPE_REQUEST";
-  }
-
   if (
-    /\b(tiene|lleva|ingrediente|ingredientes|hecho con|hecha con|preparado con|preparada con)\b/i.test(
+    /\b(y si|si le agrego|si le pongo|le agrego|le pongo|agregar|poner|con|sin)\b/i.test(
       text
     )
   ) {
-    return "VALIDATE_PREPARATION";
+    return "ADD_TO_PREVIOUS_MEAL";
   }
 
   if (
@@ -350,8 +406,14 @@ function extractTargetText(message: string): string | null {
   const text = message.trim();
 
   const patterns = [
+    /\b(?:tengo|traigo)\s+(?:antojo|ganas)\s+de\s+(.+?)(?:,|\.|\?|$)/i,
+    /\bse\s+me\s+antoj[oó]?\s+(.+?)(?:,|\.|\?|$)/i,
     /\bpuedo\s+(?:comer|tomar|beber|desayunar|cenar)\s+(.+?)\??$/i,
     /\bqu[eé]\s+tal\s+(.+?)\??$/i,
+    /\brecetas?\s+(?:con|de|para)\s+(.+?)\??$/i,
+    /\bopciones?\s+(?:con|de|para)\s+(.+?)\??$/i,
+    /\bideas?\s+(?:con|de|para)\s+(.+?)\??$/i,
+    /\b(?:armar|armarme|hacerme|hazme|prepararme|prepárame)\s+(?:unas?|algunas?|\d+)?\s*(?:recetas|opciones|ideas)?\s*(?:con|de|para)\s+(.+?)\??$/i,
     /\bsi\s+le\s+(?:agrego|pongo)\s+(.+?)\??$/i,
     /\ble\s+(?:agrego|pongo)\s+(.+?)\??$/i,
     /\bcon\s+qu[eé]\s+(.+?)\??$/i,
@@ -361,12 +423,23 @@ function extractTargetText(message: string): string | null {
 
   for (const pattern of patterns) {
     const match = text.match(pattern);
+
     if (match?.[1]) {
-      return match[1].trim();
+      return cleanTargetText(match[1]);
     }
   }
 
-  return text.length <= 80 ? text : null;
+  return text.length <= 80 ? cleanTargetText(text) : null;
+}
+
+function cleanTargetText(value: string) {
+  return value
+    .replace(/[¿?¡!]/g, "")
+    .replace(/\b(me puedes|puedes|podr[ií]as|quiero|quisiera|dame|hazme|armame|armarme|preparame|prepárame)\b/gi, "")
+    .replace(/\b(unas?|algunas?|\d+)\s+(recetas|opciones|ideas|platillos)\b/gi, "")
+    .replace(/\b(receta|recetas|opci[oó]n|opciones|idea|ideas|platillo|platillos)\b/gi, "")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function shouldValidatePreparation(message: string, questionType: Aida2FoodQuestionType) {
@@ -427,7 +500,9 @@ function buildFoodDecisionFocus(params: {
   }
 
   if (questionType === "RECIPE_REQUEST") {
-    return "El usuario pide receta u opciones. Cerebro debe pedir al especialista opciones compatibles con el protocolo activo.";
+    return `El usuario pide receta u opciones${
+      targetText ? ` sobre: ${targetText}` : ""
+    }. Cerebro debe pedir al especialista validar primero el alimento o preparación consultada. Solo debe construir recetas si el elemento es compatible con el protocolo activo.`;
   }
 
   if (questionType === "HOW_TO_PREPARE") {
@@ -440,12 +515,17 @@ function buildFoodDecisionFocus(params: {
 function buildFoodContext(
   message: string,
   history: string,
-  understanding: Aida2Understanding
+  understanding: Aida2Understanding,
+  conversationState: Aida2ConversationState
 ): Aida2FoodContext {
   const isFoodRelated =
     understanding.intent === "FOOD_ADVICE" || understanding.mentionsFood;
 
-  const conversationMode = detectConversationMode(message, history);
+    const conversationMode = detectConversationMode(
+      message,
+      history,
+      conversationState
+    );
   const questionType = isFoodRelated
     ? detectFoodQuestionType(message)
     : "UNKNOWN";
@@ -457,7 +537,21 @@ function buildFoodContext(
   const validatePreparation =
     isFoodRelated && shouldValidatePreparation(message, questionType);
 
-  const targetText = isFoodRelated ? extractTargetText(message) : null;
+    const targetText = isFoodRelated
+    ? extractTargetText(message) ??
+      conversationState.pendingAction?.target ??
+      conversationState.lastFoodTarget
+    : null;
+
+    const pendingDecisionFocus =
+    conversationState.pendingAction &&
+    (isShortAcceptance(message) || isPendingActionReminder(message))
+      ? `El usuario está aceptando o recordando una acción pendiente: ${
+          conversationState.pendingAction.reason ??
+          conversationState.lastAssistantPromise ??
+          "continuar con la acción alimentaria pendiente"
+        }. Cerebro debe continuar esa acción sin tratar el mensaje como tema nuevo.`
+      : null;
 
   return {
     isFoodRelated,
@@ -468,7 +562,9 @@ function buildFoodContext(
     needsProtocol: isFoodRelated,
     needsMealSpecialist: isFoodRelated,
     shouldValidatePreparation: validatePreparation,
-    decisionFocus: buildFoodDecisionFocus({
+    decisionFocus:
+  pendingDecisionFocus ??
+  buildFoodDecisionFocus({
       isFoodRelated,
       conversationMode,
       questionType,
@@ -509,17 +605,18 @@ function detectMedicationProfileUpdateCandidate(message: string) {
 
 function buildUnderstanding(
   message: string,
-  history?: string | null
+  history?: string | null,
+  conversationState?: Aida2ConversationState | null
 ): Aida2Understanding {
   const normalizedMessage = normalize(message);
-  const intent = detectIntent(message, history);
+  const intent = detectIntent(message, history, conversationState);
 
   const mentionsFood =
-    FOOD_INTENT_PATTERN.test(normalizedMessage) ||
-    (historyLooksFoodRelated(history) &&
-      /\b(y si|con qu[eé]|con que|agrego|pongo|sin|con|la hago|lo hago|har[eé]|hare|eso|esa|ese|las|los|la|el)\b/i.test(
-        normalizedMessage
-      ));
+  messageExpressesFoodIntention(message, history) ||
+  Boolean(
+    conversationState?.pendingAction &&
+      (isShortAcceptance(message) || isPendingActionReminder(message))
+  );
 
   return {
     rawMessage: message,
@@ -1047,9 +1144,26 @@ export function buildAida2WorkPlan(input: Aida2BrainInput): Aida2WorkPlan {
   const message = input.message.trim();
   const history = input.history ?? "";
 
-  const understanding = buildUnderstanding(message, history);
+  const conversationState =
+    input.conversationState ??
+    buildStateFromRecentText({
+      history,
+      userMessage: message,
+    }) ??
+    createEmptyAida2ConversationState();
+
+  const understanding = buildUnderstanding(
+    message,
+    history,
+    conversationState
+  );
   const safety = buildSafetyPlan(understanding);
-  const foodContext = buildFoodContext(message, history, understanding);
+  const foodContext = buildFoodContext(
+    message,
+    history,
+    understanding,
+    conversationState
+  );
   const modulePlan = buildModulePlan(understanding, foodContext, safety);
   const thinking = buildThinkingPlan(understanding, safety, foodContext);
   const decision = buildDecision(understanding, safety, modulePlan);
@@ -1067,6 +1181,7 @@ export function buildAida2WorkPlan(input: Aida2BrainInput): Aida2WorkPlan {
       "AIDA ayuda al usuario a controlar sus niveles diarios de glucosa mediante mejores decisiones de alimentación, ejercicio, seguimiento y educación. Cada paciente puede iniciar en una fase diferente; el objetivo general se mantiene, pero el protocolo, alimentos y lineamientos cambian según su contexto.",
     personality:
       "Responde como asesor cercano, profesional y práctico. Debe ser claro, breve, humano, sin sermones, sin tecnicismos innecesarios y con una acción concreta. Debe adaptar la respuesta al nivel del usuario.",
+    conversationState,
     understanding,
     foodContext,
     modulePlan,

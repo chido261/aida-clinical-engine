@@ -408,6 +408,38 @@ const DIVERSE_RECIPE_TEMPLATES: Array<{
   },
 ];
 
+
+const GENERIC_BALANCED_MEAL_OPTIONS: Record<MealType, string[]> = {
+  desayuno: [
+    "Huevos con espinaca, champiñones y aguacate.",
+    "Omelette de huevo con brócoli, pimiento y queso panela.",
+    "Pollo deshebrado con nopal, jitomate y aceite de oliva extra virgen.",
+    "Yogur griego natural sin azúcar con chía y nueces, si el protocolo de la fase permite lácteos naturales.",
+    "Bistec de res con calabaza, espinaca y aguacate.",
+  ],
+  comida: [
+    "Pechuga de pollo a la plancha con brócoli, calabaza y aguacate.",
+    "Filete de pescado con nopal asado, pepino y aceite de oliva extra virgen.",
+    "Bistec de res con champiñones, pimiento y aguacate.",
+    "Ensalada de atún con lechuga, pepino, jitomate y aceite de oliva extra virgen.",
+    "Camarones salteados con calabaza, brócoli y aguacate.",
+  ],
+  cena: [
+    "Pescado a la plancha con espinaca, champiñones y aguacate.",
+    "Pollo con nopal, pimiento y aceite de oliva extra virgen.",
+    "Huevos con calabaza, espinaca y queso panela.",
+    "Ensalada de sardina con lechuga, pepino, jitomate y aguacate.",
+    "Camarones con brócoli, champiñones y aceite de oliva extra virgen.",
+  ],
+  snack: [
+    "Queso panela con pepino y aguacate.",
+    "Yogur griego natural sin azúcar con chía.",
+    "Huevo cocido con pepino y aceite de oliva extra virgen.",
+    "Atún con pepino y aguacate en porción pequeña.",
+    "Almendras con pepino, si el protocolo permite esa grasa saludable en la fase.",
+  ],
+};
+
 export function generateMealRecommendation(
   request: MealRequest
 ) {
@@ -416,12 +448,24 @@ export function generateMealRecommendation(
 
   const foods = protocol.structured.allowedFoods;
 
-  const requestedCount = extractRequestedCount(
+  const currentUserMessage = extractCurrentUserMessage(
     request.userMessage
   );
 
+  const shouldUseCurrentMessageOnly = isGenericOptionsRequest(
+    currentUserMessage
+  );
+
+  const messageForValidation = shouldUseCurrentMessageOnly
+    ? currentUserMessage
+    : request.userMessage;
+
+  const requestedCount = extractRequestedCount(
+    currentUserMessage
+  );
+
   const validations = validateMentionedFoods({
-    userMessage: request.userMessage,
+    userMessage: messageForValidation,
     foods,
     restrictedFoodsText: protocol.sections.restrictedFoods,
   });
@@ -443,6 +487,7 @@ export function generateMealRecommendation(
         validations: compatibleFoods,
         foods,
         userMessage: request.userMessage,
+        currentUserMessage,
       });
 
   return {
@@ -596,6 +641,7 @@ function buildMealBases(params: {
   validations: FoodValidation[];
   foods: AllowedFoods;
   userMessage?: string;
+  currentUserMessage?: string;
 }) {
 
   const {
@@ -604,6 +650,7 @@ function buildMealBases(params: {
     validations,
     foods,
     userMessage,
+    currentUserMessage,
   } = params;
 
   const requestedProteins = getFoodsByCategory(
@@ -632,8 +679,26 @@ function buildMealBases(params: {
   );
 
   const wantsRecipe = isRecipeRequest(
-    userMessage
+    currentUserMessage ?? userMessage
   );
+
+  if (
+    wantsRecipe &&
+    requestedProteins.length === 0
+  ) {
+    const genericBases = buildGenericBalancedMealOptions({
+      mealType,
+      requestedCount,
+      requestedVegetables,
+      requestedFats,
+      requestedLegumes,
+      requestedFruits,
+    });
+
+    if (genericBases.length > 0) {
+      return genericBases;
+    }
+  }
 
   if (
     wantsRecipe &&
@@ -711,6 +776,66 @@ function buildMealBases(params: {
     bases
   );
 
+}
+
+
+function buildGenericBalancedMealOptions(params: {
+  mealType: MealType;
+  requestedCount: number;
+  requestedVegetables: string[];
+  requestedFats: string[];
+  requestedLegumes: string[];
+  requestedFruits: string[];
+}) {
+  const {
+    mealType,
+    requestedCount,
+    requestedVegetables,
+    requestedFats,
+    requestedLegumes,
+    requestedFruits,
+  } = params;
+
+  const total = Math.min(
+    Math.max(requestedCount, 1),
+    3
+  );
+
+  const templates = GENERIC_BALANCED_MEAL_OPTIONS[mealType];
+  const bases: MealBase[] = [];
+
+  for (let index = 0; index < total; index++) {
+    const baseRecipe = templates[index % templates.length];
+
+    bases.push({
+      title: applyRequestedRecipeDetails({
+        recipe: baseRecipe,
+        requestedVegetables: normalizeRequestedFoods(
+          requestedVegetables
+        ),
+        requestedFats: normalizeRequestedFoods(
+          requestedFats
+        ),
+      }),
+      proteins: [],
+      vegetables: normalizeRequestedFoods(
+        requestedVegetables
+      ),
+      fats: requestedFats.length > 0
+        ? normalizeRequestedFoods(requestedFats)
+        : DEFAULT_FATS,
+      legumes: normalizeRequestedFoods(
+        requestedLegumes
+      ),
+      fruits: normalizeRequestedFoods(
+        requestedFruits
+      ),
+    });
+  }
+
+  return removeDuplicatedBases(
+    bases
+  );
 }
 
 function buildDiverseRecipeBases(params: {
@@ -840,6 +965,80 @@ function isRecipeRequest(
   return /\b(receta|recetas|idea|ideas|opcion|opciones|preparacion|preparaciones|preparar|hacer|cocinar)\b/.test(
     normalizedMessage
   );
+}
+
+
+function isGenericOptionsRequest(
+  userMessage: string | undefined
+) {
+  if (!userMessage) return false;
+
+  const normalizedMessage = normalizeText(
+    userMessage
+  );
+
+  const asksForOptions = /\b(dame|quiero|necesito|sugiere|recomienda|pasame|pásame)\b.*\b(receta|recetas|idea|ideas|opcion|opciones|platillo|platillos)\b/.test(
+    normalizedMessage
+  ) ||
+    /\b(\d+|una|un|dos|tres)\s+(receta|recetas|idea|ideas|opcion|opciones|platillo|platillos)\b/.test(
+      normalizedMessage
+    );
+
+  if (!asksForOptions) return false;
+
+  return !FLEXIBLE_PROTEINS.some(protein =>
+    normalizedMessage.includes(
+      normalizeText(protein)
+    )
+  );
+}
+
+function extractCurrentUserMessage(
+  userMessage: string | undefined
+) {
+  if (!userMessage) return userMessage;
+
+  const match = userMessage.match(
+    /MENSAJE ACTUAL DEL USUARIO:\s*([\s\S]*?)(?:\n\s*\nDIRECCIÓN DE CEREBRO PARA EL ESPECIALISTA:|$)/
+  );
+
+  return match?.[1]?.trim() ?? userMessage;
+}
+
+function normalizeRequestedFoods(
+  items: string[]
+) {
+  const seen = new Set<string>();
+
+  return items.filter(item => {
+    const key = getFoodEquivalenceKey(
+      item
+    );
+
+    if (seen.has(key)) return false;
+
+    seen.add(key);
+
+    return true;
+  });
+}
+
+function getFoodEquivalenceKey(
+  value: string
+) {
+  const normalized = normalizeText(
+    value
+  );
+
+  if (
+    normalized === "col" ||
+    normalized.includes("col rizada") ||
+    normalized.includes("kale")
+  ) {
+    return "col";
+  }
+
+  return normalized;
 }
 
 function extractRequestedCountForProtein(params: {
@@ -1515,9 +1714,11 @@ function getFoodsByCategory(
   category: FoodCategory
 ) {
 
-  return validations
-    .filter(item => item.category === category && item.isCompatible)
-    .map(item => item.canonicalFood);
+  return normalizeRequestedFoods(
+    validations
+      .filter(item => item.category === category && item.isCompatible)
+      .map(item => item.canonicalFood)
+  );
 
 }
 

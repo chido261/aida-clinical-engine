@@ -32,19 +32,43 @@ export type Aida2ModuleResults = {
   meal?: Aida2MealModuleOutput;
 };
 
-function detectMealType(message: string): MealType {
-  const text = message.toLowerCase();
+function detectMealType(params: {
+  userMessage: string;
+  history: string;
+  workPlan: Aida2WorkPlan;
+}): MealType {
+  const { userMessage, history, workPlan } = params;
 
-  if (/\b(desayuno|desayunar|mañana|amanec[ií])\b/i.test(text)) {
+  const currentText = userMessage.toLowerCase();
+  const combinedText = `${history}\n${userMessage}`.toLowerCase();
+
+  if (/\b(desayuno|desayunar|mañana|amanec[ií]|ayunas)\b/i.test(currentText)) {
     return "desayuno";
   }
 
-  if (/\b(cena|cenar|noche)\b/i.test(text)) {
+  if (/\b(cena|cenar|noche)\b/i.test(currentText)) {
     return "cena";
   }
 
-  if (/\b(snack|colaci[oó]n|colacion|tentempi[eé]|botana)\b/i.test(text)) {
+  if (/\b(snack|colaci[oó]n|colacion|tentempi[eé]|botana)\b/i.test(currentText)) {
     return "snack";
+  }
+
+  if (
+    workPlan.foodContext.isFoodRelated &&
+    workPlan.foodContext.conversationMode === "FOLLOW_UP"
+  ) {
+    if (/\b(desayuno|desayunar|mañana|amanec[ií]|ayunas)\b/i.test(combinedText)) {
+      return "desayuno";
+    }
+
+    if (/\b(cena|cenar|noche)\b/i.test(combinedText)) {
+      return "cena";
+    }
+
+    if (/\b(snack|colaci[oó]n|colacion|tentempi[eé]|botana)\b/i.test(combinedText)) {
+      return "snack";
+    }
   }
 
   return "comida";
@@ -54,8 +78,9 @@ function buildMealSpecialistMessage(params: {
   workPlan: Aida2WorkPlan;
   history: string;
   userMessage: string;
+  mealType: MealType;
 }) {
-  const { workPlan, history, userMessage } = params;
+  const { workPlan, history, userMessage, mealType } = params;
   const { foodContext, modulePlan } = workPlan;
 
   if (!foodContext.isFoodRelated) {
@@ -71,6 +96,7 @@ function buildMealSpecialistMessage(params: {
   lines.push("DIRECCIÓN DE CEREBRO PARA EL ESPECIALISTA:");
   lines.push(`- Modo de conversación: ${foodContext.conversationMode}.`);
   lines.push(`- Tipo de consulta alimentaria: ${foodContext.questionType}.`);
+  lines.push(`- Tipo de comida detectado para construir opciones: ${mealType}.`);
   lines.push(`- Acción esperada: ${modulePlan.expectedMealSpecialistAction}.`);
   lines.push(`- Foco de decisión: ${foodContext.decisionFocus}.`);
 
@@ -89,6 +115,21 @@ function buildMealSpecialistMessage(params: {
     lines.push("HISTORIAL RECIENTE PARA CONTINUIDAD:");
     lines.push(history);
   }
+
+  lines.push("");
+  lines.push("INSTRUCCIÓN PARA OPCIONES GENÉRICAS:");
+  lines.push(
+    "- Si el usuario pide opciones, recetas o ideas sin mencionar proteína específica, construir platillos completos y variados según el tipo de comida detectado."
+  );
+  lines.push(
+    "- Cada opción debe tener sentido como comida real: proteína, grasa saludable y vegetales bajos en carga glucémica cuando aplique."
+  );
+  lines.push(
+    "- No repetir los mismos vegetales o la misma estructura en todas las opciones."
+  );
+  lines.push(
+    "- No usar el historial como lista obligatoria de ingredientes; usarlo solo para entender continuidad."
+  );
 
   lines.push("");
   lines.push("LÍMITE:");
@@ -120,7 +161,11 @@ export function runAida2Modules(
   }
 
   if (workPlan.modulePlan.runMealSpecialist) {
-    const mealType = detectMealType(userMessage);
+    const mealType = detectMealType({
+      userMessage,
+      history,
+      workPlan,
+    });
 
     const mealResult = generateMealRecommendation({
       mealType,
@@ -128,6 +173,7 @@ export function runAida2Modules(
         workPlan,
         history,
         userMessage,
+        mealType,
       }),
     });
 
