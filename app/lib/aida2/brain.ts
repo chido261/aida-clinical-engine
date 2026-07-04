@@ -128,6 +128,9 @@ export type Aida2WorkPlan = {
   responsePlan: Aida2ResponsePlan;
 };
 
+const FOOD_PATTERN =
+  /\b(comer|comida|cena|cenar|desayuno|desayunar|almuerzo|platillo|platillos|men[uú]|antojo|receta|recetas|ingrediente|ingredientes|agregar|acompañar|acompanar|opci[oó]n|opciones|segura|seguro|permitido|permitida|recomiendas|recomendar|preparar|preparo|cocinar|cocino|pan|pan dulce|pan integral|tostada|tostadas|tortilla|arroz|pasta|avena|cereal|cereales|granola|galleta|galletas|papa|papas|camote|fruta|frutas|verdura|verduras|vegetal|vegetales|prote[ií]na|proteinas|proteínas|mango|manzana|pl[aá]tano|uva|fresa|fresas|ar[aá]ndanos|frambuesas|zarzamoras|moras|toronja|huevo|huevos|pollo|res|bistec|carne|cerdo|pavo|pescado|at[uú]n|sardina|sardinas|salm[oó]n|tilapia|mojarra|camar[oó]n|camarones|pulpo|queso|yogur|yogurt|k[eé]fir|aguacate|aceite|almendras|nueces|pistaches|cacahuate|ch[ií]a|linaza|lechuga|espinaca|br[oó]coli|coliflor|pepino|calabaza|ejotes|champiñones|jitomate|tomate|nopal|pimiento|cebolla|ajo|frijol|frijoles|garbanzo|lenteja|lentejas|haba|habas|soya|alubias)\b/i;
+
 function normalize(text: string) {
   return text.toLowerCase().trim();
 }
@@ -153,11 +156,7 @@ function detectIntent(message: string): Aida2Intent {
     return "FOLLOW_UP_CONTEXT";
   }
 
-  if (
-    /\b(comer|comida|cena|desayuno|almuerzo|platillo|men[uú]|antojo|pan|tortilla|arroz|fruta|verdura|prote[ií]na|mango|manzana|pl[aá]tano|uva|pan dulce)\b/i.test(
-      text
-    )
-  ) {
+  if (FOOD_PATTERN.test(text)) {
     return "FOOD_ADVICE";
   }
 
@@ -234,10 +233,7 @@ function buildUnderstanding(message: string): Aida2Understanding {
     normalizedMessage,
     intent,
     mentionedGlucose: extractGlucose(message),
-    mentionsFood:
-      /\b(comer|comida|cena|desayuno|almuerzo|platillo|men[uú]|antojo|pan|tortilla|arroz|fruta|verdura|prote[ií]na|mango|manzana|pl[aá]tano|uva|pan dulce)\b/i.test(
-        normalizedMessage
-      ),
+    mentionsFood: FOOD_PATTERN.test(normalizedMessage),
     mentionsExercise:
       /\b(ejercicio|caminar|caminata|entrenar|pesas|cardio|actividad f[ií]sica|correr|gym|gimnasio)\b/i.test(
         normalizedMessage
@@ -591,6 +587,15 @@ function buildResponsePlan(
     `Guiar la respuesta según la acción principal: ${thinking.mainAction}.`,
   ];
 
+  if (understanding.intent === "FOOD_ADVICE") {
+    mustDo.push(
+      "Validar alimentos con el protocolo activo antes de recomendarlos.",
+      "Si el usuario pide recetas, opciones o ideas de comida, usar solo alimentos permitidos por el protocolo activo.",
+      "Si el usuario pregunta por una opción mencionada antes, corregir cualquier contradicción previa y responder según el protocolo activo.",
+      "Si el usuario pregunta si puede comer o agregar algo, responder primero si conviene o no conviene."
+    );
+  }
+
   if (understanding.intent === "MEDICATION_EDUCATION") {
     mustDo.push(
       "Dar educación general sin indicar dosis ni autorizar combinaciones por cuenta propia.",
@@ -619,6 +624,16 @@ function buildResponsePlan(
     "No ajustar, suspender ni modificar medicamentos.",
   ];
 
+  if (understanding.intent === "FOOD_ADVICE") {
+    mustAvoid.push(
+      "No recomendar alimentos fuera del protocolo activo.",
+      "No decir que un alimento no recomendado es seguro solo por combinarlo con proteína o grasa.",
+      "No inventar recetas con pan, tostadas, tortilla, arroz, papa, avena, pasta, cereales o granola durante fase diagnóstico.",
+      "No dar varias recetas si no han sido validadas por el especialista o el protocolo.",
+      "No perder el hilo de la comida actual."
+    );
+  }
+
   if (understanding.intent === "MEDICATION_EDUCATION" && !shouldSuggestProfileUpdate) {
     mustAvoid.push(
       "No asumir que el usuario toma el medicamento solo porque preguntó por él.",
@@ -640,7 +655,7 @@ function buildResponsePlan(
             ? "Cerrar pidiendo solo el dato mínimo necesario."
             : thinking.mainAction === "SUGGEST_PROFILE_UPDATE"
               ? "Cerrar sugiriendo confirmar o registrar el dato relevante en Perfil."
-              : "Cerrar con una acción o pregunta breve relacionada con el mismo tema.",
+              : "Cerrar con una acción breve relacionada con el mismo tema.",
   };
 }
 
