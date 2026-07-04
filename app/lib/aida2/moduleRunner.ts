@@ -42,6 +42,17 @@ function detectMealType(params: {
   const currentText = userMessage.toLowerCase();
   const combinedText = `${history}\n${userMessage}`.toLowerCase();
 
+  const pendingMealType = workPlan.conversationState.pendingAction?.mealType;
+  const activeMealType = workPlan.conversationState.activeMealType;
+
+  if (pendingMealType) {
+    return pendingMealType;
+  }
+
+  if (activeMealType) {
+    return activeMealType;
+  }
+
   if (/\b(desayuno|desayunar|mañana|amanec[ií]|ayunas)\b/i.test(currentText)) {
     return "desayuno";
   }
@@ -81,7 +92,8 @@ function buildMealSpecialistMessage(params: {
   mealType: MealType;
 }) {
   const { workPlan, history, userMessage, mealType } = params;
-  const { foodContext, modulePlan } = workPlan;
+  const { foodContext, modulePlan, conversationState } = workPlan;
+  const { pendingAction } = conversationState;
 
   if (!foodContext.isFoodRelated) {
     return userMessage;
@@ -108,6 +120,77 @@ function buildMealSpecialistMessage(params: {
     lines.push(
       "- El usuario parece describir una preparación; validar por ingredientes cuando aplique."
     );
+  }
+
+  lines.push("");
+  lines.push("ESTADO CONVERSACIONAL ACTUAL:");
+  lines.push(`- Tema activo: ${conversationState.activeTopic ?? "sin tema activo"}.`);
+  lines.push(`- Objetivo activo: ${conversationState.activeGoal ?? "sin objetivo activo"}.`);
+  lines.push(`- Último alimento consultado: ${conversationState.lastFoodTarget ?? "ninguno"}.`);
+  lines.push(`- Última decisión alimentaria: ${conversationState.lastFoodDecision ?? "sin decisión"}.`);
+  lines.push(`- Motivo de última decisión: ${conversationState.lastFoodReason ?? "sin motivo"}.`);
+  lines.push(
+    `- Alimentos rechazados acumulados: ${
+      conversationState.rejectedFoods.length > 0
+        ? conversationState.rejectedFoods.join(", ")
+        : "ninguno"
+    }.`
+  );
+  lines.push(
+    `- Alimentos compatibles acumulados: ${
+      conversationState.compatibleFoods.length > 0
+        ? conversationState.compatibleFoods.join(", ")
+        : "ninguno"
+    }.`
+  );
+  lines.push(
+    `- El usuario está continuando una acción pendiente: ${
+      conversationState.shouldContinuePendingAction ? "sí" : "no"
+    }.`
+  );
+
+  if (pendingAction && pendingAction.type !== "NONE") {
+    lines.push("");
+    lines.push("ACCIÓN PENDIENTE QUE DEBE OBEDECER EL ESPECIALISTA:");
+    lines.push(`- Tipo: ${pendingAction.type}.`);
+    lines.push(`- Cantidad solicitada: ${pendingAction.count ?? 3}.`);
+    lines.push(`- Objetivo/target: ${pendingAction.target ?? "sin target específico"}.`);
+    lines.push(
+      `- Evitar: ${
+        pendingAction.avoid && pendingAction.avoid.length > 0
+          ? pendingAction.avoid.join(", ")
+          : "ningún alimento específico"
+      }.`
+    );
+    lines.push(`- Tipo de comida: ${pendingAction.mealType ?? mealType}.`);
+    lines.push(`- Razón: ${pendingAction.reason ?? "sin razón registrada"}.`);
+
+    if (pendingAction.type === "BUILD_ALTERNATIVES") {
+      lines.push(
+        "- Ejecutar BUILD_ALTERNATIVES: construir opciones compatibles evitando los alimentos indicados."
+      );
+      lines.push(
+        "- No volver a preguntar si el usuario ya aceptó continuar o pidió las recetas/opciones."
+      );
+    }
+
+    if (pendingAction.type === "BUILD_RECIPES") {
+      lines.push(
+        "- Ejecutar BUILD_RECIPES: construir recetas u opciones compatibles con el protocolo."
+      );
+    }
+
+    if (pendingAction.type === "ASK_INGREDIENTS") {
+      lines.push(
+        "- Ejecutar ASK_INGREDIENTS: pedir solo los ingredientes mínimos necesarios."
+      );
+    }
+
+    if (pendingAction.type === "EXPLAIN_DECISION") {
+      lines.push(
+        "- Ejecutar EXPLAIN_DECISION: explicar brevemente la decisión alimentaria ya tomada."
+      );
+    }
   }
 
   if (foodContext.needsHistory && history.trim()) {

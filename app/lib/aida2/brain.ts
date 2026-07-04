@@ -89,12 +89,12 @@ export type Aida2MealSpecialistAction =
   | "EXPLAIN_LIMIT"
   | "NONE";
 
-  export type Aida2BrainInput = {
-    userId?: string | null;
-    message: string;
-    history?: string | null;
-    conversationState?: Aida2ConversationState | null;
-  };
+export type Aida2BrainInput = {
+  userId?: string | null;
+  message: string;
+  history?: string | null;
+  conversationState?: Aida2ConversationState | null;
+};
 
 export type Aida2Understanding = {
   rawMessage: string;
@@ -224,10 +224,6 @@ function extractGlucose(message: string): number | null {
   return values[values.length - 1];
 }
 
-function hasRecentHistory(history?: string | null) {
-  return Boolean(history && history.trim().length > 0);
-}
-
 function historyLooksFoodRelated(history?: string | null) {
   if (!history) return false;
   return FOOD_INTENT_PATTERN.test(history);
@@ -311,6 +307,7 @@ function detectConversationMode(
   conversationState?: Aida2ConversationState | null
 ): Aida2ConversationMode {
   const text = normalize(message);
+
   if (
     conversationState?.pendingAction &&
     (isShortAcceptance(message) || isPendingActionReminder(message))
@@ -435,14 +432,20 @@ function extractTargetText(message: string): string | null {
 function cleanTargetText(value: string) {
   return value
     .replace(/[¿?¡!]/g, "")
-    .replace(/\b(me puedes|puedes|podr[ií]as|quiero|quisiera|dame|hazme|armame|armarme|preparame|prepárame)\b/gi, "")
+    .replace(
+      /\b(me puedes|puedes|podr[ií]as|quiero|quisiera|dame|hazme|armame|armarme|preparame|prepárame)\b/gi,
+      ""
+    )
     .replace(/\b(unas?|algunas?|\d+)\s+(recetas|opciones|ideas|platillos)\b/gi, "")
     .replace(/\b(receta|recetas|opci[oó]n|opciones|idea|ideas|platillo|platillos)\b/gi, "")
     .replace(/\s+/g, " ")
     .trim();
 }
 
-function shouldValidatePreparation(message: string, questionType: Aida2FoodQuestionType) {
+function shouldValidatePreparation(
+  message: string,
+  questionType: Aida2FoodQuestionType
+) {
   const text = normalize(message);
 
   if (questionType === "VALIDATE_PREPARATION") return true;
@@ -521,11 +524,12 @@ function buildFoodContext(
   const isFoodRelated =
     understanding.intent === "FOOD_ADVICE" || understanding.mentionsFood;
 
-    const conversationMode = detectConversationMode(
-      message,
-      history,
-      conversationState
-    );
+  const conversationMode = detectConversationMode(
+    message,
+    history,
+    conversationState
+  );
+
   const questionType = isFoodRelated
     ? detectFoodQuestionType(message)
     : "UNKNOWN";
@@ -537,13 +541,13 @@ function buildFoodContext(
   const validatePreparation =
     isFoodRelated && shouldValidatePreparation(message, questionType);
 
-    const targetText = isFoodRelated
+  const targetText = isFoodRelated
     ? extractTargetText(message) ??
       conversationState.pendingAction?.target ??
       conversationState.lastFoodTarget
     : null;
 
-    const pendingDecisionFocus =
+  const pendingDecisionFocus =
     conversationState.pendingAction &&
     (isShortAcceptance(message) || isPendingActionReminder(message))
       ? `El usuario está aceptando o recordando una acción pendiente: ${
@@ -563,15 +567,15 @@ function buildFoodContext(
     needsMealSpecialist: isFoodRelated,
     shouldValidatePreparation: validatePreparation,
     decisionFocus:
-  pendingDecisionFocus ??
-  buildFoodDecisionFocus({
-      isFoodRelated,
-      conversationMode,
-      questionType,
-      targetText,
-      needsHistory,
-      shouldValidatePreparation: validatePreparation,
-    }),
+      pendingDecisionFocus ??
+      buildFoodDecisionFocus({
+        isFoodRelated,
+        conversationMode,
+        questionType,
+        targetText,
+        needsHistory,
+        shouldValidatePreparation: validatePreparation,
+      }),
   };
 }
 
@@ -612,11 +616,11 @@ function buildUnderstanding(
   const intent = detectIntent(message, history, conversationState);
 
   const mentionsFood =
-  messageExpressesFoodIntention(message, history) ||
-  Boolean(
-    conversationState?.pendingAction &&
-      (isShortAcceptance(message) || isPendingActionReminder(message))
-  );
+    messageExpressesFoodIntention(message, history) ||
+    Boolean(
+      conversationState?.pendingAction &&
+        (isShortAcceptance(message) || isPendingActionReminder(message))
+    );
 
   return {
     rawMessage: message,
@@ -709,7 +713,8 @@ function buildSafetyPlan(understanding: Aida2Understanding): Aida2SafetyPlan {
 function buildModulePlan(
   understanding: Aida2Understanding,
   foodContext: Aida2FoodContext,
-  safety: Aida2SafetyPlan
+  safety: Aida2SafetyPlan,
+  conversationState: Aida2ConversationState
 ): Aida2ModulePlan {
   if (safety.requiresImmediateSafetyFocus) {
     return {
@@ -728,6 +733,10 @@ function buildModulePlan(
     let expectedMealSpecialistAction: Aida2MealSpecialistAction =
       "CLASSIFY_OR_VALIDATE";
 
+    const pendingAction = conversationState.pendingAction;
+    const shouldContinuePendingAction =
+      conversationState.shouldContinuePendingAction && Boolean(pendingAction);
+
     if (foodContext.shouldValidatePreparation) {
       expectedMealSpecialistAction = "VALIDATE_PREPARATION";
     }
@@ -745,6 +754,29 @@ function buildModulePlan(
       foodContext.questionType === "ADD_TO_PREVIOUS_MEAL"
     ) {
       expectedMealSpecialistAction = "CLASSIFY_OR_VALIDATE";
+    }
+
+    if (
+      shouldContinuePendingAction &&
+      (pendingAction?.type === "BUILD_ALTERNATIVES" ||
+        pendingAction?.type === "BUILD_RECIPES" ||
+        pendingAction?.type === "CONTINUE_PREVIOUS")
+    ) {
+      expectedMealSpecialistAction = "BUILD_OPTIONS";
+    }
+
+    if (
+      shouldContinuePendingAction &&
+      pendingAction?.type === "ASK_INGREDIENTS"
+    ) {
+      expectedMealSpecialistAction = "VALIDATE_PREPARATION";
+    }
+
+    if (
+      shouldContinuePendingAction &&
+      pendingAction?.type === "EXPLAIN_DECISION"
+    ) {
+      expectedMealSpecialistAction = "EXPLAIN_LIMIT";
     }
 
     return {
@@ -1070,6 +1102,12 @@ function buildResponsePlan(
         "Usar historial reciente para entender si el usuario continúa una comida previa."
       );
     }
+
+    if (modulePlan.expectedMealSpecialistAction === "BUILD_OPTIONS") {
+      mustDo.push(
+        "Si Cerebro detectó una acción pendiente de recetas u opciones, entregar las opciones validadas sin volver a preguntar."
+      );
+    }
   }
 
   if (understanding.intent === "MEDICATION_EDUCATION") {
@@ -1108,6 +1146,12 @@ function buildResponsePlan(
       "No clasificar una preparación especial solo por su nombre común.",
       "No convertir un alimento no recomendado en permitido solo por combinarlo con otro alimento."
     );
+
+    if (modulePlan.expectedMealSpecialistAction === "BUILD_OPTIONS") {
+      mustAvoid.push(
+        "No volver a preguntar si el usuario ya aceptó una acción pendiente de recetas u opciones."
+      );
+    }
   }
 
   if (
@@ -1135,7 +1179,9 @@ function buildResponsePlan(
             : thinking.mainAction === "SUGGEST_PROFILE_UPDATE"
               ? "Cerrar sugiriendo confirmar o registrar el dato relevante en Perfil."
               : foodContext.isFoodRelated
-                ? "Cerrar con una acción breve relacionada con la decisión alimentaria o medición de glucosa."
+                ? modulePlan.expectedMealSpecialistAction === "BUILD_OPTIONS"
+                  ? "Cerrar con la opción o acción concreta ya entregada, sin preguntar de nuevo si quiere continuar."
+                  : "Cerrar con una acción breve relacionada con la decisión alimentaria o medición de glucosa."
                 : "Cerrar con una acción breve relacionada con el mismo tema.",
   };
 }
@@ -1157,16 +1203,27 @@ export function buildAida2WorkPlan(input: Aida2BrainInput): Aida2WorkPlan {
     history,
     conversationState
   );
+
   const safety = buildSafetyPlan(understanding);
+
   const foodContext = buildFoodContext(
     message,
     history,
     understanding,
     conversationState
   );
-  const modulePlan = buildModulePlan(understanding, foodContext, safety);
+
+  const modulePlan = buildModulePlan(
+    understanding,
+    foodContext,
+    safety,
+    conversationState
+  );
+
   const thinking = buildThinkingPlan(understanding, safety, foodContext);
+
   const decision = buildDecision(understanding, safety, modulePlan);
+
   const responsePlan = buildResponsePlan(
     understanding,
     decision,

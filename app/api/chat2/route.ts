@@ -8,6 +8,12 @@ import { buildAida2WorkPlan } from "@/app/lib/aida2/brain";
 import { runAida2Modules } from "@/app/lib/aida2/moduleRunner";
 import { buildAida2ConversationStrategy } from "@/app/lib/aida2/conversationStrategy";
 import { buildAida2ComposerPrompt } from "@/app/lib/aida2/responseComposer";
+import {
+  buildAida2MemoryPrompt,
+  buildConversationStateFromMemory,
+  loadAida2ContextMemory,
+  updateAida2ContextMemoryAfterResponse,
+} from "@/app/lib/aida2/contextMemory";
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
@@ -33,6 +39,14 @@ function buildHistory(messages: ChatMessage[]) {
     .join("\n");
 }
 
+function resolveUserId(body: Body) {
+  const deviceId = body.deviceId?.trim();
+
+  if (deviceId) return deviceId;
+
+  return "chat2-local";
+}
+
 export async function POST(req: Request) {
   try {
     const body = (await req.json()) as Body;
@@ -54,12 +68,25 @@ export async function POST(req: Request) {
       );
     }
 
-    const history = buildHistory(messages);
+    const userId = resolveUserId(body);
+    const memory = await loadAida2ContextMemory({ userId });
+
+    const recentHistory = buildHistory(messages);
+    const memoryPrompt = buildAida2MemoryPrompt(memory);
+    const history = [
+      memoryPrompt,
+      "",
+      "HISTORIAL RECIENTE DE LA CONVERSACIÓN:",
+      recentHistory || "Sin historial reciente.",
+    ].join("\n");
+
+    const conversationState = buildConversationStateFromMemory(memory);
 
     const workPlan = buildAida2WorkPlan({
-      userId: body.deviceId ?? null,
+      userId,
       message: lastUserMessage,
       history,
+      conversationState,
     });
 
     const moduleResults = runAida2Modules({
@@ -96,21 +123,31 @@ export async function POST(req: Request) {
       response.choices[0]?.message?.content ??
       "No pude generar una respuesta en este momento.";
 
+    await updateAida2ContextMemoryAfterResponse({
+      userId,
+      userMessage: lastUserMessage,
+      assistantReply: reply,
+      workPlan,
+      moduleResults,
+    });
+
     return NextResponse.json({
       ok: true,
       reply,
       aida2: true,
+      userId,
       workPlan,
       modules: moduleResults,
       conversationStrategy,
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("API /api/chat2 ERROR:", error);
 
     return NextResponse.json(
       {
         ok: false,
-        error: error?.message ?? "Error desconocido",
+        error:
+          error instanceof Error ? error.message : "Error desconocido",
       },
       { status: 500 }
     );
