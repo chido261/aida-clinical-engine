@@ -72,13 +72,7 @@ function readProtocol(file: string) {
     throw new Error(`Protocol file not found: ${file}`);
   }
 
-  const content = fs.readFileSync(absolute, "utf8");
-
-console.log("=== PROTOCOL ===");
-console.log(absolute);
-console.log(content.substring(0, 300));
-
-return content;
+  return fs.readFileSync(absolute, "utf8");
 }
 
 function parseSections(markdown: string): ProtocolSections {

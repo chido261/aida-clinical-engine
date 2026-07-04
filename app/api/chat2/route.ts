@@ -79,6 +79,7 @@ export async function POST(req: Request) {
       history,
       userMessage: lastUserMessage,
       contextModule: moduleResults.context,
+      mealModule: moduleResults.meal,
       conversationStrategy,
     });
 

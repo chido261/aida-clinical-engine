@@ -4,7 +4,7 @@
 
 ## IDENTIFICACIÓN
 
-Nombre: PRUEBA123
+Nombre: Fase de Diagnóstico
 
 Duración: 7 días
 
