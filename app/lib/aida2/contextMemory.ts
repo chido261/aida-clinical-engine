@@ -21,8 +21,18 @@ export type Aida2FoodMemoryDecision = {
   createdAt: string;
 };
 
+export type Aida2MemoryTurn = {
+  userMessage: string;
+  assistantReply: string;
+  topic: string | null;
+  intent: string | null;
+  foodTarget: string | null;
+  foodDecision: Aida2FoodDecision;
+  createdAt: string;
+};
+
 export type Aida2MemoryMetadata = {
-  version: 1;
+  version: 2;
   activeProtocol: string;
   activePhase: string;
   glucoseTargets: {
@@ -43,6 +53,10 @@ export type Aida2MemoryMetadata = {
   lastFoodDecision: Aida2FoodMemoryDecision | null;
   pendingAction: Aida2PendingAction | null;
   knownUserPatterns: string[];
+  recentTurns: Aida2MemoryTurn[];
+  lastConfirmedTopic: string | null;
+  lastCorrectionFromUser: string | null;
+  memoryConfidence: "LOW" | "MEDIUM" | "HIGH";
   lastUpdatedAt: string;
 };
 
@@ -78,9 +92,6 @@ const DEFAULT_GLUCOSE_TARGETS = {
 };
 
 function resolveProtocolId(_activePhase: string | null | undefined): ProtocolId {
-  // Por ahora AIDA2 trabaja con el protocolo Diagnóstico 7 días.
-  // Aunque UserState tenga activePhase = FASE_1, no debemos cargar fase1.md
-  // porque ese archivo no existe o no está listo en este flujo.
   return "DIAGNOSTICO_7_DIAS";
 }
 
@@ -126,12 +137,30 @@ function uniqueText(values: string[]) {
   );
 }
 
+function coerceMetadataVersion(
+  previous: Partial<Aida2MemoryMetadata> | null
+): Partial<Aida2MemoryMetadata> | null {
+  if (!previous) return null;
+
+  return {
+    ...previous,
+    version: 2,
+    recentTurns: Array.isArray(previous.recentTurns)
+      ? previous.recentTurns
+      : [],
+    lastConfirmedTopic: previous.lastConfirmedTopic ?? null,
+    lastCorrectionFromUser: previous.lastCorrectionFromUser ?? null,
+    memoryConfidence: previous.memoryConfidence ?? "MEDIUM",
+  };
+}
+
 function buildMetadata(params: {
   previous: Partial<Aida2MemoryMetadata> | null;
   activeProtocol: string;
   activePhase: string;
 }) {
   const { previous, activeProtocol, activePhase } = params;
+  const coerced = coerceMetadataVersion(previous);
 
   const protocol = runProtocolModule({
     protocolId: resolveProtocolId(activePhase),
@@ -140,10 +169,10 @@ function buildMetadata(params: {
   const now = new Date().toISOString();
 
   return {
-    version: 1,
+    version: 2,
     activeProtocol,
     activePhase,
-    glucoseTargets: previous?.glucoseTargets ?? DEFAULT_GLUCOSE_TARGETS,
+    glucoseTargets: coerced?.glucoseTargets ?? DEFAULT_GLUCOSE_TARGETS,
     allowedFoodsSnapshot: {
       proteins: protocol.structured.allowedFoods.proteins,
       dairy: protocol.structured.allowedFoods.dairy,
@@ -154,11 +183,15 @@ function buildMetadata(params: {
       beverages: protocol.structured.allowedFoods.beverages,
     },
     restrictedFoodsSnapshot:
-      previous?.restrictedFoodsSnapshot ??
+      coerced?.restrictedFoodsSnapshot ??
       extractRestrictedFoods(protocol.sections.restrictedFoods),
-    lastFoodDecision: previous?.lastFoodDecision ?? null,
-    pendingAction: previous?.pendingAction ?? null,
-    knownUserPatterns: previous?.knownUserPatterns ?? [],
+    lastFoodDecision: coerced?.lastFoodDecision ?? null,
+    pendingAction: coerced?.pendingAction ?? null,
+    knownUserPatterns: coerced?.knownUserPatterns ?? [],
+    recentTurns: coerced?.recentTurns ?? [],
+    lastConfirmedTopic: coerced?.lastConfirmedTopic ?? null,
+    lastCorrectionFromUser: coerced?.lastCorrectionFromUser ?? null,
+    memoryConfidence: coerced?.memoryConfidence ?? "MEDIUM",
     lastUpdatedAt: now,
   } satisfies Aida2MemoryMetadata;
 }
@@ -264,6 +297,7 @@ export function buildAida2MemoryPrompt(memory: Aida2ContextMemory) {
     `- Fase activa: ${metadata.activePhase}.`,
     `- Objetivo glucémico: ayunas < ${metadata.glucoseTargets.fastingMaxMgDl} mg/dL; postcomida ${metadata.glucoseTargets.postMealMinMgDl}-${metadata.glucoseTargets.postMealMaxMgDl} mg/dL.`,
     `- Objetivo conversacional actual: ${conversation.currentGoal ?? "mantener estabilidad glucémica"}.`,
+    `- Confianza de memoria: ${metadata.memoryConfidence}.`,
   ];
 
   if (conversation.clinicalSummary) {
@@ -280,8 +314,16 @@ export function buildAida2MemoryPrompt(memory: Aida2ContextMemory) {
 
   if (metadata.lastFoodDecision) {
     lines.push(
-      `- Última decisión alimentaria: ${metadata.lastFoodDecision.food} = ${metadata.lastFoodDecision.decision}; ${metadata.lastFoodDecision.reason}.`
+      `- Última decisión alimentaria confirmada: ${metadata.lastFoodDecision.food} = ${metadata.lastFoodDecision.decision}; ${metadata.lastFoodDecision.reason}.`
     );
+  }
+
+  if (metadata.lastConfirmedTopic) {
+    lines.push(`- Último tema confirmado: ${metadata.lastConfirmedTopic}.`);
+  }
+
+  if (metadata.lastCorrectionFromUser) {
+    lines.push(`- Corrección reciente del usuario: ${metadata.lastCorrectionFromUser}.`);
   }
 
   if (metadata.pendingAction && metadata.pendingAction.type !== "NONE") {
@@ -290,6 +332,15 @@ export function buildAida2MemoryPrompt(memory: Aida2ContextMemory) {
         metadata.pendingAction.avoid?.join(", ") || "sin alimento específico"
       }; cantidad: ${metadata.pendingAction.count ?? 3}.`
     );
+  }
+
+  if (metadata.recentTurns.length > 0) {
+    lines.push("- Últimos turnos guardados en memoria:");
+    metadata.recentTurns.slice(-3).forEach((turn) => {
+      lines.push(
+        `  • Usuario: ${turn.userMessage} | AIDA: ${turn.assistantReply}`
+      );
+    });
   }
 
   lines.push(
@@ -303,7 +354,9 @@ export function buildAida2MemoryPrompt(memory: Aida2ContextMemory) {
   }
 
   lines.push(
-    "- Usa esta memoria como contexto operativo. No la menciones literalmente al usuario."
+    "- Usa esta memoria como contexto operativo. No la menciones literalmente al usuario.",
+    "- No afirmes recordar algo específico si no aparece en memoria o historial. Si no hay evidencia, di que no tienes el detalle exacto y retoma lo que sí está guardado.",
+    "- Si el usuario corrige un recuerdo, acepta la corrección y actualiza el tema."
   );
 
   return lines.join("\n");
@@ -318,6 +371,7 @@ export function buildConversationStateFromMemory(
   return {
     activeTopic:
       pendingAction?.reason ??
+      memory.metadata.lastConfirmedTopic ??
       (lastDecision ? `Validación alimentaria: ${lastDecision.food}` : null),
     activeGoal:
       pendingAction?.reason ??
@@ -341,7 +395,6 @@ export function buildConversationStateFromMemory(
 }
 
 function foodDecisionFromMealRecommendation(params: {
-  userMessage: string;
   workPlan: Aida2WorkPlan;
   moduleResults: Aida2ModuleResults;
 }) {
@@ -375,6 +428,18 @@ function moduleDeliveredOptions(moduleResults: Aida2ModuleResults) {
   );
 }
 
+function detectUserCorrection(userMessage: string) {
+  if (
+    /\b(falso|no fue eso|no era eso|te equivocas|te equivocaste|no pregunt[eé] eso|no dije eso)\b/i.test(
+      userMessage
+    )
+  ) {
+    return compact(userMessage, 500);
+  }
+
+  return null;
+}
+
 function inferKnownPatterns(params: {
   userMessage: string;
   previousPatterns: string[];
@@ -393,6 +458,48 @@ function inferKnownPatterns(params: {
   return uniqueText(patterns).slice(-8);
 }
 
+function buildMemoryTurn(params: {
+  userMessage: string;
+  assistantReply: string;
+  workPlan: Aida2WorkPlan;
+}) {
+  const { userMessage, assistantReply, workPlan } = params;
+
+  return {
+    userMessage: compact(userMessage, 280) ?? userMessage,
+    assistantReply: compact(assistantReply, 420) ?? assistantReply,
+    topic:
+      workPlan.foodContext.targetText ??
+      workPlan.conversationState.activeTopic ??
+      null,
+    intent: workPlan.understanding.intent,
+    foodTarget: workPlan.foodContext.targetText,
+    foodDecision: workPlan.conversationState.lastFoodDecision,
+    createdAt: new Date().toISOString(),
+  } satisfies Aida2MemoryTurn;
+}
+
+function buildLastConfirmedTopic(params: {
+  workPlan: Aida2WorkPlan;
+  foodDecision: Aida2FoodMemoryDecision | null;
+}) {
+  const { workPlan, foodDecision } = params;
+
+  if (foodDecision) {
+    return `Revisión alimentaria: ${foodDecision.food}`;
+  }
+
+  if (workPlan.foodContext.targetText) {
+    return `Revisión alimentaria: ${workPlan.foodContext.targetText}`;
+  }
+
+  if (workPlan.thinking.userGoal) {
+    return workPlan.thinking.userGoal;
+  }
+
+  return null;
+}
+
 export async function updateAida2ContextMemoryAfterResponse(params: {
   userId: string;
   userMessage: string;
@@ -407,10 +514,11 @@ export async function updateAida2ContextMemoryAfterResponse(params: {
   const metadata = { ...memory.metadata };
 
   const foodDecision = foodDecisionFromMealRecommendation({
-    userMessage,
     workPlan,
     moduleResults,
   });
+
+  const userCorrection = detectUserCorrection(userMessage);
 
   if (foodDecision) {
     metadata.lastFoodDecision = foodDecision;
@@ -419,9 +527,7 @@ export async function updateAida2ContextMemoryAfterResponse(params: {
       count: 3,
       target: null,
       avoid: [foodDecision.food],
-      mealType: workPlan.foodContext.targetText
-        ? (workPlan.conversationState.activeMealType as Aida2MealType | null)
-        : null,
+      mealType: workPlan.conversationState.activeMealType as Aida2MealType | null,
       reason: `Resolver la comida o antojo evitando ${foodDecision.food}.`,
     };
   }
@@ -430,10 +536,32 @@ export async function updateAida2ContextMemoryAfterResponse(params: {
     metadata.pendingAction = null;
   }
 
+  if (userCorrection) {
+    metadata.lastCorrectionFromUser = userCorrection;
+    metadata.memoryConfidence = "LOW";
+  } else if (foodDecision || workPlan.foodContext.targetText) {
+    metadata.memoryConfidence = "HIGH";
+  } else {
+    metadata.memoryConfidence = metadata.memoryConfidence ?? "MEDIUM";
+  }
+
+  metadata.lastConfirmedTopic =
+    buildLastConfirmedTopic({ workPlan, foodDecision }) ??
+    metadata.lastConfirmedTopic;
+
   metadata.knownUserPatterns = inferKnownPatterns({
     userMessage,
     previousPatterns: metadata.knownUserPatterns,
   });
+
+  metadata.recentTurns = [
+    ...metadata.recentTurns,
+    buildMemoryTurn({
+      userMessage,
+      assistantReply,
+      workPlan,
+    }),
+  ].slice(-8);
 
   metadata.lastUpdatedAt = new Date().toISOString();
 
