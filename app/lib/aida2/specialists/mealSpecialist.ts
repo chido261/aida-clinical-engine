@@ -330,6 +330,84 @@ const DEFAULT_FATS = [
   "aceite de oliva extra virgen",
 ];
 
+const DIVERSE_RECIPE_TEMPLATES: Array<{
+  match: string[];
+  recipes: string[];
+}> = [
+  {
+    match: ["pulpo"],
+    recipes: [
+      "Pulpo a la plancha con nopal asado, pimiento y aguacate.",
+      "Ensalada fresca de pulpo con pepino, jitomate, lechuga y aceite de oliva extra virgen.",
+      "Pulpo salteado con calabaza, champiñones y ajo.",
+      "Pulpo cocido con espinaca, pepino y aguacate en trozos.",
+    ],
+  },
+  {
+    match: ["sardina", "sardinas"],
+    recipes: [
+      "Ensalada de sardina con pepino, jitomate, lechuga y aguacate.",
+      "Sardina guisada con nopal, pimiento y tomate verde.",
+      "Sardinas con calabaza salteada, espinaca y aceite de oliva extra virgen.",
+      "Sardina con champiñones salteados, pepino y aguacate.",
+    ],
+  },
+  {
+    match: ["atun", "atún"],
+    recipes: [
+      "Ensalada de atún con pepino, jitomate, lechuga y aguacate.",
+      "Atún con nopal asado, pimiento y aceite de oliva extra virgen.",
+      "Atún con calabaza salteada, espinaca y champiñones.",
+      "Atún con pepino, apio y aguacate en trozos.",
+    ],
+  },
+  {
+    match: ["pollo"],
+    recipes: [
+      "Pollo a la plancha con calabaza, champiñones y aguacate.",
+      "Ensalada de pollo con lechuga, pepino, jitomate y aceite de oliva extra virgen.",
+      "Pollo salteado con brócoli, pimiento y ajo.",
+      "Pollo con nopal asado, espinaca y aguacate.",
+    ],
+  },
+  {
+    match: ["huevo", "huevos"],
+    recipes: [
+      "Huevos con espinaca, champiñones y aguacate.",
+      "Omelette de huevo con brócoli, pimiento y queso.",
+      "Huevos con nopal, jitomate y aceite de oliva extra virgen.",
+      "Huevos revueltos con calabaza, espinaca y aguacate.",
+    ],
+  },
+  {
+    match: ["bistec", "res", "carne"],
+    recipes: [
+      "Bistec a la plancha con nopal, pimiento y aguacate.",
+      "Bistec con brócoli salteado, champiñones y aceite de oliva extra virgen.",
+      "Ensalada tibia de bistec con lechuga, pepino y jitomate.",
+      "Bistec con calabaza, espinaca y aguacate.",
+    ],
+  },
+  {
+    match: ["pescado", "tilapia", "mojarra"],
+    recipes: [
+      "Filete de pescado a la plancha con calabaza, espinaca y aguacate.",
+      "Pescado con nopal asado, pepino y aceite de oliva extra virgen.",
+      "Pescado salteado con brócoli, champiñones y ajo.",
+      "Ensalada de pescado con lechuga, jitomate, pepino y aguacate.",
+    ],
+  },
+  {
+    match: ["camaron", "camarón", "camarones"],
+    recipes: [
+      "Camarones salteados con calabaza, pimiento y ajo.",
+      "Ensalada de camarón con pepino, lechuga, jitomate y aguacate.",
+      "Camarones con nopal asado, espinaca y aceite de oliva extra virgen.",
+      "Camarones con champiñones, brócoli y aguacate.",
+    ],
+  },
+];
+
 export function generateMealRecommendation(
   request: MealRequest
 ) {
@@ -364,6 +442,7 @@ export function generateMealRecommendation(
         requestedCount,
         validations: compatibleFoods,
         foods,
+        userMessage: request.userMessage,
       });
 
   return {
@@ -417,7 +496,7 @@ function buildProtocolGuidance(params: {
 
   lines.push("VALIDACIÓN DEL ESPECIALISTA EN COMIDA:");
   lines.push(`- Tipo de comida detectado: ${mealType}.`);
-  lines.push(`- El usuario pidió ${requestedCount} opción(es).`);
+  lines.push(`- El usuario pidió ${requestedCount} opción(es) como referencia inicial.`);
 
   if (validations.length > 0) {
     lines.push("");
@@ -452,6 +531,8 @@ function buildProtocolGuidance(params: {
     lines.push("");
     lines.push("BASES CULINARIAS COMPATIBLES:");
     lines.push(`- Entregar máximo ${mealBases.length} opción(es), usando estas bases.`);
+    lines.push("- Las opciones deben hacer sentido como comida real, no ser variaciones clonadas con los mismos ingredientes.");
+    lines.push("- Si hay varias proteínas solicitadas, separar las opciones por proteína cuando sea natural.");
 
     mealBases.forEach((base, index) => {
       lines.push(`${index + 1}. ${base.title}`);
@@ -466,7 +547,8 @@ function buildProtocolGuidance(params: {
   lines.push("- Si el usuario habla de pan, tortilla, pizza, galleta o base hecha con ingredientes compatibles, no bloquear por el nombre; validar por ingredientes.");
   lines.push("- Si faltan ingredientes para saber si una preparación especial es compatible, pedir los ingredientes mínimos en lugar de rechazarla automáticamente.");
   lines.push("- Sí puedes redactar de forma natural con proteínas, grasas saludables y vegetales bajos en carga glucémica.");
-  lines.push("- Si el usuario pide varias recetas, dar opciones breves y variadas solo con alimentos compatibles.");
+  lines.push("- Si el usuario pide varias recetas, dar opciones breves, variadas y culinariamente coherentes solo con alimentos compatibles.");
+  lines.push("- No repetir la misma receta cambiando solo el nombre de la proteína si el usuario pidió variedad.");
   lines.push("- Si el usuario pide una combinación compatible, no rechazarla solo porque no venía como plantilla exacta.");
   lines.push("- Si el usuario señala una contradicción previa, reconocerla brevemente y corregir según la lógica de la fase.");
   lines.push("- Mantener el propósito de la fase: que el usuario observe el impacto de los alimentos en su glucómetro.");
@@ -513,6 +595,7 @@ function buildMealBases(params: {
   requestedCount: number;
   validations: FoodValidation[];
   foods: AllowedFoods;
+  userMessage?: string;
 }) {
 
   const {
@@ -520,6 +603,7 @@ function buildMealBases(params: {
     requestedCount,
     validations,
     foods,
+    userMessage,
   } = params;
 
   const requestedProteins = getFoodsByCategory(
@@ -546,6 +630,29 @@ function buildMealBases(params: {
     validations,
     "fruta"
   );
+
+  const wantsRecipe = isRecipeRequest(
+    userMessage
+  );
+
+  if (
+    wantsRecipe &&
+    requestedProteins.length > 0
+  ) {
+    const diverseBases = buildDiverseRecipeBases({
+      requestedProteins,
+      requestedVegetables,
+      requestedFats,
+      requestedLegumes,
+      requestedFruits,
+      requestedCount,
+      userMessage,
+    });
+
+    if (diverseBases.length > 0) {
+      return diverseBases;
+    }
+  }
 
   const wantsSalad = validations.some(
     item => item.category === "preparación" && normalizeText(item.food).includes("ensalada")
@@ -604,6 +711,191 @@ function buildMealBases(params: {
     bases
   );
 
+}
+
+function buildDiverseRecipeBases(params: {
+  requestedProteins: string[];
+  requestedVegetables: string[];
+  requestedFats: string[];
+  requestedLegumes: string[];
+  requestedFruits: string[];
+  requestedCount: number;
+  userMessage?: string;
+}) {
+  const {
+    requestedProteins,
+    requestedVegetables,
+    requestedFats,
+    requestedLegumes,
+    requestedFruits,
+    requestedCount,
+    userMessage,
+  } = params;
+
+  const bases: MealBase[] = [];
+
+  requestedProteins.forEach(protein => {
+    const countForProtein = extractRequestedCountForProtein({
+      userMessage,
+      protein,
+      fallback: requestedProteins.length > 1
+        ? 1
+        : requestedCount,
+    });
+
+    const templates = getRecipeTemplatesForProtein(
+      protein
+    );
+
+    for (let index = 0; index < countForProtein; index++) {
+      const template = templates[index % templates.length];
+
+      bases.push({
+        title: applyRequestedRecipeDetails({
+          recipe: template,
+          requestedVegetables,
+          requestedFats,
+        }),
+        proteins: [protein],
+        vegetables: requestedVegetables,
+        fats: requestedFats.length > 0
+          ? requestedFats
+          : DEFAULT_FATS,
+        legumes: requestedLegumes,
+        fruits: requestedFruits,
+      });
+    }
+  });
+
+  return removeDuplicatedBases(
+    bases
+  ).slice(0, 6);
+}
+
+function getRecipeTemplatesForProtein(
+  protein: string
+) {
+  const normalizedProtein = normalizeText(
+    protein
+  );
+
+  const match = DIVERSE_RECIPE_TEMPLATES.find(template =>
+    template.match.some(item =>
+      normalizedProtein.includes(normalizeText(item))
+    )
+  );
+
+  if (match) {
+    return match.recipes;
+  }
+
+  return [
+    `${capitalize(protein)} a la plancha con nopal, pimiento y aguacate.`,
+    `Ensalada de ${lowerFirst(protein)} con lechuga, pepino, jitomate y aceite de oliva extra virgen.`,
+    `${capitalize(protein)} salteado con calabaza, champiñones y ajo.`,
+    `${capitalize(protein)} con brócoli, espinaca y aguacate.`,
+  ];
+}
+
+function applyRequestedRecipeDetails(params: {
+  recipe: string;
+  requestedVegetables: string[];
+  requestedFats: string[];
+}) {
+  const {
+    recipe,
+    requestedVegetables,
+    requestedFats,
+  } = params;
+
+  const hasRequestedVegetables = requestedVegetables.length > 0;
+  const hasRequestedFats = requestedFats.length > 0;
+
+  if (!hasRequestedVegetables && !hasRequestedFats) {
+    return recipe;
+  }
+
+  const notes: string[] = [];
+
+  if (hasRequestedVegetables) {
+    notes.push(`incluyendo ${formatList(requestedVegetables)}`);
+  }
+
+  if (hasRequestedFats) {
+    notes.push(`usando ${formatList(requestedFats)} como grasa saludable`);
+  }
+
+  return `${recipe.replace(/\.$/, "")}, ${notes.join(" y ")}.`;
+}
+
+function isRecipeRequest(
+  userMessage: string | undefined
+) {
+  if (!userMessage) return false;
+
+  const normalizedMessage = normalizeText(
+    userMessage
+  );
+
+  return /\b(receta|recetas|idea|ideas|opcion|opciones|preparacion|preparaciones|preparar|hacer|cocinar)\b/.test(
+    normalizedMessage
+  );
+}
+
+function extractRequestedCountForProtein(params: {
+  userMessage: string | undefined;
+  protein: string;
+  fallback: number;
+}) {
+  const {
+    userMessage,
+    protein,
+    fallback,
+  } = params;
+
+  if (!userMessage) {
+    return clampCount(fallback);
+  }
+
+  const normalizedMessage = normalizeText(
+    userMessage
+  );
+
+  const normalizedProtein = normalizeText(
+    protein
+  );
+
+  const proteinWords = normalizedProtein
+    .split(/\s+/)
+    .filter(Boolean);
+
+  const lastProteinWord = proteinWords[proteinWords.length - 1] ?? normalizedProtein;
+
+  const escapedProtein = escapeRegExp(
+    lastProteinWord
+  );
+
+  const patterns = [
+    new RegExp(`\\b(\\d+)\\s+(?:receta|recetas|idea|ideas|opcion|opciones)?\\s*(?:con|de)\\s+${escapedProtein}\\b`),
+    new RegExp(`\\b(\\d+)\\s+(?:con|de)\\s+${escapedProtein}\\b`),
+    new RegExp(`\\b${escapedProtein}\\b.{0,24}\\b(\\d+)\\s+(?:receta|recetas|idea|ideas|opcion|opciones)\\b`),
+  ];
+
+  for (const pattern of patterns) {
+    const match = normalizedMessage.match(
+      pattern
+    );
+
+    if (match?.[1]) {
+      return clampCount(
+        Number(match[1])
+      );
+    }
+  }
+
+  return clampCount(
+    fallback
+  );
 }
 
 function buildNaturalMeal(params: {
@@ -1448,4 +1740,8 @@ function normalizeText(value: string) {
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "");
 
+}
+
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }

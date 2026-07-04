@@ -22,138 +22,205 @@ export function buildAida2ComposerPrompt(params: {
     conversationStrategy,
   } = params;
 
+  const foodContext = workPlan.foodContext;
+  const modulePlan = workPlan.modulePlan;
+
   return [
     workPlan.purpose,
     "",
     "Personalidad de AIDA:",
     workPlan.personality,
+
     "",
-    "Comprensión del mensaje:",
-    `- Intención: ${workPlan.understanding.intent}`,
-    `- Glucosa mencionada: ${
-      workPlan.understanding.mentionedGlucose ?? "No mencionada"
-    }`,
+    "Rol del Composer:",
+    [
+      "- Redactar la respuesta final para el usuario.",
+      "- No tomar decisiones clínicas nuevas.",
+      "- No clasificar alimentos por cuenta propia.",
+      "- No inventar alimentos, recetas, ingredientes ni acompañamientos.",
+      "- Respetar la dirección de Cerebro y la validación de los módulos especializados.",
+      "- No mencionar módulos internos, WorkPlan, Cerebro, Composer ni MealSpecialist al usuario.",
+    ].join("\n"),
+
+    "",
+    "Comprensión del mensaje por Cerebro:",
+    [
+      `- Intención: ${workPlan.understanding.intent}`,
+      `- Glucosa mencionada: ${
+        workPlan.understanding.mentionedGlucose ?? "No mencionada"
+      }`,
+      `- Menciona comida: ${
+        workPlan.understanding.mentionsFood ? "Sí" : "No"
+      }`,
+      `- Menciona ejercicio: ${
+        workPlan.understanding.mentionsExercise ? "Sí" : "No"
+      }`,
+      `- Menciona medicamento: ${
+        workPlan.understanding.mentionsMedication ? "Sí" : "No"
+      }`,
+      `- Menciona protocolo: ${
+        workPlan.understanding.mentionsProtocol ? "Sí" : "No"
+      }`,
+    ].join("\n"),
+
+    "",
+    "FoodContext definido por Cerebro:",
+    foodContext.isFoodRelated
+      ? [
+          `- Es consulta alimentaria: Sí`,
+          `- Modo de conversación: ${foodContext.conversationMode}`,
+          `- Tipo de consulta: ${foodContext.questionType}`,
+          `- Elemento consultado: ${foodContext.targetText ?? "No definido"}`,
+          `- Necesita historial: ${foodContext.needsHistory ? "Sí" : "No"}`,
+          `- Necesita protocolo: ${foodContext.needsProtocol ? "Sí" : "No"}`,
+          `- Necesita especialista de comida: ${
+            foodContext.needsMealSpecialist ? "Sí" : "No"
+          }`,
+          `- Validar preparación: ${
+            foodContext.shouldValidatePreparation ? "Sí" : "No"
+          }`,
+          `- Foco de decisión: ${foodContext.decisionFocus}`,
+        ].join("\n")
+      : "No aplica.",
+
+    "",
+    "Plan de módulos definido por Cerebro:",
+    [
+      `- Ejecutar ContextModule: ${modulePlan.runContextModule ? "Sí" : "No"}`,
+      `- Ejecutar ProtocolModule: ${modulePlan.runProtocol ? "Sí" : "No"}`,
+      `- Ejecutar MealSpecialist: ${
+        modulePlan.runMealSpecialist ? "Sí" : "No"
+      }`,
+      `- Ejecutar GlucoseModule: ${modulePlan.runGlucoseModule ? "Sí" : "No"}`,
+      `- Ejecutar ExerciseModule: ${
+        modulePlan.runExerciseModule ? "Sí" : "No"
+      }`,
+      `- Ejecutar MedicationModule: ${
+        modulePlan.runMedicationModule ? "Sí" : "No"
+      }`,
+      `- Ejecutar SemaphoreModule: ${
+        modulePlan.runSemaphoreModule ? "Sí" : "No"
+      }`,
+      `- Acción esperada del especialista de comida: ${modulePlan.expectedMealSpecialistAction}`,
+    ].join("\n"),
+
     "",
     "Pensamiento del Cerebro:",
-    `- Objetivo del usuario: ${workPlan.thinking.userGoal}`,
-    `- Objetivo clínico: ${workPlan.thinking.clinicalGoal}`,
-    `- Acción principal: ${workPlan.thinking.mainAction}`,
+    [
+      `- Objetivo del usuario: ${workPlan.thinking.userGoal}`,
+      `- Objetivo clínico: ${workPlan.thinking.clinicalGoal}`,
+      `- Acción principal: ${workPlan.thinking.mainAction}`,
+      `- Principio de decisión: ${workPlan.thinking.decisionPrinciple}`,
+      `- Observación relevante: ${
+        workPlan.thinking.newRelevantObservation ?? "No aplica"
+      }`,
+    ].join("\n"),
+
     "",
     "Estrategia conversacional:",
     conversationStrategy
       ? [
           `- Objetivo de estilo: ${conversationStrategy.styleGoal}`,
+          "",
           "Debe seguir:",
           conversationStrategy.mustFollow.map((item) => `- ${item}`).join("\n"),
+          "",
           "Debe evitar:",
           conversationStrategy.mustAvoid.map((item) => `- ${item}`).join("\n"),
+          "",
           "Pistas de lenguaje natural:",
           conversationStrategy.naturalLanguageHints
             .map((item) => `- ${item}`)
             .join("\n"),
         ].join("\n")
       : "Sin estrategia conversacional disponible.",
+
     "",
-    "Información entregada por contextModule:",
+    "Información entregada por ContextModule:",
     contextModule
       ? [
           `- Resumen: ${contextModule.summary}`,
           "Contexto relevante:",
           contextModule.relevantContext ?? "Sin contexto relevante.",
         ].join("\n")
-      : "contextModule no ejecutado.",
+      : "ContextModule no ejecutado.",
+
     "",
     "Información entregada por MealSpecialist:",
     mealModule
       ? [
           `- Tipo de comida detectado: ${mealModule.mealType}`,
           "",
-          "VALIDACIÓN Y BASE DEL ESPECIALISTA:",
+          "VALIDACIÓN TÉCNICA DEL ESPECIALISTA:",
           mealModule.recommendation,
           "",
-          "REGLAS OBLIGATORIAS PARA REDACTAR CUANDO EXISTE MealSpecialist:",
-          "- MealSpecialist no es una respuesta programada; es la validación nutricional que debes respetar.",
-          "- Redacta de forma natural usando esa validación como límite.",
-          "- No inventes recetas completas si MealSpecialist no las entregó.",
-          "- No des 2, 3 o más opciones aunque el usuario las pida, a menos que MealSpecialist haya entregado opciones múltiples validadas.",
-          "- Si MealSpecialist entregó una sola base culinaria compatible, responde con una sola opción.",
-          "- No agregues alimentos, ingredientes, guarniciones, salsas, limón, aderezos, tostadas, tortillas, pan, arroz, papa, frutas, semillas ni acompañamientos que no estén validados por MealSpecialist o por el protocolo.",
-          "- No uses alimentos genéricos como 'verduras frescas' si no están especificados como alimentos permitidos.",
-          "- No conviertas un alimento no recomendado en permitido por combinarlo con proteína o grasa.",
-          "- Si el usuario pregunta por un alimento no recomendado, responde sobre ese alimento y conserva el contexto de la conversación.",
-          "- Si el usuario pregunta si puede agregar algo a un platillo anterior, no sugieras un platillo nuevo.",
-          "- Si el usuario señala una contradicción previa, reconoce el error de forma breve y corrige según el protocolo.",
-          "- Mantén el propósito de la fase: ayudar al usuario a observar el impacto de sus alimentos en el glucómetro.",
-          "- No menciones módulos internos, MealSpecialist, Composer, Cerebro ni protocolo como sistema interno.",
-          "- No cierres con preguntas automáticas.",
+          "Cómo usar esta validación:",
+          "- Usarla como límite técnico principal para alimentos, ingredientes, preparaciones y opciones.",
+          "- Si el especialista indica que algo no conviene, no convertirlo en permitido.",
+          "- Si el especialista indica que faltan ingredientes, pedir solo los ingredientes mínimos.",
+          "- Si el especialista entrega una base compatible, redactarla de forma natural sin agregar elementos no validados.",
+          "- Si el especialista no entrega opciones múltiples validadas, no inventar opciones múltiples.",
         ].join("\n")
       : "MealSpecialist no ejecutado.",
-    "",
-    "Continuidad conversacional obligatoria:",
-    [
-      "- Usa el historial reciente para entender si el mensaje actual es seguimiento de una comida anterior.",
-      "- Frases como 'y si le agrego', 'y si le pongo', 'esa opción', 'la opción 2', 'entonces', 'ok y ahora', '¿por qué me dijiste...?' indican continuidad.",
-      "- Si el usuario pregunta por agregar un alimento, interpreta que quiere agregarlo al platillo o comida que ya se venía hablando.",
-      "- No respondas como si fuera una pregunta aislada cuando hay un contexto alimentario inmediato.",
-      "- Si el usuario pregunta por un segundo alimento no recomendado después de otro alimento no recomendado, puedes comparar de forma natural su impacto glucémico sin inventar datos numéricos.",
-      "- Si el nuevo alimento tiene mayor carga glucémica que el alimento anterior, explica que se aleja más del objetivo de la fase.",
-      "- Evita frases que contradigan la decisión nutricional, como 'si ya lo vas a agregar' cuando el alimento no se recomienda.",
-      "- En alimentos no recomendados, usa lenguaje claro: 'no te lo recomiendo en esta fase', 'mejor no salirte del protocolo ahorita', o equivalente natural.",
-      "- Si el usuario ya tenía una base compatible, mantén esa base y solo ajusta el elemento consultado.",
-      "- No propongas un platillo nuevo a menos que el usuario lo pida.",
-    ].join("\n"),
+
     "",
     "Plan de seguridad:",
-    `- Riesgo: ${workPlan.safety.riskLevel}`,
-    `- Requiere foco inmediato de seguridad: ${
-      workPlan.safety.requiresImmediateSafetyFocus ? "Sí" : "No"
-    }`,
-    `- Razón: ${workPlan.safety.safetyReason ?? "No aplica"}`,
-    workPlan.safety.limits.map((item) => `- ${item}`).join("\n"),
+    [
+      `- Riesgo: ${workPlan.safety.riskLevel}`,
+      `- Requiere foco inmediato de seguridad: ${
+        workPlan.safety.requiresImmediateSafetyFocus ? "Sí" : "No"
+      }`,
+      `- Razón: ${workPlan.safety.safetyReason ?? "No aplica"}`,
+      "Límites:",
+      workPlan.safety.limits.map((item) => `- ${item}`).join("\n"),
+    ].join("\n"),
+
     "",
     "Plan de respuesta:",
-    `- Tono: ${workPlan.responsePlan.tone.join(", ")}`,
-    `- Longitud: ${workPlan.responsePlan.length}`,
-    "Debe hacer:",
-    workPlan.responsePlan.mustDo.map((item) => `- ${item}`).join("\n"),
-    "Debe evitar:",
-    workPlan.responsePlan.mustAvoid.map((item) => `- ${item}`).join("\n"),
+    [
+      `- Tono: ${workPlan.responsePlan.tone.join(", ")}`,
+      `- Longitud: ${workPlan.responsePlan.length}`,
+      "",
+      "Debe hacer:",
+      workPlan.responsePlan.mustDo.map((item) => `- ${item}`).join("\n"),
+      "",
+      "Debe evitar:",
+      workPlan.responsePlan.mustAvoid.map((item) => `- ${item}`).join("\n"),
+      "",
+      `Cierre: ${workPlan.responsePlan.closingInstruction}`,
+    ].join("\n"),
+
     "",
     "Formato visual obligatorio:",
     [
       "- Escribe en bloques cortos.",
       "- Usa doble salto de línea entre ideas diferentes.",
-      "- Si das 2 o más opciones, usa lista numerada solo cuando esas opciones estén validadas.",
+      "- Responde primero la pregunta directa del usuario.",
+      "- Si das pasos, que sean pocos y accionables.",
+      "- Si das opciones, solo usa opciones validadas por los módulos.",
       "- No escribas una respuesta completa en un solo bloque largo.",
     ].join("\n"),
+
     "",
     "Historial reciente:",
     history || "Sin historial disponible.",
+
     "",
     "Mensaje actual del usuario:",
     userMessage,
+
     "",
     "Instrucción final:",
-    mealModule
-      ? [
-          "Redacta una respuesta natural para el usuario.",
-          "No expliques el plan interno.",
-          "No menciones módulos internos.",
-          "Obedece la validación de MealSpecialist como límite principal.",
-          "Usa el historial reciente para conservar continuidad.",
-          "No respondas como conversación nueva si el mensaje actual depende del anterior.",
-          "No agregues alimentos, ingredientes, recetas ni acompañamientos no validados.",
-          "Si el usuario pidió varias recetas pero solo hay una base validada, entrega una sola opción compatible.",
-          "Si el usuario pregunta por un alimento no recomendado, responde directamente sobre ese alimento y conserva el contexto.",
-          "Si el usuario pregunta por agregar papa, arroz, tostada, pan, tortilla, avena o pasta a una comida ya planteada, explica que en esta fase no conviene salir del protocolo porque puede elevar la carga glucémica.",
-          "Cierra con una acción concreta relacionada con mantener la comida dentro del protocolo o medir glucosa, no con una pregunta automática.",
-        ].join(" ")
-      : [
-          "Redacta una respuesta natural para el usuario.",
-          "No expliques el plan interno.",
-          "No menciones módulos internos.",
-          "Usa el historial reciente para conservar continuidad cuando aplique.",
-          "Cierra con una acción concreta.",
-        ].join(" "),
+    [
+      "Redacta una respuesta natural para el usuario.",
+      "No expliques el plan interno.",
+      "No menciones módulos internos.",
+      "No tomes decisiones clínicas nuevas.",
+      "Si hay MealSpecialist, respeta su validación como límite técnico.",
+      "Si FoodContext indica seguimiento, conserva la continuidad antes de responder.",
+      "No respondas como tema nuevo si Cerebro detectó seguimiento.",
+      "No agregues alimentos, recetas, ingredientes ni acompañamientos que no hayan sido validados.",
+      "Cierra con una acción concreta relacionada con el mismo tema.",
+    ].join(" "),
   ].join("\n");
 }

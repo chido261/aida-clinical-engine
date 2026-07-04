@@ -59,6 +59,28 @@ export type Aida2MainAction =
   | "SUGGEST_PROFILE_UPDATE"
   | "RESUME_FOLLOW_UP";
 
+export type Aida2ConversationMode =
+  | "NEW_TOPIC"
+  | "FOLLOW_UP"
+  | "CORRECTION"
+  | "UNKNOWN";
+
+export type Aida2FoodQuestionType =
+  | "CAN_I_EAT"
+  | "ADD_TO_PREVIOUS_MEAL"
+  | "WHAT_TO_PAIR"
+  | "RECIPE_REQUEST"
+  | "VALIDATE_PREPARATION"
+  | "HOW_TO_PREPARE"
+  | "UNKNOWN";
+
+export type Aida2MealSpecialistAction =
+  | "CLASSIFY_OR_VALIDATE"
+  | "VALIDATE_PREPARATION"
+  | "BUILD_OPTIONS"
+  | "EXPLAIN_LIMIT"
+  | "NONE";
+
 export type Aida2BrainInput = {
   userId?: string | null;
   message: string;
@@ -75,6 +97,29 @@ export type Aida2Understanding = {
   mentionsMedication: boolean;
   mentionsProtocol: boolean;
   asksForPreviousContext: boolean;
+};
+
+export type Aida2FoodContext = {
+  isFoodRelated: boolean;
+  conversationMode: Aida2ConversationMode;
+  questionType: Aida2FoodQuestionType;
+  targetText: string | null;
+  needsHistory: boolean;
+  needsProtocol: boolean;
+  needsMealSpecialist: boolean;
+  shouldValidatePreparation: boolean;
+  decisionFocus: string;
+};
+
+export type Aida2ModulePlan = {
+  runContextModule: boolean;
+  runProtocol: boolean;
+  runMealSpecialist: boolean;
+  runGlucoseModule: boolean;
+  runExerciseModule: boolean;
+  runMedicationModule: boolean;
+  runSemaphoreModule: boolean;
+  expectedMealSpecialistAction: Aida2MealSpecialistAction;
 };
 
 export type Aida2Decision = {
@@ -122,17 +167,35 @@ export type Aida2WorkPlan = {
   purpose: string;
   personality: string;
   understanding: Aida2Understanding;
+  foodContext: Aida2FoodContext;
+  modulePlan: Aida2ModulePlan;
   thinking: Aida2ThinkingPlan;
   decision: Aida2Decision;
   safety: Aida2SafetyPlan;
   responsePlan: Aida2ResponsePlan;
 };
 
-const FOOD_PATTERN =
-  /\b(comer|comida|cena|cenar|desayuno|desayunar|almuerzo|platillo|platillos|men[uú]|antojo|receta|recetas|ingrediente|ingredientes|agregar|acompañar|acompanar|opci[oó]n|opciones|segura|seguro|permitido|permitida|recomiendas|recomendar|preparar|preparo|cocinar|cocino|pan|pan dulce|pan integral|tostada|tostadas|tortilla|arroz|pasta|avena|cereal|cereales|granola|galleta|galletas|papa|papas|camote|fruta|frutas|verdura|verduras|vegetal|vegetales|prote[ií]na|proteinas|proteínas|mango|manzana|pl[aá]tano|uva|fresa|fresas|ar[aá]ndanos|frambuesas|zarzamoras|moras|toronja|huevo|huevos|pollo|res|bistec|carne|cerdo|pavo|pescado|at[uú]n|sardina|sardinas|salm[oó]n|tilapia|mojarra|camar[oó]n|camarones|pulpo|queso|yogur|yogurt|k[eé]fir|aguacate|aceite|almendras|nueces|pistaches|cacahuate|ch[ií]a|linaza|lechuga|espinaca|br[oó]coli|coliflor|pepino|calabaza|ejotes|champiñones|jitomate|tomate|nopal|pimiento|cebolla|ajo|frijol|frijoles|garbanzo|lenteja|lentejas|haba|habas|soya|alubias)\b/i;
+const FOOD_INTENT_PATTERN =
+  /\b(comer|tomar|beber|desayunar|cenar|almorzar|comida|desayuno|cena|almuerzo|receta|platillo|men[uú]|ingrediente|ingredientes|preparar|preparo|cocinar|agregar|poner|acompañar|acompanar|bebida|alimento|opci[oó]n|opciones|permitido|permitida|conviene|recomiendas|seguro|segura)\b/i;
+
+const EXERCISE_PATTERN =
+  /\b(ejercicio|caminar|caminata|entrenar|pesas|cardio|actividad f[ií]sica|correr|gym|gimnasio)\b/i;
+
+const GLUCOSE_PATTERN =
+  /\b(glucosa|az[uú]car|mg\/dl|hipoglucemia|hiperglucemia|ayuno|postcomida|despu[eé]s de comer|antes de comer|pico|medici[oó]n)\b/i;
+
+const PROTOCOL_PATTERN =
+  /\b(protocolo|fase|plan|permitido|prohibido|avance|retroceder|fase 1|fase 2|diagn[oó]stico|lineamiento|lineamientos)\b/i;
+
+const MEDICATION_PATTERN =
+  /\b(medicamento|medicina|metformina|insulina|dosis|pastilla|tratamiento|glibenclamida|dapagliflozina|jardiance|galvus|ozempic|trayenta|linagliptina)\b/i;
 
 function normalize(text: string) {
   return text.toLowerCase().trim();
+}
+
+function uniqueModules(modules: Aida2Module[]): Aida2Module[] {
+  return Array.from(new Set(modules));
 }
 
 function extractGlucose(message: string): number | null {
@@ -145,7 +208,16 @@ function extractGlucose(message: string): number | null {
   return values[values.length - 1];
 }
 
-function detectIntent(message: string): Aida2Intent {
+function hasRecentHistory(history?: string | null) {
+  return Boolean(history && history.trim().length > 0);
+}
+
+function historyLooksFoodRelated(history?: string | null) {
+  if (!history) return false;
+  return FOOD_INTENT_PATTERN.test(history);
+}
+
+function detectIntent(message: string, history?: string | null): Aida2Intent {
   const text = normalize(message);
 
   if (
@@ -156,44 +228,255 @@ function detectIntent(message: string): Aida2Intent {
     return "FOLLOW_UP_CONTEXT";
   }
 
-  if (FOOD_PATTERN.test(text)) {
+  if (FOOD_INTENT_PATTERN.test(text)) {
     return "FOOD_ADVICE";
   }
 
   if (
-    /\b(ejercicio|caminar|caminata|entrenar|pesas|cardio|actividad f[ií]sica|correr|gym|gimnasio)\b/i.test(
+    historyLooksFoodRelated(history) &&
+    /\b(y si|con qu[eé]|con que|le agrego|le pongo|lo hago|la hago|entonces|ok|ahora|sin|con|eso|esa|ese|las|los|la|el)\b/i.test(
       text
     )
   ) {
+    return "FOOD_ADVICE";
+  }
+
+  if (EXERCISE_PATTERN.test(text)) {
     return "EXERCISE_ADVICE";
   }
 
-  if (
-    /\b(glucosa|az[uú]car|mg\/dl|hipoglucemia|hiperglucemia|ayuno|postcomida|despu[eé]s de comer|antes de comer)\b/i.test(
-      text
-    ) ||
-    extractGlucose(text) !== null
-  ) {
+  if (GLUCOSE_PATTERN.test(text) || extractGlucose(text) !== null) {
     return "GLUCOSE_REVIEW";
   }
 
-  if (
-    /\b(protocolo|fase|plan|permitido|prohibido|avance|retroceder|fase 1|fase 2|diagn[oó]stico)\b/i.test(
-      text
-    )
-  ) {
+  if (PROTOCOL_PATTERN.test(text)) {
     return "PROTOCOL_GUIDANCE";
   }
 
-  if (
-    /\b(medicamento|medicina|metformina|insulina|dosis|pastilla|tratamiento|glibenclamida|dapagliflozina|jardiance|galvus|ozempic|trayenta|linagliptina)\b/i.test(
-      text
-    )
-  ) {
+  if (MEDICATION_PATTERN.test(text)) {
     return "MEDICATION_EDUCATION";
   }
 
   return "GENERAL_SUPPORT";
+}
+
+function detectConversationMode(
+  message: string,
+  history?: string | null
+): Aida2ConversationMode {
+  const text = normalize(message);
+
+  if (
+    /\b(pero dijiste|me dijiste|antes dijiste|te contradices|contradicci[oó]n|corrige|corregir|no era|no dije|eso no)\b/i.test(
+      text
+    )
+  ) {
+    return "CORRECTION";
+  }
+
+  if (
+    /\b(y si|si le agrego|si le pongo|le agrego|le pongo|con qu[eé]|con que|qu[eé] bebida|que bebida|esa opci[oó]n|la opci[oó]n|entonces|ok y ahora|ahora|har[eé]|hare|lo har[eé]|la hago|lo hago|sin|con)\b/i.test(
+      text
+    )
+  ) {
+    return "FOLLOW_UP";
+  }
+
+  if (
+    historyLooksFoodRelated(history) &&
+    /\b(eso|esa|ese|esta|este|las|los|la|el|tambien|tambi[eé]n|igual)\b/i.test(
+      text
+    )
+  ) {
+    return "FOLLOW_UP";
+  }
+
+  if (!text) return "UNKNOWN";
+
+  return "NEW_TOPIC";
+}
+
+function detectFoodQuestionType(message: string): Aida2FoodQuestionType {
+  const text = normalize(message);
+
+  if (
+    /\b(puedo comer|puedo tomar|puedo beber|puedo desayunar|puedo cenar|qu[eé] tal|es bueno|es malo|conviene|recomiendas|est[aá] permitido|est[aá] permitida|seguro|segura)\b/i.test(
+      text
+    )
+  ) {
+    return "CAN_I_EAT";
+  }
+
+  if (
+    /\b(y si|si le agrego|si le pongo|le agrego|le pongo|agregar|poner|con|sin)\b/i.test(
+      text
+    )
+  ) {
+    return "ADD_TO_PREVIOUS_MEAL";
+  }
+
+  if (
+    /\b(con qu[eé]|con que|acompañar|acompanar|bebida|tomar|beber)\b/i.test(
+      text
+    )
+  ) {
+    return "WHAT_TO_PAIR";
+  }
+
+  if (/\b(receta|recetas|men[uú]|opci[oó]n|opciones|ideas)\b/i.test(text)) {
+    return "RECIPE_REQUEST";
+  }
+
+  if (
+    /\b(tiene|lleva|ingrediente|ingredientes|hecho con|hecha con|preparado con|preparada con)\b/i.test(
+      text
+    )
+  ) {
+    return "VALIDATE_PREPARATION";
+  }
+
+  if (
+    /\b(c[oó]mo lo preparo|como lo preparo|c[oó]mo la preparo|como la preparo|preparar|preparo|cocinar|cocino|hacerlo|hacerla)\b/i.test(
+      text
+    )
+  ) {
+    return "HOW_TO_PREPARE";
+  }
+
+  return "UNKNOWN";
+}
+
+function extractTargetText(message: string): string | null {
+  const text = message.trim();
+
+  const patterns = [
+    /\bpuedo\s+(?:comer|tomar|beber|desayunar|cenar)\s+(.+?)\??$/i,
+    /\bqu[eé]\s+tal\s+(.+?)\??$/i,
+    /\bsi\s+le\s+(?:agrego|pongo)\s+(.+?)\??$/i,
+    /\ble\s+(?:agrego|pongo)\s+(.+?)\??$/i,
+    /\bcon\s+qu[eé]\s+(.+?)\??$/i,
+    /\btiene\s+(.+?)\??$/i,
+    /\blleva\s+(.+?)\??$/i,
+  ];
+
+  for (const pattern of patterns) {
+    const match = text.match(pattern);
+    if (match?.[1]) {
+      return match[1].trim();
+    }
+  }
+
+  return text.length <= 80 ? text : null;
+}
+
+function shouldValidatePreparation(message: string, questionType: Aida2FoodQuestionType) {
+  const text = normalize(message);
+
+  if (questionType === "VALIDATE_PREPARATION") return true;
+
+  return /\b(tiene|lleva|hecho con|hecha con|preparado con|preparada con|ingrediente|ingredientes)\b/i.test(
+    text
+  );
+}
+
+function buildFoodDecisionFocus(params: {
+  isFoodRelated: boolean;
+  conversationMode: Aida2ConversationMode;
+  questionType: Aida2FoodQuestionType;
+  targetText: string | null;
+  needsHistory: boolean;
+  shouldValidatePreparation: boolean;
+}) {
+  const {
+    isFoodRelated,
+    conversationMode,
+    questionType,
+    targetText,
+    needsHistory,
+    shouldValidatePreparation,
+  } = params;
+
+  if (!isFoodRelated) {
+    return "El mensaje no requiere decisión alimentaria.";
+  }
+
+  if (conversationMode === "CORRECTION") {
+    return "El usuario señala una posible contradicción. Cerebro debe conservar contexto, corregir si aplica y no defender respuestas previas.";
+  }
+
+  if (needsHistory) {
+    return "El mensaje parece depender de una comida previa. Cerebro debe usar historial antes de tratarlo como tema nuevo.";
+  }
+
+  if (shouldValidatePreparation) {
+    return "El usuario describe una preparación. Cerebro debe pedir validación técnica por ingredientes al especialista.";
+  }
+
+  if (questionType === "CAN_I_EAT") {
+    return `El usuario pregunta si puede consumir algo${
+      targetText ? `: ${targetText}` : ""
+    }. Cerebro debe pedir validación técnica y responder si conviene o no conviene.`;
+  }
+
+  if (questionType === "ADD_TO_PREVIOUS_MEAL") {
+    return "El usuario quiere agregar algo a una comida previa. Cerebro debe mantener esa comida y validar solo el elemento nuevo.";
+  }
+
+  if (questionType === "WHAT_TO_PAIR") {
+    return "El usuario pide acompañamiento o bebida. Cerebro debe mantener el contexto de la comida actual y no inventar platillo nuevo.";
+  }
+
+  if (questionType === "RECIPE_REQUEST") {
+    return "El usuario pide receta u opciones. Cerebro debe pedir al especialista opciones compatibles con el protocolo activo.";
+  }
+
+  if (questionType === "HOW_TO_PREPARE") {
+    return "El usuario pregunta preparación. Cerebro debe pedir apoyo técnico sin cambiar la comida original.";
+  }
+
+  return "El usuario requiere asesoría alimentaria orientada a estabilidad glucémica.";
+}
+
+function buildFoodContext(
+  message: string,
+  history: string,
+  understanding: Aida2Understanding
+): Aida2FoodContext {
+  const isFoodRelated =
+    understanding.intent === "FOOD_ADVICE" || understanding.mentionsFood;
+
+  const conversationMode = detectConversationMode(message, history);
+  const questionType = isFoodRelated
+    ? detectFoodQuestionType(message)
+    : "UNKNOWN";
+
+  const needsHistory =
+    isFoodRelated &&
+    (conversationMode === "FOLLOW_UP" || conversationMode === "CORRECTION");
+
+  const validatePreparation =
+    isFoodRelated && shouldValidatePreparation(message, questionType);
+
+  const targetText = isFoodRelated ? extractTargetText(message) : null;
+
+  return {
+    isFoodRelated,
+    conversationMode,
+    questionType,
+    targetText,
+    needsHistory,
+    needsProtocol: isFoodRelated,
+    needsMealSpecialist: isFoodRelated,
+    shouldValidatePreparation: validatePreparation,
+    decisionFocus: buildFoodDecisionFocus({
+      isFoodRelated,
+      conversationMode,
+      questionType,
+      targetText,
+      needsHistory,
+      shouldValidatePreparation: validatePreparation,
+    }),
+  };
 }
 
 function detectSevereSymptoms(message: string) {
@@ -224,28 +507,29 @@ function detectMedicationProfileUpdateCandidate(message: string) {
   );
 }
 
-function buildUnderstanding(message: string): Aida2Understanding {
+function buildUnderstanding(
+  message: string,
+  history?: string | null
+): Aida2Understanding {
   const normalizedMessage = normalize(message);
-  const intent = detectIntent(message);
+  const intent = detectIntent(message, history);
+
+  const mentionsFood =
+    FOOD_INTENT_PATTERN.test(normalizedMessage) ||
+    (historyLooksFoodRelated(history) &&
+      /\b(y si|con qu[eé]|con que|agrego|pongo|sin|con|la hago|lo hago|har[eé]|hare|eso|esa|ese|las|los|la|el)\b/i.test(
+        normalizedMessage
+      ));
 
   return {
     rawMessage: message,
     normalizedMessage,
     intent,
     mentionedGlucose: extractGlucose(message),
-    mentionsFood: FOOD_PATTERN.test(normalizedMessage),
-    mentionsExercise:
-      /\b(ejercicio|caminar|caminata|entrenar|pesas|cardio|actividad f[ií]sica|correr|gym|gimnasio)\b/i.test(
-        normalizedMessage
-      ),
-    mentionsMedication:
-      /\b(medicamento|medicina|metformina|insulina|dosis|pastilla|tratamiento|glibenclamida|dapagliflozina|jardiance|galvus|ozempic|trayenta|linagliptina)\b/i.test(
-        normalizedMessage
-      ),
-    mentionsProtocol:
-      /\b(protocolo|fase|plan|permitido|prohibido|avance|retroceder|fase 1|fase 2|diagn[oó]stico)\b/i.test(
-        normalizedMessage
-      ),
+    mentionsFood,
+    mentionsExercise: EXERCISE_PATTERN.test(normalizedMessage),
+    mentionsMedication: MEDICATION_PATTERN.test(normalizedMessage),
+    mentionsProtocol: PROTOCOL_PATTERN.test(normalizedMessage),
     asksForPreviousContext: intent === "FOLLOW_UP_CONTEXT",
   };
 }
@@ -325,41 +609,99 @@ function buildSafetyPlan(understanding: Aida2Understanding): Aida2SafetyPlan {
   };
 }
 
+function buildModulePlan(
+  understanding: Aida2Understanding,
+  foodContext: Aida2FoodContext,
+  safety: Aida2SafetyPlan
+): Aida2ModulePlan {
+  if (safety.requiresImmediateSafetyFocus) {
+    return {
+      runContextModule: true,
+      runProtocol: false,
+      runMealSpecialist: false,
+      runGlucoseModule: false,
+      runExerciseModule: false,
+      runMedicationModule: false,
+      runSemaphoreModule: true,
+      expectedMealSpecialistAction: "NONE",
+    };
+  }
+
+  if (foodContext.isFoodRelated) {
+    let expectedMealSpecialistAction: Aida2MealSpecialistAction =
+      "CLASSIFY_OR_VALIDATE";
+
+    if (foodContext.shouldValidatePreparation) {
+      expectedMealSpecialistAction = "VALIDATE_PREPARATION";
+    }
+
+    if (
+      foodContext.questionType === "RECIPE_REQUEST" ||
+      foodContext.questionType === "WHAT_TO_PAIR" ||
+      foodContext.questionType === "HOW_TO_PREPARE"
+    ) {
+      expectedMealSpecialistAction = "BUILD_OPTIONS";
+    }
+
+    if (
+      foodContext.questionType === "CAN_I_EAT" ||
+      foodContext.questionType === "ADD_TO_PREVIOUS_MEAL"
+    ) {
+      expectedMealSpecialistAction = "CLASSIFY_OR_VALIDATE";
+    }
+
+    return {
+      runContextModule: true,
+      runProtocol: true,
+      runMealSpecialist: true,
+      runGlucoseModule: false,
+      runExerciseModule: false,
+      runMedicationModule: false,
+      runSemaphoreModule: false,
+      expectedMealSpecialistAction,
+    };
+  }
+
+  return {
+    runContextModule: true,
+    runProtocol: understanding.intent === "PROTOCOL_GUIDANCE",
+    runMealSpecialist: false,
+    runGlucoseModule:
+      understanding.intent === "GLUCOSE_REVIEW" ||
+      understanding.intent === "EXERCISE_ADVICE" ||
+      understanding.intent === "PROTOCOL_GUIDANCE",
+    runExerciseModule: understanding.intent === "EXERCISE_ADVICE",
+    runMedicationModule: understanding.intent === "MEDICATION_EDUCATION",
+    runSemaphoreModule:
+      understanding.intent === "GLUCOSE_REVIEW" ||
+      understanding.intent === "EXERCISE_ADVICE" ||
+      understanding.intent === "MEDICATION_EDUCATION",
+    expectedMealSpecialistAction: "NONE",
+  };
+}
+
 function getModulesToRun(
   intent: Aida2Intent,
-  safety: Aida2SafetyPlan
+  safety: Aida2SafetyPlan,
+  modulePlan: Aida2ModulePlan
 ): Aida2Module[] {
-  const base: Aida2Module[] = ["CONTEXT"];
+  const modules: Aida2Module[] = [];
 
-  if (safety.requiresImmediateSafetyFocus) {
-    return [...base, "SEMAPHORE"];
+  if (modulePlan.runContextModule) modules.push("CONTEXT");
+
+  if (safety.requiresImmediateSafetyFocus || modulePlan.runSemaphoreModule) {
+    modules.push("SEMAPHORE");
   }
 
-  if (intent === "FOOD_ADVICE") {
-    return [...base, "NUTRITION", "PROTOCOL"];
-  }
+  if (modulePlan.runMealSpecialist) modules.push("NUTRITION");
+  if (modulePlan.runProtocol) modules.push("PROTOCOL");
+  if (modulePlan.runGlucoseModule) modules.push("GLUCOSE");
+  if (modulePlan.runExerciseModule) modules.push("EXERCISE");
+  if (modulePlan.runMedicationModule) modules.push("MEDICATION");
 
-  if (intent === "EXERCISE_ADVICE") {
-    return [...base, "GLUCOSE", "EXERCISE", "SEMAPHORE"];
-  }
+  if (intent === "FOLLOW_UP_CONTEXT") modules.push("FOLLOW_UP");
 
-  if (intent === "GLUCOSE_REVIEW") {
-    return [...base, "GLUCOSE", "SEMAPHORE", "FOLLOW_UP"];
-  }
-
-  if (intent === "PROTOCOL_GUIDANCE") {
-    return [...base, "PROTOCOL", "GLUCOSE"];
-  }
-
-  if (intent === "MEDICATION_EDUCATION") {
-    return [...base, "MEDICATION", "SEMAPHORE"];
-  }
-
-  if (intent === "FOLLOW_UP_CONTEXT") {
-    return [...base, "FOLLOW_UP"];
-  }
-
-  return base;
+  return uniqueModules(modules);
 }
 
 function buildResponseGoal(intent: Aida2Intent) {
@@ -449,16 +791,13 @@ function buildMissingInformation(
     return ["Glucosa actual antes de recomendar ejercicio"];
   }
 
-  if (understanding.intent === "FOOD_ADVICE") {
-    return [];
-  }
-
   return [];
 }
 
 function buildExtraDataNeeded(
   understanding: Aida2Understanding,
-  safety: Aida2SafetyPlan
+  safety: Aida2SafetyPlan,
+  foodContext: Aida2FoodContext
 ): string[] {
   const data: string[] = [];
 
@@ -466,8 +805,13 @@ function buildExtraDataNeeded(
     data.push("Evaluación de Semáforo");
   }
 
-  if (understanding.intent === "FOOD_ADVICE") {
-    data.push("Alimentos permitidos por protocolo actual");
+  if (foodContext.isFoodRelated) {
+    data.push("Protocolo activo de alimentación");
+    data.push("Validación técnica del especialista de comida");
+
+    if (foodContext.needsHistory) {
+      data.push("Historial reciente para conservar continuidad");
+    }
   }
 
   if (understanding.intent === "GLUCOSE_REVIEW") {
@@ -497,6 +841,7 @@ function buildMainAction(
   if (safety.requiresImmediateSafetyFocus) return "PRIORITIZE_SAFETY";
   if (missingInformation.length > 0) return "ASK_MINIMUM_MISSING_DATA";
   if (understanding.intent === "FOLLOW_UP_CONTEXT") return "RESUME_FOLLOW_UP";
+
   if (detectMedicationProfileUpdateCandidate(understanding.rawMessage)) {
     return "SUGGEST_PROFILE_UPDATE";
   }
@@ -506,38 +851,52 @@ function buildMainAction(
 
 function buildThinkingPlan(
   understanding: Aida2Understanding,
-  safety: Aida2SafetyPlan
+  safety: Aida2SafetyPlan,
+  foodContext: Aida2FoodContext
 ): Aida2ThinkingPlan {
   const missingInformation = buildMissingInformation(understanding, safety);
   const shouldSuggestProfileUpdate = detectMedicationProfileUpdateCandidate(
     understanding.rawMessage
   );
 
+  const knownContextToUse = [
+    "Contexto base de sesión",
+    "Perfil vivo si está disponible",
+    "Protocolo actual si está disponible",
+    "Seguimiento activo si existe",
+  ];
+
+  if (foodContext.isFoodRelated) {
+    knownContextToUse.push("FoodContext generado por Cerebro");
+  }
+
   return {
     userGoal: buildUserGoal(understanding),
     clinicalGoal: buildClinicalGoal(understanding, safety),
-    knownContextToUse: [
-      "Contexto base de sesión",
-      "Perfil vivo si está disponible",
-      "Protocolo actual si está disponible",
-      "Seguimiento activo si existe",
-    ],
+    knownContextToUse,
     missingInformation,
-    extraDataNeeded: buildExtraDataNeeded(understanding, safety),
+    extraDataNeeded: buildExtraDataNeeded(understanding, safety, foodContext),
     newRelevantObservation: shouldSuggestProfileUpdate
       ? "El usuario mencionó un medicamento que parece formar parte de su tratamiento y podría requerir confirmación en Perfil."
-      : null,
+      : foodContext.isFoodRelated
+        ? foodContext.decisionFocus
+        : null,
     mainAction: buildMainAction(understanding, safety, missingInformation),
     decisionPrinciple:
-      "AIDA debe ayudar al usuario a tomar la mejor decisión posible para controlar su glucosa diaria, sin sustituir al médico ni ajustar medicamentos.",
+      "Cerebro interpreta intención, continuidad y dirección. Los módulos especializados validan con protocolos. Composer solo redacta la respuesta final.",
   };
 }
 
 function buildDecision(
   understanding: Aida2Understanding,
-  safety: Aida2SafetyPlan
+  safety: Aida2SafetyPlan,
+  modulePlan: Aida2ModulePlan
 ): Aida2Decision {
-  const modulesToRun = getModulesToRun(understanding.intent, safety);
+  const modulesToRun = getModulesToRun(
+    understanding.intent,
+    safety,
+    modulePlan
+  );
 
   return {
     priority: safety.riskLevel,
@@ -561,7 +920,9 @@ function buildResponsePlan(
   understanding: Aida2Understanding,
   decision: Aida2Decision,
   safety: Aida2SafetyPlan,
-  thinking: Aida2ThinkingPlan
+  thinking: Aida2ThinkingPlan,
+  foodContext: Aida2FoodContext,
+  modulePlan: Aida2ModulePlan
 ): Aida2ResponsePlan {
   const tone: Aida2ResponseTone[] = ["CALM", "PRACTICAL"];
   const shouldSuggestProfileUpdate =
@@ -575,7 +936,11 @@ function buildResponsePlan(
     tone.push("EDUCATIONAL");
   }
 
-  if (understanding.intent === "FOLLOW_UP_CONTEXT") {
+  if (
+    understanding.intent === "FOLLOW_UP_CONTEXT" ||
+    foodContext.conversationMode === "FOLLOW_UP" ||
+    foodContext.conversationMode === "CORRECTION"
+  ) {
     tone.push("FOLLOW_UP");
   }
 
@@ -587,13 +952,27 @@ function buildResponsePlan(
     `Guiar la respuesta según la acción principal: ${thinking.mainAction}.`,
   ];
 
-  if (understanding.intent === "FOOD_ADVICE") {
+  if (foodContext.isFoodRelated) {
     mustDo.push(
-      "Validar alimentos con el protocolo activo antes de recomendarlos.",
-      "Si el usuario pide recetas, opciones o ideas de comida, usar solo alimentos permitidos por el protocolo activo.",
-      "Si el usuario pregunta por una opción mencionada antes, corregir cualquier contradicción previa y responder según el protocolo activo.",
-      "Si el usuario pregunta si puede comer o agregar algo, responder primero si conviene o no conviene."
+      "Respetar el FoodContext generado por Cerebro.",
+      `Modo de conversación alimentaria: ${foodContext.conversationMode}.`,
+      `Tipo de consulta alimentaria: ${foodContext.questionType}.`,
+      `Foco de decisión: ${foodContext.decisionFocus}.`,
+      `Acción esperada del especialista: ${modulePlan.expectedMealSpecialistAction}.`,
+      "Validar con protocolo y especialista antes de recomendar.",
+      "No cambiar la comida consultada por otra diferente.",
+      "Responder primero si conviene o no conviene."
     );
+
+    if (foodContext.targetText) {
+      mustDo.push(`Elemento consultado por el usuario: ${foodContext.targetText}.`);
+    }
+
+    if (foodContext.needsHistory) {
+      mustDo.push(
+        "Usar historial reciente para entender si el usuario continúa una comida previa."
+      );
+    }
   }
 
   if (understanding.intent === "MEDICATION_EDUCATION") {
@@ -624,17 +1003,20 @@ function buildResponsePlan(
     "No ajustar, suspender ni modificar medicamentos.",
   ];
 
-  if (understanding.intent === "FOOD_ADVICE") {
+  if (foodContext.isFoodRelated) {
     mustAvoid.push(
-      "No recomendar alimentos fuera del protocolo activo.",
-      "No decir que un alimento no recomendado es seguro solo por combinarlo con proteína o grasa.",
-      "No inventar recetas con pan, tostadas, tortilla, arroz, papa, avena, pasta, cereales o granola durante fase diagnóstico.",
-      "No dar varias recetas si no han sido validadas por el especialista o el protocolo.",
-      "No perder el hilo de la comida actual."
+      "No tomar decisiones técnicas que correspondan al especialista.",
+      "No inventar recetas, alimentos o acompañamientos no validados.",
+      "No perder el hilo de la comida actual.",
+      "No clasificar una preparación especial solo por su nombre común.",
+      "No convertir un alimento no recomendado en permitido solo por combinarlo con otro alimento."
     );
   }
 
-  if (understanding.intent === "MEDICATION_EDUCATION" && !shouldSuggestProfileUpdate) {
+  if (
+    understanding.intent === "MEDICATION_EDUCATION" &&
+    !shouldSuggestProfileUpdate
+  ) {
     mustAvoid.push(
       "No asumir que el usuario toma el medicamento solo porque preguntó por él.",
       "No decir 'sigue tomándolo', 'sigue tomándola', 'continúa tomándolo' o frases similares si el usuario no confirmó que lo usa."
@@ -655,29 +1037,39 @@ function buildResponsePlan(
             ? "Cerrar pidiendo solo el dato mínimo necesario."
             : thinking.mainAction === "SUGGEST_PROFILE_UPDATE"
               ? "Cerrar sugiriendo confirmar o registrar el dato relevante en Perfil."
-              : "Cerrar con una acción breve relacionada con el mismo tema.",
+              : foodContext.isFoodRelated
+                ? "Cerrar con una acción breve relacionada con la decisión alimentaria o medición de glucosa."
+                : "Cerrar con una acción breve relacionada con el mismo tema.",
   };
 }
 
 export function buildAida2WorkPlan(input: Aida2BrainInput): Aida2WorkPlan {
   const message = input.message.trim();
-  const understanding = buildUnderstanding(message);
+  const history = input.history ?? "";
+
+  const understanding = buildUnderstanding(message, history);
   const safety = buildSafetyPlan(understanding);
-  const thinking = buildThinkingPlan(understanding, safety);
-  const decision = buildDecision(understanding, safety);
+  const foodContext = buildFoodContext(message, history, understanding);
+  const modulePlan = buildModulePlan(understanding, foodContext, safety);
+  const thinking = buildThinkingPlan(understanding, safety, foodContext);
+  const decision = buildDecision(understanding, safety, modulePlan);
   const responsePlan = buildResponsePlan(
     understanding,
     decision,
     safety,
-    thinking
+    thinking,
+    foodContext,
+    modulePlan
   );
 
   return {
     purpose:
-      "AIDA ayuda al usuario a controlar sus niveles diarios de glucosa mediante asesoría personalizada para tomar mejores decisiones. Con el tiempo, busca mejorar HbA1c y favorecer una reducción segura de medicamentos bajo supervisión médica.",
+      "AIDA ayuda al usuario a controlar sus niveles diarios de glucosa mediante mejores decisiones de alimentación, ejercicio, seguimiento y educación. Cada paciente puede iniciar en una fase diferente; el objetivo general se mantiene, pero el protocolo, alimentos y lineamientos cambian según su contexto.",
     personality:
       "Responde como asesor cercano, profesional y práctico. Debe ser claro, breve, humano, sin sermones, sin tecnicismos innecesarios y con una acción concreta. Debe adaptar la respuesta al nivel del usuario.",
     understanding,
+    foodContext,
+    modulePlan,
     thinking,
     decision,
     safety,
