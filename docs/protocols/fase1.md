@@ -15,6 +15,8 @@ Fase activa de continuación después del diagnóstico inicial.
 
 Esta fase puede prolongarse el tiempo necesario en personas con resistencia a la insulina, prediabetes, diabetes tipo 2, glucosa en ayunas elevada, picos postcomida o uso de múltiples medicamentos.
 
+La Fase 1 es más completa que la fase de diagnóstico. La fase de diagnóstico demuestra impacto; la Fase 1 busca sostener el cambio, reducir antojos y consolidar estabilidad glucémica. :contentReference[oaicite:0]{index=0}
+
 ---
 
 # PROPÓSITO DEL PROTOCOLO
@@ -112,7 +114,7 @@ Prioridad de carbohidratos en esta fase:
 2. Vegetales bajos en carbohidratos.
 3. Leguminosas cuando aplique.
 4. Frutas no tropicales en horario permitido.
-5. Verduras con almidón solo en casos específicos y no como prioridad.
+5. Verduras con almidón solo en casos muy específicos y no como prioridad.
 
 Los cereales no se recomiendan durante esta fase.
 
@@ -171,6 +173,81 @@ AIDA debe decir:
 
 ---
 
+# CATEGORÍAS OPERATIVAS
+
+Esta sección ayuda a AIDA a decidir mejor sin depender únicamente de listas literales.
+
+---
+
+## Permitidos base
+
+Son alimentos que pueden usarse como base del plato en Fase 1:
+
+- proteínas reales
+- huevos
+- carnes
+- pescados
+- mariscos
+- quesos naturales
+- yogur griego natural sin azúcar
+- kéfir natural sin azúcar
+- grasas saludables
+- aguacate
+- aceites naturales
+- nueces y semillas sin azúcar
+- vegetales sin almidón
+- vegetales ricos en fibra
+- agua natural
+- café o té sin azúcar
+
+---
+
+## Permitidos con condición
+
+Son alimentos compatibles solo si se respetan porción, horario y contexto glucémico:
+
+- leguminosas
+- frutas no tropicales
+- lácteos enteros sin azúcar
+- leche vegetal sin azúcar
+- chocolate amargo mínimo 70% cacao, sin azúcar añadida o con mínima azúcar, en porción pequeña y nunca como respuesta a hipoglucemia
+- café con crema o leche entera sin azúcar
+- Splenda
+- stevia
+
+Las frutas deben usarse 2 horas después del almuerzo o comida principal y antes de las 5:00 PM.
+
+Las leguminosas cuentan dentro del 25% del plato.
+
+---
+
+## No recomendados
+
+Son alimentos que AIDA no debe sugerir en Fase 1:
+
+- cereales
+- pan
+- tortilla
+- arroz
+- avena
+- pasta
+- harina
+- papa
+- camote
+- yuca
+- azúcar
+- miel como endulzante habitual
+- jugos
+- refrescos
+- postres
+- alcohol
+- productos horneados
+- ultraprocesados altos en carbohidratos
+
+La miel solo puede mencionarse como excepción cuando se habla de corrección de hipoglucemia, no como endulzante permitido de la fase.
+
+---
+
 # LINEAMIENTOS GENERALES
 
 Toda recomendación deberá respetar estos principios:
@@ -179,6 +256,7 @@ Toda recomendación deberá respetar estos principios:
 - Acompañar con grasas saludables.
 - Usar vegetales sin almidón como principal fuente de carbohidratos.
 - Priorizar vegetales ricos en fibra.
+- Priorizar brócoli, espárragos, apio, repollo, coliflor, nopales y calabacita.
 - Evitar cereales.
 - Evitar azúcar y bebidas endulzadas.
 - Evitar jugos.
@@ -227,6 +305,7 @@ Durante Fase 1 se evita recomendar:
 - calabaza bellota
 - calabaza japonesa
 - calabaza moscada
+- calabaza de ranúnculo
 - chícharo
 - azúcar
 - azúcar morena
@@ -237,6 +316,7 @@ Durante Fase 1 se evita recomendar:
 - glucosa añadida
 - sacarosa
 - jarabes
+- miel de abeja como endulzante habitual
 - miel de agave
 - miel de maíz
 - miel de maple
@@ -255,6 +335,9 @@ Durante Fase 1 se evita recomendar:
 Estos alimentos se restringen porque pueden elevar la carga glucémica, aumentar antojos o dificultar el control de glucosa.
 
 No deben recomendarse durante esta fase aunque se combinen con proteína, grasa o vegetales.
+
+Excepción:
+La miel de abeja natural solo puede mencionarse si el tema es corrección de hipoglucemia. No debe sugerirse como endulzante cotidiano en Fase 1.
 
 ---
 
@@ -303,6 +386,12 @@ Evitar o limitar fuertemente:
 - calabaza de ranúnculo
 
 Si el usuario insiste en vegetales con almidón, AIDA debe explicar que no son la mejor opción para esta fase.
+
+Aclaración importante:
+
+La calabacita o zucchini sí se considera compatible como vegetal bajo en almidón.
+
+No debe confundirse con calabazas dulces o de invierno como calabaza moscada, calabaza bellota, calabaza japonesa o calabaza de invierno.
 
 Priorizar en su lugar:
 
@@ -481,6 +570,7 @@ AIDA debe recordar que las leguminosas cuentan dentro del 25% del plato.
 - espárragos
 - brócoli
 - calabacita
+- zucchini
 - col
 - repollo
 - col de Bruselas
@@ -571,6 +661,7 @@ No recomendados:
 - azúcar morena
 - mascabado
 - miel
+- miel de abeja como endulzante habitual
 - miel de agave
 - miel de maple
 - jarabes
@@ -581,6 +672,9 @@ No recomendados:
 - sacarosa
 - jugos
 - concentrados de fruta
+
+Excepción:
+La miel de abeja natural puede mencionarse solo si el usuario está en contexto de hipoglucemia y se está hablando de una corrección rápida. Fuera de ese contexto no debe recomendarse en Fase 1.
 
 AIDA debe recomendar reducir el gusto por lo dulce, no sustituir todo por sabores intensamente dulces.
 
@@ -746,11 +840,15 @@ Priorizar:
 - repollo
 - apio
 - calabacita
+- zucchini
 - coliflor
 - nopales
 - espinaca
 - lechuga
 - pepino
+
+Aclaración:
+Calabacita o zucchini es compatible. Calabazas dulces o de invierno no son prioridad y se consideran no recomendadas durante esta fase.
 
 ---
 
@@ -896,12 +994,14 @@ AIDA no debe:
 - modificar medicamentos
 - indicar suspensión de insulina
 - recomendar azúcar
+- recomendar miel como endulzante habitual
 - recomendar cereales
 - recomendar pan
 - recomendar tortilla
 - recomendar arroz
 - recomendar avena
 - recomendar papa o camote
+- confundir calabacita con calabaza dulce o calabaza de invierno
 - usar fruta como base del desayuno
 - llamar “comida chatarra” a todo alimento sin explicar
 - inventar alimentos permitidos si contradicen la fase
@@ -954,6 +1054,10 @@ Generalmente es compatible.
 
 Priorizar los vegetales con fibra.
 
+Calabacita o zucchini es compatible.
+
+No confundir con calabazas con almidón o calabazas dulces.
+
 ---
 
 ## Si es leguminosa
@@ -985,6 +1089,8 @@ No recomendar en Fase 1.
 ## Si es azúcar o postre
 
 No recomendar en Fase 1.
+
+La miel de abeja natural solo puede mencionarse como excepción en contexto de hipoglucemia.
 
 ---
 

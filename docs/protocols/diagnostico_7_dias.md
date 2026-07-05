@@ -1,44 +1,53 @@
-# PROTOCOLO: FASE DE DIAGNÓSTICO (7 DÍAS)
+# PROTOCOLO: FASE DE DIAGNÓSTICO 7 DÍAS
 
 ---
 
 ## IDENTIFICACIÓN
 
-Nombre: Fase de Diagnóstico
+Nombre: Fase de Diagnóstico 7 días
 
 Duración: 7 días
 
 Estado:
-Versión de prueba.
+Fase inicial de prueba, observación y educación.
 
-Al finalizar esta fase, el usuario pasa a Protocolo Fase 1 cuando activa la versión completa.
+Al finalizar esta fase, el usuario puede continuar con Fase 1 - Vencer los Antojos.
 
 ---
 
 # PROPÓSITO DEL PROTOCOLO
 
-Esta fase tiene dos objetivos principales.
+La Fase de Diagnóstico tiene como objetivo demostrarle al usuario que mejorar la calidad de sus alimentos y el balance del plato puede modificar sus niveles de glucosa en pocos días.
+
+Esta fase no busca ser un protocolo completo ni permanente.
+
+Busca generar una experiencia clara:
+
+“Cuando cambio lo que como, mi glucosa responde.”
+
+---
 
 ## Objetivo 1
 
-Reducir la carga glucémica de la alimentación para favorecer una disminución inicial de los niveles de glucosa.
-
-No busca una dieta perfecta.
-
-Busca generar estabilidad glucémica durante los primeros días.
+Reducir la carga glucémica de la alimentación durante 7 días.
 
 ---
 
 ## Objetivo 2
 
-Hacer consciente al usuario del impacto que tienen los alimentos sobre su cuerpo.
+Observar cómo responde la glucosa antes y después de las comidas.
 
-El usuario debe aprender a relacionar:
+---
 
-- lo que come,
-- con la respuesta de su glucosa.
+## Objetivo 3
 
-Por esta razón todas las recomendaciones deben incentivar el registro de glucosa antes y después de las comidas.
+Ayudar al usuario a identificar alimentos que elevan su glucosa.
+
+---
+
+## Objetivo 4
+
+Preparar al usuario para continuar con Fase 1 si desea sostener y profundizar los resultados.
 
 ---
 
@@ -50,17 +59,19 @@ No debe imponer.
 
 No debe regañar.
 
-No debe prohibir utilizando lenguaje agresivo.
+No debe castigar.
 
-Debe explicar el motivo de cada recomendación.
+No debe usar lenguaje de culpa.
 
-AIDA debe ayudar al usuario a tomar mejores decisiones usando el protocolo como marco de orientación, no como castigo.
+La Fase de Diagnóstico es una demostración práctica.
+
+AIDA debe ayudar al usuario a observar su propio cuerpo mediante alimentación y mediciones.
 
 ---
 
 # DISTRIBUCIÓN DEL PLATO
 
-La construcción de los alimentos deberá seguir esta guía.
+La construcción del plato durante la fase de diagnóstico debe seguir esta guía:
 
 75%
 
@@ -73,43 +84,22 @@ Carbohidratos de baja carga glucémica.
 Los carbohidratos deben provenir preferentemente de:
 
 - vegetales sin almidón
-- leguminosas cuando aplique
+- vegetales ricos en fibra
+- leguminosas solo si aplican
 
-Las leguminosas, aunque contienen proteína, se consideran dentro del porcentaje de carbohidratos.
+Durante esta fase no se busca variedad amplia.
 
----
-
-# CRITERIO DE FLEXIBILIDAD CLÍNICA
-
-La lista de alimentos permitidos funciona como referencia inicial para AIDA.
-
-No debe interpretarse como un catálogo cerrado absoluto para proteínas, grasas saludables y vegetales sin almidón.
-
-AIDA puede aceptar alimentos que no aparezcan textualmente en la lista si cumplen con la lógica de la fase.
-
-Debe razonar primero qué tipo de alimento es:
-
-1. Proteína.
-2. Grasa saludable.
-3. Vegetal sin almidón o de baja carga glucémica.
-4. Leguminosa.
-5. Fruta.
-6. Carbohidrato de alta carga glucémica.
-7. Ultraprocesado o alimento azucarado.
-
-Si un alimento es proteína real, grasa saludable o vegetal de baja carga glucémica, puede considerarse compatible aunque no aparezca escrito en la lista.
-
-Si un alimento es carbohidrato de alta carga glucémica, debe evitarse durante esta fase aunque el usuario quiera combinarlo con proteína o grasa.
+Se busca simplicidad, control y observación.
 
 ---
 
 # PRINCIPIO GENERAL
 
-Durante estos siete días se busca reducir lo más posible la carga glucémica de la alimentación.
+Durante estos 7 días se busca reducir lo más posible la carga glucémica de la alimentación.
 
-El objetivo NO es eliminar para siempre los carbohidratos.
+El objetivo no es eliminar para siempre los carbohidratos.
 
-El objetivo es observar cómo responde el cuerpo cuando disminuye la carga glucémica.
+El objetivo es observar cómo responde el cuerpo cuando se disminuyen alimentos que suelen elevar la glucosa.
 
 La elección de alimentos debe verse reflejada en mejores lecturas del glucómetro.
 
@@ -117,27 +107,92 @@ La elección de alimentos debe verse reflejada en mejores lecturas del glucómet
 
 # LINEAMIENTOS GENERALES
 
-Toda recomendación deberá construirse respetando los siguientes principios.
+Toda recomendación debe respetar estos principios:
 
-• Priorizar proteína.
+- Priorizar proteína.
+- Priorizar grasas saludables.
+- Usar vegetales sin almidón como fuente principal de carbohidratos.
+- Evitar alimentos de alta carga glucémica.
+- Evitar azúcar.
+- Evitar jugos.
+- Evitar refrescos.
+- Evitar pan, tortilla, arroz, avena, pasta, papa y camote.
+- Favorecer alimentos sencillos.
+- Favorecer preparaciones caseras.
+- Evitar ultraprocesados.
+- Medir glucosa antes y después de las comidas.
+- Mantener el contexto de la conversación.
+- Si el usuario ya está hablando de un platillo, ajustar ese platillo en lugar de cambiarlo sin necesidad.
 
-• Priorizar grasas saludables.
+---
 
-• Utilizar vegetales sin almidón como fuente principal de carbohidratos.
+# CATEGORÍAS OPERATIVAS
 
-• Evitar alimentos de alta carga glucémica.
+Esta fase usa categorías simples para facilitar decisiones rápidas.
 
-• Adaptar las porciones al apetito del usuario.
+---
 
-• Favorecer alimentos sencillos.
+## Permitidos base
 
-• Evitar comidas ultraprocesadas.
+- proteínas reales
+- huevos
+- pollo
+- res
+- cerdo
+- pescado
+- mariscos
+- quesos naturales
+- yogur natural sin azúcar
+- kéfir natural sin azúcar
+- aguacate
+- aceite de oliva
+- aceite de aguacate
+- nueces y semillas sin azúcar
+- vegetales sin almidón
+- vegetales ricos en fibra
+- agua natural
+- café o té sin azúcar
 
-• Favorecer preparaciones caseras.
+---
 
-• Mantener el contexto de la conversación.
+## Permitidos con condición
 
-• Si el usuario ya está hablando de un platillo, ajustar ese platillo en lugar de cambiarlo por otro sin necesidad.
+- leguminosas en porción moderada
+- frutas de baja carga glucémica en horario adecuado
+- lácteos sin azúcar
+- leche vegetal sin azúcar
+- stevia
+- Splenda
+
+Las leguminosas cuentan dentro del 25% del plato.
+
+La fruta no debe usarse como desayuno principal ni en cena.
+
+---
+
+## No recomendados
+
+- pan
+- tortilla
+- arroz
+- pasta
+- avena
+- cereales
+- granola
+- papa
+- camote
+- azúcar
+- miel como endulzante habitual
+- refrescos
+- jugos
+- postres
+- galletas
+- harinas
+- productos horneados
+- alcohol
+- ultraprocesados altos en carbohidratos
+
+La miel solo puede mencionarse como excepción si el usuario está en contexto de hipoglucemia.
 
 ---
 
@@ -161,13 +216,73 @@ Durante esta fase se evita recomendar:
 - refrescos
 - jugos
 - postres
-- miel (excepto corrección de hipoglucemia)
+- miel como endulzante habitual
+- alcohol
 
 Estos alimentos se restringen porque pueden elevar la carga glucémica de la comida y alterar la lectura del glucómetro.
 
 No deben recomendarse durante esta fase aunque se combinen con proteína, grasa o vegetales.
 
-Esta lista puede ampliarse conforme evolucione el protocolo.
+---
+
+# CEREALES
+
+Los cereales no se recomiendan durante la Fase de Diagnóstico.
+
+Evitar:
+
+- arroz
+- avena
+- maíz
+- trigo
+- pan
+- pasta
+- tortilla
+- cereal de caja
+- granola
+- galletas
+- harinas
+
+Durante esta fase, AIDA no debe sugerir cereales como fuente de carbohidrato.
+
+---
+
+# VERDURAS CON ALMIDÓN
+
+Las verduras con almidón no son prioridad durante la Fase de Diagnóstico.
+
+Evitar o limitar fuertemente:
+
+- papa
+- camote
+- yuca
+- ñame
+- betabel
+- chícharo
+- calabaza de invierno
+- calabaza bellota
+- calabaza japonesa
+- calabaza moscada
+
+Aclaración:
+
+La calabacita o zucchini sí se considera compatible como vegetal bajo en almidón.
+
+No debe confundirse con calabazas dulces o de invierno.
+
+Priorizar en su lugar:
+
+- brócoli
+- calabacita
+- espárragos
+- apio
+- repollo
+- col
+- coliflor
+- nopales
+- pepino
+- lechuga
+- espinaca
 
 ---
 
@@ -175,37 +290,51 @@ Esta lista puede ampliarse conforme evolucione el protocolo.
 
 Objetivo:
 
-Reducir la carga glucémica.
+Usar fruta solo como apoyo moderado, no como base del desayuno ni de la cena.
 
 Frutas permitidas:
 
-- Fresas
-- Arándanos
-- Frambuesas
-- Zarzamoras
-- Moras
-- Manzana verde
-- Toronja
+- fresa
+- arándano
+- frambuesa
+- zarzamora
+- manzana verde
+- toronja
 
 Horario permitido:
 
-Puede consumir fruta 2 horas después del desayuno y antes de las 5:00 PM.
+Puede consumir fruta 2 horas después del desayuno o comida principal y antes de las 5:00 PM.
 
-Restricciones:
+Porción sugerida:
 
-- Antes de las 10:00 AM
-- Durante la cena
-- Como desayuno principal
-- En jugos
-- En licuados azucarados
+- 1 fruta entera
+- o 1 taza de fruta picada
+
+Evitar:
+
+- fruta en ayunas
+- fruta en la cena
+- jugo de fruta
+- fruta seca
+- licuados con fruta
+- fruta tropical frecuente
+
+Frutas no recomendadas durante diagnóstico:
+
+- mango
+- papaya
+- piña
+- plátano
+- sandía
+- melón
+- dátil
+- uvas en exceso
 
 ---
 
 # LEGUMINOSAS
 
-Las leguminosas forman parte del porcentaje de carbohidratos.
-
-Se utilizan como alimento de transición.
+Las leguminosas pueden usarse como alimento de transición.
 
 Preferentemente:
 
@@ -213,46 +342,27 @@ Preferentemente:
 
 Porción habitual:
 
-1/2 a 3/4 de taza.
+1/2 taza.
 
 No combinar con otros carbohidratos de alta carga glucémica.
 
----
+Ejemplos compatibles:
 
-# CONSTRUCCIÓN DE PLATOS
+- frijol
+- lenteja
+- garbanzo
 
-Toda recomendación debe respetar:
-
-1.
-
-Primero seleccionar una proteína.
-
-2.
-
-Agregar una grasa saludable.
-
-3.
-
-Completar el plato con vegetales sin almidón o de baja carga glucémica.
-
-4.
-
-Solo agregar leguminosas cuando aplique.
-
-Nunca comenzar construyendo el plato desde el carbohidrato.
+AIDA debe recordar que las leguminosas cuentan dentro del 25% del plato.
 
 ---
 
-# CRITERIOS DE CLASIFICACIÓN DE ALIMENTOS
+# LISTA DE ALIMENTOS PERMITIDOS
 
-## Proteínas
-
-Se consideran compatibles cuando el alimento principal aporta proteína y no viene empanizado, azucarado ni acompañado de harinas.
-
-Ejemplos:
+## PROTEÍNAS
 
 - huevo
 - pollo
+- pavo
 - res
 - cerdo
 - pescado
@@ -264,83 +374,209 @@ Ejemplos:
 - camarón
 - pulpo
 - mariscos
-- pavo
+- queso natural
 - tofu
 - tempeh
-- quesos naturales
 - yogur natural sin azúcar
-- kéfir natural
+- yogur griego natural sin azúcar
+- kéfir natural sin azúcar
 
-Si el usuario menciona una proteína no listada, AIDA debe evaluar si realmente es proteína y si su preparación respeta la fase.
+## LÁCTEOS
 
-## Grasas saludables
+- kéfir natural sin azúcar
+- yogur natural sin azúcar
+- yogur griego natural sin azúcar
+- queso natural
+- crema entera
+- leche entera
+- leche de almendras sin azúcar
+- leche de coco sin azúcar
+- leche de soya sin azúcar
 
-Se consideran compatibles cuando no contienen azúcar añadida ni harinas.
-
-Ejemplos:
+## GRASAS SALUDABLES
 
 - aguacate
 - aceite de oliva
 - aceite de aguacate
-- aceitunas
-- almendras
+- aceite de coco
+- mantequilla
+- mayonesa sin azúcar
 - nueces
+- almendras
 - pistaches
 - cacahuate natural
 - semillas
+- aceitunas
 
-## Vegetales sin almidón
+## VEGETALES SIN ALMIDÓN
 
-Se consideran compatibles cuando son vegetales con baja carga glucémica y buena cantidad de fibra.
-
-Ejemplos:
-
-- lechugas
-- espinaca
 - acelga
 - arúgula
-- brócoli
-- coliflor
-- col
-- pepino
-- calabaza
-- ejotes
-- champiñones
-- setas
-- jitomate
-- tomate verde
 - apio
 - espárragos
-- nopal
-- pimientos
+- brócoli
+- calabacita
+- zucchini
+- col
+- repollo
+- coliflor
+- espinaca
+- lechuga
+- jitomate
+- tomate verde
 - chile
+- pimiento
+- champiñones
+- setas
+- pepino
+- nopal
+- rábano
 - cebolla
 - ajo
-- rábano
 
-Si el usuario menciona un vegetal no listado, AIDA debe evaluar si es vegetal sin almidón y de baja carga glucémica.
+## LEGUMINOSAS
 
-## Carbohidratos de alta carga glucémica
+- frijol
+- lenteja
+- garbanzo
 
-Durante esta fase se evitan aunque el usuario quiera agregarlos en poca cantidad.
+## FRUTAS PERMITIDAS
 
-Ejemplos:
+- fresa
+- arándano
+- frambuesa
+- zarzamora
+- manzana verde
+- toronja
 
-- pan
-- tostada
-- tortilla
-- arroz
-- pasta
-- avena
-- cereales
-- granola
-- papa
-- camote
-- galletas
+## BEBIDAS
+
+- agua natural
+- agua mineral sin azúcar
+- café sin azúcar
+- café descafeinado sin azúcar
+- té verde sin azúcar
+- té negro sin azúcar
+- té sin azúcar
+- infusiones sin azúcar
+- leche de almendras sin azúcar
+- leche de coco sin azúcar
+- leche de soya sin azúcar
+
+---
+
+# ENDULZANTES
+
+Durante la Fase de Diagnóstico no se recomienda azúcar ni endulzantes calóricos.
+
+Permitidos:
+
+- stevia
+- Splenda
+
+No recomendados:
+
 - azúcar
+- azúcar morena
+- mascabado
+- miel
+- miel como endulzante habitual
+- miel de agave
+- miel de maple
+- jarabes
+- maltodextrina
+- dextrosa
+- fructosa añadida
+- glucosa añadida
+- sacarosa
 - jugos
-- refrescos
-- postres
+- concentrados de fruta
+
+Excepción:
+
+La miel de abeja natural puede mencionarse solo si el usuario está en contexto de hipoglucemia y se está hablando de una corrección rápida.
+
+Fuera de ese contexto no debe recomendarse durante la Fase de Diagnóstico.
+
+---
+
+# CAFÉ Y TÉ
+
+Se permiten bebidas cafeinadas sin azúcar.
+
+Permitidos:
+
+- café
+- café descafeinado
+- té verde
+- té negro
+- infusiones
+
+Evitar:
+
+- azúcar
+- jarabes
+- saborizantes dulces
+- crema endulzada
+- bebidas comerciales endulzadas
+
+Puede agregarse:
+
+- crema entera
+- leche entera
+- leche vegetal sin azúcar
+
+Si el usuario presenta ansiedad, palpitaciones, insomnio o glucosa alterada, AIDA debe sugerir moderar cafeína.
+
+---
+
+# ALCOHOL
+
+Durante la Fase de Diagnóstico el alcohol se considera no recomendado.
+
+Evitar:
+
+- cerveza
+- vino
+- ron
+- vodka
+- whisky
+- ginebra
+- cocteles
+- bebidas alcohólicas endulzadas
+
+Razón:
+
+Puede alterar glucosa, apetito, sueño y decisiones alimentarias.
+
+---
+
+# CONSTRUCCIÓN DE PLATOS
+
+Toda recomendación debe respetar:
+
+1. Primero seleccionar una proteína.
+2. Agregar una grasa saludable.
+3. Completar el plato con vegetales sin almidón o de baja carga glucémica.
+4. Solo agregar leguminosas cuando aplique.
+5. Evitar cereales, azúcar, pan, tortilla, arroz, papa, camote y postres.
+
+Nunca comenzar construyendo el plato desde el carbohidrato.
+
+Ejemplo correcto:
+
+- pollo
+- aguacate
+- brócoli
+- calabacita
+- agua natural
+
+Ejemplo incorrecto:
+
+- tortilla como base
+- arroz como acompañamiento
+- jugo natural
+- fruta como desayuno principal
 
 ---
 
@@ -350,12 +586,17 @@ Las porciones no son rígidas.
 
 La cantidad de proteína dependerá del apetito del usuario.
 
-Si después de terminar el plato el usuario continúa con hambre, es preferible aumentar proteína, vegetales sin almidón o grasa saludable antes que agregar carbohidratos de alta carga glucémica.
+Si después de terminar el plato el usuario continúa con hambre, es preferible aumentar:
+
+- proteína
+- vegetales sin almidón
+- grasa saludable
+
+antes que agregar carbohidratos de alta carga glucémica.
 
 Ejemplos:
 
 - otro huevo
-- otro bistec
 - más pollo
 - más pescado
 - más sardina
@@ -369,53 +610,49 @@ Ejemplos:
 
 Ejemplo 1
 
-Huevos con jamón.
+Huevos con espinaca.
 
-Ensalada de:
+Aguacate.
 
-- lechuga
-- pepino
-- jitomate
-
-Aceite de oliva como aderezo.
+Brócoli o calabacita.
 
 ---
 
 Ejemplo 2
 
-Bistec asado.
-
-Medio aguacate.
-
-Brócoli salteado.
-
----
-
-Ejemplo 3
-
 Pechuga de pollo.
 
-Calabaza.
-
-Champiñones.
+Brócoli.
 
 Aceite de oliva.
 
 ---
 
+Ejemplo 3
+
+Bistec asado.
+
+Medio aguacate.
+
+Ensalada de lechuga, pepino y jitomate.
+
+---
+
 Ejemplo 4
 
-Sardina con brócoli y calabaza.
+Atún con huevo.
 
-Aguacate como grasa saludable.
+Nopales.
+
+Aceite de oliva.
 
 ---
 
 Ejemplo 5
 
-Atún con huevo y vegetales sin almidón.
+Sardina con brócoli y calabacita.
 
-Aguacate o aceite de oliva como grasa saludable.
+Aguacate como grasa saludable.
 
 ---
 
@@ -435,6 +672,9 @@ Durante esta fase el usuario debe registrar diariamente:
 4. Glucosa dos horas después de la comida
 5. Glucosa antes de la cena
 6. Glucosa dos horas después de la cena
+7. Alimentos consumidos
+8. Antojos relevantes
+9. Síntomas importantes
 
 Estas mediciones ayudan al usuario a observar el efecto de los alimentos sobre su glucosa.
 
@@ -445,211 +685,131 @@ Estas mediciones ayudan al usuario a observar el efecto de los alimentos sobre s
 Durante esta fase AIDA debe:
 
 - enseñar
-
 - orientar
-
 - explicar
-
 - motivar
-
 - ayudar a interpretar
-
 - validar alimentos según su tipo y carga glucémica
-
+- recordar mediciones
+- relacionar alimentos con lecturas
 - mantener la conversación coherente con el contexto del usuario
+- preparar al usuario para Fase 1 si desea continuar
 
-No debe:
+AIDA no debe:
 
 - juzgar
-
 - castigar
-
 - generar culpa
-
 - prometer curación
-
 - modificar medicamentos
-
+- indicar suspensión de medicamentos
 - recomendar alimentos de alta carga glucémica durante esta fase
-
+- recomendar miel como endulzante habitual
+- confundir calabacita con calabaza dulce o de invierno
 - rechazar una proteína o vegetal de baja carga solo porque no aparece literalmente en la lista de referencia
+
+---
+
+# CRITERIOS DE RESPUESTA DE AIDA
+
+Si el usuario pregunta si puede comer un alimento, AIDA debe clasificarlo:
+
+1. Proteína
+2. Grasa saludable
+3. Vegetal sin almidón
+4. Leguminosa
+5. Fruta permitida
+6. Verdura con almidón
+7. Cereal
+8. Azúcar o postre
+9. Ultraprocesado
+10. Bebida endulzada
+
+Después debe responder según la fase.
+
+---
+
+## Si es proteína
+
+Puede ser compatible si:
+
+- no está empanizada
+- no tiene azúcar
+- no viene con harinas
+- no está combinada con pan, tortilla, arroz o pasta
+
+---
+
+## Si es grasa saludable
+
+Puede ser compatible si:
+
+- no tiene azúcar
+- no contiene harinas
+- no viene en presentación ultraprocesada
+
+---
+
+## Si es vegetal sin almidón
+
+Generalmente es compatible.
+
+Priorizar vegetales con fibra.
+
+Calabacita o zucchini es compatible.
+
+No confundir con calabazas con almidón o calabazas dulces.
+
+---
+
+## Si es leguminosa
+
+Puede ser compatible en porción controlada.
+
+Cuenta dentro del 25% del plato.
+
+---
+
+## Si es fruta
+
+Debe revisarse:
+
+- tipo de fruta
+- horario
+- glucosa actual
+- cantidad
+- si es entera o jugo
+
+---
+
+## Si es cereal
+
+No recomendar durante diagnóstico.
+
+---
+
+## Si es azúcar o postre
+
+No recomendar durante diagnóstico.
+
+La miel de abeja natural solo puede mencionarse como excepción en contexto de hipoglucemia.
+
+---
+
+## Si es verdura con almidón
+
+No usar como prioridad.
+
+Explicar que puede elevar glucosa más que los vegetales fibrosos.
 
 ---
 
 # RECORDATORIO FINAL
 
-El éxito de esta fase no depende únicamente de comer diferente.
+El éxito de esta fase no depende de comer perfecto.
 
-Depende de observar cómo responde el cuerpo.
+Depende de observar.
 
-Cada medición ayuda a construir el siguiente paso del tratamiento.
+Durante 7 días el usuario debe ver con claridad qué pasa cuando reduce carga glucémica, prioriza proteína, agrega grasas saludables y mide su glucosa.
 
-El objetivo es que el usuario aprenda a conocer su propio metabolismo.
-
----
-
-# LISTA DE ALIMENTOS PERMITIDOS
-
-Esta lista representa alimentos de referencia que AIDA puede utilizar para construir recomendaciones durante la Fase de Diagnóstico.
-
-La lista ayuda a orientar al Especialista en Menús, pero no debe funcionar como catálogo cerrado absoluto para proteínas, grasas saludables y vegetales sin almidón.
-
-Si un alimento no aparece aquí, AIDA debe clasificarlo antes de decidir:
-
-- si es proteína compatible,
-- si es grasa saludable,
-- si es vegetal sin almidón o de baja carga glucémica,
-- si es leguminosa,
-- si es fruta,
-- o si es carbohidrato de alta carga glucémica.
-
-Los carbohidratos de alta carga glucémica sí deben restringirse durante esta fase.
-
----
-
-## PROTEÍNAS
-
-- Bistec de res
-- Carne molida de res
-- Lomo de res
-- Arrachera
-- Carne para asar
-- Lomo de cerdo
-- Chuleta de cerdo
-- Pierna de cerdo
-
-- Pechuga de pollo
-- Muslo de pollo
-- Pierna de pollo
-- Pavo
-
-- Salmón
-- Atún
-- Tilapia
-- Mojarra
-- Sardina
-- Camarón
-- Pulpo
-- Filete de pescado blanco
-
-- Huevo entero
-- Clara de huevo
-
-- Tofu
-- Tempeh
-- Proteína en polvo sin azúcar
-
----
-
-## LÁCTEOS
-
-- Kéfir natural
-- Yogur griego natural sin azúcar
-- Yogur natural sin azúcar
-- Queso panela
-- Queso Oaxaca
-- Queso manchego
-- Queso Chihuahua
-- Queso mozzarella
-- Queso cottage
-- Queso crema natural
-
----
-
-## GRASAS SALUDABLES
-
-- Aguacate
-- Aceite de oliva extra virgen
-- Aceite de aguacate
-- Aceite de coco
-- Aceitunas
-- Almendras
-- Nueces
-- Pistaches
-- Nuez de la India
-- Cacahuate natural
-- Crema de cacahuate sin azúcar
-- Chía
-- Linaza
-- Semillas de calabaza
-- Semillas de girasol
-
----
-
-## VEGETALES SIN ALMIDÓN
-
-- Lechuga romana
-- Lechuga italiana
-- Lechuga orejona
-- Espinaca
-- Acelga
-- Arúgula
-- Kale
-- Col rizada
-
-- Brócoli
-- Coliflor
-- Col
-- Col de Bruselas
-- Pepino
-- Calabaza
-- Ejotes
-- Champiñones
-- Setas
-- Jitomate
-- Tomate verde
-- Apio
-- Espárragos
-- Nopal
-- Pimiento verde
-- Pimiento rojo
-- Pimiento amarillo
-- Chile poblano
-- Chile morrón
-- Chile serrano
-- Cebolla
-- Ajo
-- Rábano
-
----
-
-## LEGUMINOSAS
-
-Las leguminosas pertenecen al 25% del plato.
-
-- Frijol negro
-- Frijol pinto
-- Frijol peruano
-- Frijol bayo
-- Frijol rojo
-- Garbanzo
-- Lenteja
-- Haba
-- Soya
-- Alubias
-
----
-
-## FRUTAS PERMITIDAS
-
-Solo entre 2 horas después del desayuno y antes de las 5:00 PM.
-
-- Fresas
-- Arándanos
-- Frambuesas
-- Zarzamoras
-- Moras
-- Manzana verde
-- Toronja
-
----
-
-## BEBIDAS
-
-- Agua natural
-- Agua mineral
-- Café sin azúcar
-- Té verde
-- Té negro
-- Té de hierbas
-- Infusiones naturales
+La Fase de Diagnóstico prepara al usuario para continuar con Fase 1, donde se amplía el protocolo y se trabaja con más profundidad la reducción de antojos.
