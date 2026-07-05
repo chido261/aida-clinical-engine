@@ -8,8 +8,7 @@ import { buildStructuredProtocol } from "./protocolParsers";
 export type ProtocolId =
   | "DIAGNOSTICO_7_DIAS"
   | "FASE_1"
-  | "FASE_2"
-  | "FASE_3";
+  | "FASE_2";
 
 export type ProtocolSections = Record<string, string>;
 
@@ -31,7 +30,16 @@ const PROTOCOL_FILES: Record<ProtocolId, string> = {
   DIAGNOSTICO_7_DIAS: "docs/protocols/diagnostico_7_dias.md",
   FASE_1: "docs/protocols/fase1.md",
   FASE_2: "docs/protocols/fase2.md",
-  FASE_3: "docs/protocols/fase3.md",
+};
+
+// FASE_3 queda reservada para una etapa futura fuera de AIDA2,
+// posiblemente enfocada en resistencia a la insulina, músculo,
+// recomposición corporal y mantenimiento metabólico avanzado.
+
+const PROTOCOL_NAMES: Record<ProtocolId, string> = {
+  DIAGNOSTICO_7_DIAS: "Fase Diagnóstico 7 días",
+  FASE_1: "Fase 1 - Vencer los Antojos",
+  FASE_2: "Fase 2 - Reeducar Células Grasas y Fortalecer el Páncreas",
 };
 
 const SECTION_MAP: Record<string, string> = {
@@ -57,10 +65,7 @@ function resolveProtocol(
 ) {
   return {
     protocolId,
-    protocolName:
-      protocolId === "DIAGNOSTICO_7_DIAS"
-        ? "Fase Diagnóstico 7 días"
-        : protocolId.replaceAll("_", " "),
+    protocolName: PROTOCOL_NAMES[protocolId],
     sourceFile: PROTOCOL_FILES[protocolId],
   };
 }
@@ -115,10 +120,6 @@ function parseSections(markdown: string): ProtocolSections {
 export function runProtocolModule(
   input: ProtocolModuleInput = {}
 ): ProtocolModuleOutput {
-
-  // Temporalmente todos los usuarios utilizan Diagnóstico 7 días.
-  // Más adelante este valor vendrá desde Licencia / Perfil.
-
   const protocol = resolveProtocol(
     input.protocolId ?? "DIAGNOSTICO_7_DIAS"
   );
@@ -130,16 +131,10 @@ export function runProtocolModule(
   const structured = buildStructuredProtocol(sections);
 
   return {
-
     protocolId: protocol.protocolId,
-
     protocolName: protocol.protocolName,
-
     sourceFile: protocol.sourceFile,
-
     sections,
-
     structured,
-
   };
 }
