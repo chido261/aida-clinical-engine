@@ -23,7 +23,9 @@ type AllowedFoods = {
   beverages: string[];
 };
 
-type FoodCategory =
+type ProtocolSections = Record<string, string>;
+
+export type FoodCategory =
   | "proteína"
   | "grasa saludable"
   | "vegetal bajo en carga glucémica"
@@ -31,17 +33,61 @@ type FoodCategory =
   | "fruta"
   | "bebida"
   | "carbohidrato de alta carga glucémica"
+  | "carbohidrato saludable con validación"
   | "preparación"
   | "preparación compatible condicionada"
   | "desconocido";
 
-type FoodValidation = {
+export type FoodValidation = {
   food: string;
   canonicalFood: string;
   category: FoodCategory;
   isCompatible: boolean;
   reason: string;
-  source: "protocol_reference" | "clinical_classification" | "restricted" | "preparation" | "ingredient_based_preparation" | "unknown";
+  source:
+    | "protocol_reference"
+    | "protocol_conditional"
+    | "clinical_classification"
+    | "restricted"
+    | "preparation"
+    | "ingredient_based_preparation"
+    | "unknown";
+};
+
+export type MealDecisionStatus =
+  | "ALLOWED"
+  | "ALLOWED_WITH_VALIDATION"
+  | "NOT_ALLOWED"
+  | "NEEDS_INGREDIENTS"
+  | "UNKNOWN";
+
+export type MealFoodDecision = {
+  food: string;
+  canonicalFood: string;
+  category: FoodCategory;
+  status: MealDecisionStatus;
+  reason: string;
+  source: FoodValidation["source"];
+};
+
+export type MealSpecialistDecision = {
+  protocolId: ProtocolId;
+  foods: MealFoodDecision[];
+  conditionalFoods: string[];
+  requestedConditionalFoodList: boolean;
+  shouldMeasureGlucose: boolean;
+  shouldBuildRecipes: boolean;
+  shouldExplainValidation: boolean;
+  hasAllowedFoods: boolean;
+  hasConditionalFoods: boolean;
+  hasNotAllowedFoods: boolean;
+  hasUnknownFoods: boolean;
+};
+
+export type MealRecommendationResult = {
+  success: true;
+  recommendation: string;
+  decision: MealSpecialistDecision;
 };
 
 type MealBase = {
@@ -64,7 +110,7 @@ type SpecialistInstruction = {
   shouldContinuePendingAction: boolean;
 };
 
-const HIGH_GLYCEMIC_FOODS = [
+const COMMON_FOOD_TERMS = [
   "pan blanco", "pan integral", "pan de trigo", "pan común", "pan comun",
   "tostada", "tostadas", "tortilla de maíz", "tortilla de maiz",
   "tortilla de harina", "arroz", "arroz integral", "pasta", "avena",
@@ -72,6 +118,7 @@ const HIGH_GLYCEMIC_FOODS = [
   "papas", "camote", "azúcar", "azucar", "refresco", "refrescos",
   "jugo", "jugos", "postre", "postres", "miel",
 ];
+
 
 const CONDITIONAL_PREPARATION_NAMES = [
   "pan", "tortilla", "tortillas", "pizza", "galleta", "galletas", "base",
@@ -226,11 +273,14 @@ const PROTEIN_RECIPE_OPTIONS: Array<{ match: string[]; recipes: string[] }> = [
   },
 ];
 
-export function generateMealRecommendation(request: MealRequest) {
+export function generateMealRecommendation(
+  request: MealRequest
+): MealRecommendationResult {
   const protocol = runProtocolModule({
     protocolId: request.protocolId,
   });
   const foods = protocol.structured.allowedFoods;
+  const conditionalFoods = extractConditionalFoods(protocol.sections);
   const rawMessage = request.userMessage ?? "";
   const currentUserMessage = extractCurrentUserMessage(rawMessage);
   const instruction = parseSpecialistInstruction(rawMessage);
@@ -251,7 +301,9 @@ export function generateMealRecommendation(request: MealRequest) {
     userMessage: messageForValidation,
     foods,
     restrictedFoodsText: protocol.sections.restrictedFoods,
+    conditionalFoods,
     ignoreFoods: avoidFoods,
+    protocolId: protocol.protocolId,
   });
 
   const incompatibleFoods = validations.filter(item =>
@@ -273,6 +325,14 @@ export function generateMealRecommendation(request: MealRequest) {
         })
       : [];
 
+  const decision = buildStructuredMealDecision({
+    protocolId: protocol.protocolId,
+    validations,
+    conditionalFoods,
+    currentUserMessage,
+    shouldBuildOptions,
+  });
+
   return {
     success: true,
     recommendation: buildProtocolGuidance({
@@ -289,14 +349,101 @@ export function generateMealRecommendation(request: MealRequest) {
       generalGuidelines: protocol.sections.generalGuidelines,
       fruitGuidelines: protocol.sections.fruits,
       controlSheet: protocol.sections.controlSheet,
+      conditionalFoods,
+      protocolId: protocol.protocolId,
     }),
+    decision,
   };
+}
+
+function buildStructuredMealDecision(params: {
+  protocolId: ProtocolId;
+  validations: FoodValidation[];
+  conditionalFoods: string[];
+  currentUserMessage: string | undefined;
+  shouldBuildOptions: boolean;
+}): MealSpecialistDecision {
+  const {
+    protocolId,
+    validations,
+    conditionalFoods,
+    currentUserMessage,
+    shouldBuildOptions,
+  } = params;
+
+  const foods = validations.map(toMealFoodDecision);
+
+  const hasAllowedFoods = foods.some(item => item.status === "ALLOWED");
+  const hasConditionalFoods = foods.some(
+    item => item.status === "ALLOWED_WITH_VALIDATION"
+  );
+  const hasNotAllowedFoods = foods.some(
+    item => item.status === "NOT_ALLOWED"
+  );
+  const hasUnknownFoods = foods.some(item => item.status === "UNKNOWN");
+
+  return {
+    protocolId,
+    foods,
+    conditionalFoods,
+    requestedConditionalFoodList:
+      isConditionalFoodListRequest(currentUserMessage),
+    shouldMeasureGlucose: hasConditionalFoods,
+    shouldBuildRecipes: shouldBuildOptions,
+    shouldExplainValidation: hasConditionalFoods,
+    hasAllowedFoods,
+    hasConditionalFoods,
+    hasNotAllowedFoods,
+    hasUnknownFoods,
+  };
+}
+
+function toMealFoodDecision(
+  validation: FoodValidation
+): MealFoodDecision {
+  return {
+    food: validation.food,
+    canonicalFood: validation.canonicalFood,
+    category: validation.category,
+    status: resolveMealDecisionStatus(validation),
+    reason: validation.reason,
+    source: validation.source,
+  };
+}
+
+function resolveMealDecisionStatus(
+  validation: FoodValidation
+): MealDecisionStatus {
+  if (
+    validation.source === "protocol_conditional" ||
+    validation.category === "carbohidrato saludable con validación"
+  ) {
+    return "ALLOWED_WITH_VALIDATION";
+  }
+
+  if (
+    validation.source === "preparation" ||
+    validation.category === "preparación"
+  ) {
+    return "NEEDS_INGREDIENTS";
+  }
+
+  if (validation.source === "unknown" || validation.category === "desconocido") {
+    return "UNKNOWN";
+  }
+
+  if (!validation.isCompatible || validation.source === "restricted") {
+    return "NOT_ALLOWED";
+  }
+
+  return "ALLOWED";
 }
 
 function shouldBuildCompatibleOptions(
   currentUserMessage: string | undefined,
   instruction: SpecialistInstruction
 ) {
+  if (isConditionalFoodListRequest(currentUserMessage)) return false;
   if (instruction.expectedAction === "BUILD_OPTIONS") return true;
   if (instruction.pendingActionType === "BUILD_ALTERNATIVES") return true;
   if (instruction.pendingActionType === "BUILD_RECIPES") return true;
@@ -319,6 +466,8 @@ function buildProtocolGuidance(params: {
   generalGuidelines?: string;
   fruitGuidelines?: string;
   controlSheet?: string;
+  conditionalFoods: string[];
+  protocolId: ProtocolId;
 }) {
   const {
     mealType,
@@ -334,12 +483,16 @@ function buildProtocolGuidance(params: {
     generalGuidelines,
     fruitGuidelines,
     controlSheet,
+    conditionalFoods,
+    protocolId,
   } = params;
 
   const lines: string[] = [
     "VALIDACIÓN DEL ESPECIALISTA EN COMIDA:",
     `- Tipo de comida detectado: ${mealType}.`,
     `- Opciones solicitadas como referencia: ${requestedCount}.`,
+    `- Protocolo cargado: ${protocolId}.`,
+    "- Fuente de verdad: contenido del protocolo activo; no aplicar prohibiciones universales externas.",
   ];
 
   if (instruction.expectedAction) lines.push(`- Acción esperada por Cerebro: ${instruction.expectedAction}.`);
@@ -348,6 +501,14 @@ function buildProtocolGuidance(params: {
   if (avoidFoods.length > 0) {
     lines.push(`- Alimentos a evitar: ${formatList(avoidFoods)}.`);
     lines.push("- Esos alimentos son restricción de la respuesta, no ingredientes deseados.");
+  }
+
+  if (conditionalFoods.length > 0) {
+    lines.push(
+      "",
+      "ALIMENTOS PERMITIDOS CON VALIDACIÓN SEGÚN EL PROTOCOLO:",
+      ...conditionalFoods.map(food => `- ${food}.`)
+    );
   }
 
   if (validations.length > 0) {
@@ -361,10 +522,19 @@ function buildProtocolGuidance(params: {
 
   lines.push("", "DECISIÓN NUTRICIONAL:");
 
+  const matchedConditionalFoods = validations.filter(
+    item => item.category === "carbohidrato saludable con validación"
+  );
+
   if (incompatibleFoods.length > 0 && !shouldBuildOptions) {
-    lines.push("- Hay alimento(s) de alta carga glucémica o no compatibles.");
+    lines.push("- Hay alimento(s) no compatibles con el protocolo actual.");
     lines.push("- No recomendar esos alimentos durante esta fase.");
     lines.push("- No volverlos permitidos por combinarlos con proteína o grasa.");
+  } else if (matchedConditionalFoods.length > 0) {
+    lines.push("- El alimento está permitido únicamente con validación en Fase 2.");
+    lines.push("- Recomendar una porción controlada y medir glucosa 2 horas después.");
+    lines.push("- Si la glucosa postcomida queda entre 100 y 140 mg/dL, la porción puede considerarse tolerada.");
+    lines.push("- Si supera 140 mg/dL, reducir la porción y volver a probar la siguiente semana.");
   } else {
     lines.push("- Trabajar solo con alimentos compatibles con la fase.");
     lines.push("- Priorizar proteína, grasas saludables y vegetales bajos en carga glucémica.");
@@ -379,7 +549,15 @@ function buildProtocolGuidance(params: {
 
   lines.push("", "LÍMITES DE REDACCIÓN:");
   lines.push("- No mencionar instrucciones internas, Cerebro, módulos ni WorkPlan.");
-  lines.push("- No agregar arroz, pan, tortilla de maíz, papa, pasta, avena, jugo, azúcar o miel.");
+  lines.push(
+    "- La decisión sobre cada alimento debe respetar la clasificación encontrada en el protocolo activo."
+  );
+  lines.push(
+    "- No convertir en prohibido un alimento clasificado por el protocolo como permitido o permitido con validación."
+  );
+  lines.push(
+    "- No convertir en permitido un alimento clasificado por el protocolo como no recomendado."
+  );
   lines.push("- Si la acción es BUILD_OPTIONS, entregar opciones concretas sin pedir permiso otra vez.");
   lines.push("- Si faltan ingredientes para validar una preparación especial, pedir solo esos ingredientes.");
   lines.push("- Si se habla de pan, tortilla o base con ingredientes compatibles, validar por ingredientes.");
@@ -508,17 +686,45 @@ function validateMentionedFoods(params: {
   userMessage: string | undefined;
   foods: AllowedFoods;
   restrictedFoodsText?: string;
+  conditionalFoods: string[];
   ignoreFoods?: string[];
+  protocolId: ProtocolId;
 }) {
-  const { userMessage, foods, restrictedFoodsText, ignoreFoods = [] } = params;
+  const {
+    userMessage,
+    foods,
+    restrictedFoodsText,
+    conditionalFoods,
+    ignoreFoods = [],
+    protocolId,
+  } = params;
+
   if (!userMessage) return [];
 
   const ignored = normalizeFoodList(ignoreFoods);
-  const candidates = extractFoodCandidates(userMessage).filter(candidate => !containsFood(candidate, ignored));
-  const restrictedFoods = normalizeFoodList([...extractFoodList(restrictedFoodsText ?? ""), ...HIGH_GLYCEMIC_FOODS]);
+  const restrictedFoods = normalizeFoodList(
+    extractFoodList(restrictedFoodsText ?? "")
+  );
+  const protocolTerms = normalizeFoodList([
+    ...flattenAllowedFoods(foods),
+    ...conditionalFoods,
+    ...restrictedFoods,
+  ]);
+  const candidates = extractFoodCandidates(userMessage, protocolTerms).filter(
+    candidate => !containsFood(candidate, ignored)
+  );
 
   return removeDuplicatedValidations(
-    candidates.map(candidate => validateFood({ candidate, userMessage, foods, restrictedFoods }))
+    candidates.map(candidate =>
+      validateFood({
+        candidate,
+        userMessage,
+        foods,
+        restrictedFoods,
+        conditionalFoods,
+        protocolId,
+      })
+    )
   );
 }
 
@@ -527,15 +733,39 @@ function validateFood(params: {
   userMessage: string;
   foods: AllowedFoods;
   restrictedFoods: string[];
+  conditionalFoods: string[];
+  protocolId: ProtocolId;
 }): FoodValidation {
-  const { candidate, userMessage, foods, restrictedFoods } = params;
+  const {
+    candidate,
+    userMessage,
+    foods,
+    restrictedFoods,
+    conditionalFoods,
+    protocolId,
+  } = params;
+
+  const phaseConditionalFood = validateProtocolConditionalFood({
+    candidate,
+    conditionalFoods,
+    protocolId,
+  });
+
+  if (phaseConditionalFood) return phaseConditionalFood;
+
   const conditionalPreparation = validateConditionalPreparation({ candidate, userMessage });
   if (conditionalPreparation) return conditionalPreparation;
 
   const normalizedCandidate = normalizeText(candidate);
-  const restrictedMatch = restrictedFoods.find(food =>
-    normalizedCandidate === normalizeText(food) || normalizedCandidate.includes(normalizeText(food))
-  );
+  const restrictedMatch = restrictedFoods.find(food => {
+    const normalizedFood = normalizeText(food);
+
+    return (
+      normalizedCandidate === normalizedFood ||
+      normalizedCandidate.includes(normalizedFood) ||
+      normalizedFood.includes(normalizedCandidate)
+    );
+  });
 
   if (restrictedMatch) {
     return {
@@ -551,19 +781,48 @@ function validateFood(params: {
   const protocolMatch = findInAllowedFoods({ candidate, foods });
   if (protocolMatch) return protocolMatch;
 
-  if (matchesList(normalizedCandidate, FLEXIBLE_PROTEINS)) return compatible(candidate, canonicalizeProtein(candidate), "proteína", "aporta proteína y puede formar parte de la base del plato");
-  if (matchesList(normalizedCandidate, FLEXIBLE_FATS)) return compatible(candidate, canonicalizeFat(candidate), "grasa saludable", "puede apoyar saciedad y estabilidad glucémica");
-  if (matchesList(normalizedCandidate, FLEXIBLE_VEGETABLES)) return compatible(candidate, canonicalizeVegetable(candidate), "vegetal bajo en carga glucémica", "aporta fibra y baja carga glucémica");
-  if (matchesList(normalizedCandidate, FLEXIBLE_LEGUMES)) return compatible(candidate, canonicalizeLegume(candidate), "leguminosa", "puede entrar dentro del 25% del plato si el protocolo lo permite");
-  if (matchesList(normalizedCandidate, FLEXIBLE_FRUITS)) return compatible(candidate, canonicalizeFruit(candidate), "fruta", "es fruta compatible según horario y contexto de la fase");
+  // La clasificación final debe provenir del protocolo activo.
+  // Las listas auxiliares solo ayudan a detectar términos, no a decidir permisos.
 
   return {
     food: lowerFirst(candidate),
     canonicalFood: candidate,
     category: "desconocido",
     isCompatible: false,
-    reason: "no se pudo clasificar con seguridad dentro de la fase",
+    reason: "el protocolo activo no ofrece una clasificación explícita para este alimento",
     source: "unknown",
+  };
+}
+
+function validateProtocolConditionalFood(params: {
+  candidate: string;
+  conditionalFoods: string[];
+  protocolId: ProtocolId;
+}): FoodValidation | null {
+  const { candidate, conditionalFoods, protocolId } = params;
+  const normalizedCandidate = normalizeText(candidate);
+  const match = conditionalFoods.find(food => {
+    const normalizedFood = normalizeText(food);
+
+    return (
+      normalizedCandidate === normalizedFood ||
+      normalizedCandidate.includes(normalizedFood) ||
+      normalizedFood.includes(normalizedCandidate)
+    );
+  });
+
+  if (!match) return null;
+
+  return {
+    food: lowerFirst(candidate),
+    canonicalFood: match,
+    category: "carbohidrato saludable con validación",
+    isCompatible: true,
+    reason:
+      protocolId === "FASE_2"
+        ? "el protocolo lo permite en porción controlada y pide medir glucosa 2 horas después"
+        : "el protocolo lo permite únicamente bajo sus reglas de validación",
+    source: "protocol_conditional",
   };
 }
 
@@ -669,11 +928,46 @@ function findInAllowedFoods(params: {
   return null;
 }
 
-function extractFoodCandidates(userMessage: string) {
+function flattenAllowedFoods(foods: AllowedFoods) {
+  return [
+    ...foods.proteins,
+    ...foods.dairy,
+    ...foods.healthyFats,
+    ...foods.vegetables,
+    ...foods.legumes,
+    ...foods.fruits,
+    ...foods.beverages,
+  ];
+}
+
+function extractConditionalFoods(sections: ProtocolSections) {
+  const sources = Object.values(sections).filter(Boolean);
+  const foods: string[] = [];
+
+  sources.forEach(section => {
+    const headingMatches = [
+      /##\s*PERMITIDOS CON VALIDACI[ÓO]N\s*([\s\S]*?)(?=\n##\s|$)/gi,
+      /PERMITIDOS CON VALIDACI[ÓO]N:\s*([\s\S]*?)(?=\n(?:EVITAR|NO RECOMENDADOS|##|#)[:\s]|$)/gi,
+    ];
+
+    headingMatches.forEach(pattern => {
+      let match: RegExpExecArray | null;
+
+      while ((match = pattern.exec(section)) !== null) {
+        foods.push(...extractFoodList(match[1] ?? ""));
+      }
+    });
+  });
+
+  return normalizeFoodList(foods);
+}
+
+function extractFoodCandidates(userMessage: string, protocolTerms: string[] = []) {
   const normalizedMessage = normalizeText(userMessage);
   const candidates = new Set<string>();
   const knownTerms = [
-    ...HIGH_GLYCEMIC_FOODS,
+    ...protocolTerms,
+    ...COMMON_FOOD_TERMS,
     ...CONDITIONAL_PREPARATION_NAMES,
     ...COMPATIBLE_PREPARATION_INGREDIENTS,
     ...INCOMPATIBLE_PREPARATION_INGREDIENTS,
@@ -684,9 +978,24 @@ function extractFoodCandidates(userMessage: string) {
     ...FLEXIBLE_FRUITS,
   ];
 
-  knownTerms.forEach(term => {
-    if (normalizedMessage.includes(normalizeText(term))) candidates.add(term);
-  });
+  knownTerms
+    .filter(term => normalizedMessage.includes(normalizeText(term)))
+    .sort((a, b) => normalizeText(b).length - normalizeText(a).length)
+    .forEach(term => {
+      const normalizedTerm = normalizeText(term);
+      const overlapsWithExisting = Array.from(candidates).some(existing => {
+        const normalizedExisting = normalizeText(existing);
+
+        return (
+          normalizedExisting.includes(normalizedTerm) ||
+          normalizedTerm.includes(normalizedExisting)
+        );
+      });
+
+      if (!overlapsWithExisting) {
+        candidates.add(term);
+      }
+    });
 
   [
     /recetas? (?:con|de|para) ([a-záéíóúñ\s]+)/i,
@@ -792,6 +1101,14 @@ function extractCurrentUserMessage(userMessage: string | undefined) {
   );
 
   return match?.[1]?.trim() ?? userMessage;
+}
+
+function isConditionalFoodListRequest(userMessage: string | undefined) {
+  if (!userMessage) return false;
+
+  return /\b(alimentos?|lista|cu[aá]les|dame|mu[eé]strame)\b[\s\S]*\b(permitidos?|validaci[oó]n|validar)\b/i.test(
+    userMessage
+  );
 }
 
 function isRecipeRequest(userMessage: string | undefined) {

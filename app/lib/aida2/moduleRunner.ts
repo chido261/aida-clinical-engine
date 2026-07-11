@@ -11,6 +11,7 @@ import {
 } from "@/app/lib/aida2/modules/contextModule";
 import {
   generateMealRecommendation,
+  type MealSpecialistDecision,
   type MealType,
 } from "@/app/lib/aida2/specialists/mealSpecialist";
 
@@ -27,6 +28,7 @@ export type Aida2MealModuleOutput = {
   module: "MEAL_SPECIALIST";
   mealType: MealType;
   recommendation: string;
+  decision: MealSpecialistDecision;
 };
 
 export type Aida2ModuleResults = {
@@ -273,6 +275,7 @@ export function runAida2Modules(
       module: "MEAL_SPECIALIST",
       mealType,
       recommendation: mealResult.recommendation,
+      decision: mealResult.decision,
     };
   }
 

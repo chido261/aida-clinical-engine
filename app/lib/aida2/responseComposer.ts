@@ -150,16 +150,27 @@ export function buildAida2ComposerPrompt(params: {
     mealModule
       ? [
           `- Tipo de comida detectado: ${mealModule.mealType}`,
+          `- Protocolo: ${mealModule.decision.protocolId}`,
+          "",
+          "DECISIÓN ESTRUCTURADA:",
+          ...mealModule.decision.foods.map(
+            (f) =>
+              `- ${f.food}: ${f.status} | ${f.category} | ${f.reason}`
+          ),
+          "",
+          "REGLAS OBLIGATORIAS:",
+          mealModule.decision.hasNotAllowedFoods
+            ? "- Si un alimento tiene estado NOT_ALLOWED, no convertirlo en permitido."
+            : "- No hay alimentos prohibidos en esta decisión.",
+          mealModule.decision.hasConditionalFoods
+            ? "- Si un alimento tiene estado ALLOWED_WITH_VALIDATION, explicar la validación indicada por el protocolo."
+            : "- No hay alimentos con validación en esta decisión.",
+          mealModule.decision.shouldBuildRecipes
+            ? "- Si el especialista construyó opciones, utilízalas sin inventar nuevas."
+            : "- No inventar recetas u opciones adicionales.",
           "",
           "VALIDACIÓN TÉCNICA DEL ESPECIALISTA:",
           mealModule.recommendation,
-          "",
-          "Cómo usar esta validación:",
-          "- Usarla como límite técnico principal para alimentos, ingredientes, preparaciones y opciones.",
-          "- Si el especialista indica que algo no conviene, no convertirlo en permitido.",
-          "- Si el especialista indica que faltan ingredientes, pedir solo los ingredientes mínimos.",
-          "- Si el especialista entrega una base compatible, redactarla de forma natural sin agregar elementos no validados.",
-          "- Si el especialista no entrega opciones múltiples validadas, no inventar opciones múltiples.",
         ].join("\n")
       : "MealSpecialist no ejecutado.",
 

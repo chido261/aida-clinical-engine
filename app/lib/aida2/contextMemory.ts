@@ -86,6 +86,12 @@ export type Aida2ContextMemory = {
   userId: string;
   userState: {
     name: string | null;
+    age: number | null;
+    heightCm: number | null;
+    weightKg: number | null;
+    diagnosis: string | null;
+    baselineA1c: number | null;
+    meds: string | null;
     activeProtocol: string;
     activePhase: string;
     currentNutritionGoal: string | null;
@@ -343,6 +349,12 @@ export async function loadAida2ContextMemory(params: {
     userId,
     userState: {
       name: userState.name ?? null,
+      age: userState.age ?? null,
+      heightCm: userState.heightCm ?? null,
+      weightKg: userState.weightKg ?? null,
+      diagnosis: userState.diagnosis ?? null,
+      baselineA1c: userState.baselineA1c ?? null,
+      meds: userState.meds ?? null,
       activeProtocol: resolvedProtocolId,
       activePhase: normalizedPhase,
       currentNutritionGoal: userState.currentNutritionGoal ?? null,
@@ -374,6 +386,24 @@ export function buildAida2MemoryPrompt(memory: Aida2ContextMemory) {
   const lines: string[] = [
     "MEMORIA PERSISTENTE DE AIDA:",
     `- Usuario: ${userState.name ?? "sin nombre registrado"}.`,
+    `- Edad: ${userState.age ?? "no registrada"}.`,
+    `- Estatura: ${
+      userState.heightCm !== null
+        ? `${(userState.heightCm / 100).toFixed(2)} m`
+        : "no registrada"
+    }.`,
+    `- Peso: ${
+      userState.weightKg !== null
+        ? `${userState.weightKg} kg`
+        : "no registrado"
+    }.`,
+    `- Diagnóstico registrado: ${userState.diagnosis ?? "no registrado"}.`,
+    `- Hemoglobina glucosilada registrada: ${
+      userState.baselineA1c !== null
+        ? `${userState.baselineA1c}%`
+        : "no registrada"
+    }.`,
+    `- Medicamentos registrados: ${userState.meds ?? "ninguno registrado"}.`,
     `- Protocolo activo: ${metadata.activeProtocol}.`,
     `- Fase activa: ${metadata.activePhase}.`,
     `- Objetivo glucémico: ayunas < ${metadata.glucoseTargets.fastingMaxMgDl} mg/dL; postcomida ${metadata.glucoseTargets.postMealMinMgDl}-${metadata.glucoseTargets.postMealMaxMgDl} mg/dL.`,
@@ -470,6 +500,8 @@ export function buildAida2MemoryPrompt(memory: Aida2ContextMemory) {
     "- Usa esta memoria como contexto operativo. No la menciones literalmente al usuario.",
     "- Si hay seguimiento sugerido, prioriza retomarlo de forma natural.",
     "- No afirmes recordar algo específico si no aparece en memoria o historial.",
+    "- Si el usuario pregunta por datos personales o clínicos registrados, responde usando esta memoria.",
+    "- Si el usuario pregunta por su hemoglobina glucosilada, usa exactamente el valor de baselineA1c mostrado en esta memoria.",
     "- Si el usuario corrige un recuerdo, acepta la corrección y actualiza el tema."
   );
 
