@@ -8,6 +8,7 @@ import { prisma } from "@/app/lib/prisma";
 import { saveReading } from "@/app/lib/aidaMemory";
 import { buildAida2WorkPlan } from "@/app/lib/aida2/brain";
 import { runAida2Modules } from "@/app/lib/aida2/moduleRunner";
+import type { ProtocolId } from "@/app/lib/aida2/modules/protocolModule";
 import { buildAida2ConversationStrategy } from "@/app/lib/aida2/conversationStrategy";
 import { buildAida2ComposerPrompt } from "@/app/lib/aida2/responseComposer";
 import {
@@ -47,6 +48,46 @@ function resolveUserId(body: Body) {
   if (deviceId) return deviceId;
 
   return "chat2-local";
+}
+
+function resolveProtocolId(
+  activePhase: string | null | undefined,
+  activeProtocol: string | null | undefined
+): ProtocolId {
+  const normalizedPhase = (activePhase ?? "")
+    .trim()
+    .toUpperCase()
+    .replace(/[\s-]+/g, "_");
+
+  if (
+    normalizedPhase === "DIAGNOSTICO" ||
+    normalizedPhase === "DIAGNOSTICO_7_DIAS"
+  ) {
+    return "DIAGNOSTICO_7_DIAS";
+  }
+
+  if (normalizedPhase === "FASE_2" || normalizedPhase === "FASE2") {
+    return "FASE_2";
+  }
+
+  if (normalizedPhase === "FASE_1" || normalizedPhase === "FASE1") {
+    return "FASE_1";
+  }
+
+  const normalizedProtocol = (activeProtocol ?? "")
+    .trim()
+    .toUpperCase()
+    .replace(/[\s-]+/g, "_");
+
+  if (normalizedProtocol === "FASE_2") {
+    return "FASE_2";
+  }
+
+  if (normalizedProtocol === "FASE_1") {
+    return "FASE_1";
+  }
+
+  return "DIAGNOSTICO_7_DIAS";
 }
 
 function extractNameFromMessage(message: string) {
@@ -259,10 +300,16 @@ export async function POST(req: Request) {
       conversationState,
     });
 
+    const protocolId = resolveProtocolId(
+      memory.userState.activePhase,
+      memory.userState.activeProtocol
+    );
+
     const moduleResults = runAida2Modules({
       workPlan,
       history,
       userMessage: lastUserMessage,
+      protocolId,
     });
 
     const conversationStrategy = buildAida2ConversationStrategy({

@@ -1,6 +1,13 @@
+// app/chat2/page.tsx
+
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { getDeviceId } from "@/app/lib/deviceId";
 
 type ChatMessage = {
@@ -61,14 +68,21 @@ function parseContent(content: string): RenderLine[] {
     if (!line) {
       flushParagraph();
 
-      if (result.length && result[result.length - 1].type !== "space") {
-        result.push({ type: "space" });
+      if (
+        result.length &&
+        result[result.length - 1].type !== "space"
+      ) {
+        result.push({
+          type: "space",
+        });
       }
 
       return;
     }
 
-    const numberedMatch = line.match(/^(\d+)\.\s+(.+)$/);
+    const numberedMatch = line.match(
+      /^(\d+)\.\s+(.+)$/
+    );
 
     if (numberedMatch) {
       flushParagraph();
@@ -100,7 +114,14 @@ function parseContent(content: string): RenderLine[] {
 
   return result.filter((line, index, array) => {
     if (line.type !== "space") return true;
-    if (index === 0 || index === array.length - 1) return false;
+
+    if (
+      index === 0 ||
+      index === array.length - 1
+    ) {
+      return false;
+    }
+
     return true;
   });
 }
@@ -110,11 +131,19 @@ function renderMessageContent(content: string) {
 
   return lines.map((line, index) => {
     if (line.type === "space") {
-      return <div key={index} style={{ height: 4 }} />;
+      return (
+        <div
+          key={index}
+          style={{
+            height: 4,
+          }}
+        />
+      );
     }
 
     const previous = lines[index - 1];
-    const isAfterSpace = previous?.type === "space";
+    const isAfterSpace =
+      previous?.type === "space";
     const isFirst = index === 0;
 
     if (line.type === "number") {
@@ -124,7 +153,8 @@ function renderMessageContent(content: string) {
           style={{
             display: "flex",
             gap: 8,
-            marginTop: isFirst || isAfterSpace ? 0 : 8,
+            marginTop:
+              isFirst || isAfterSpace ? 0 : 8,
             paddingLeft: 8,
           }}
         >
@@ -136,6 +166,7 @@ function renderMessageContent(content: string) {
           >
             {line.number}.
           </span>
+
           <span>{line.text}</span>
         </div>
       );
@@ -148,7 +179,8 @@ function renderMessageContent(content: string) {
           style={{
             display: "flex",
             gap: 8,
-            marginTop: isFirst || isAfterSpace ? 0 : 8,
+            marginTop:
+              isFirst || isAfterSpace ? 0 : 8,
             paddingLeft: 8,
           }}
         >
@@ -162,7 +194,10 @@ function renderMessageContent(content: string) {
       <p
         key={index}
         style={{
-          margin: isFirst || isAfterSpace ? 0 : "10px 0 0",
+          margin:
+            isFirst || isAfterSpace
+              ? 0
+              : "10px 0 0",
         }}
       >
         {line.text}
@@ -175,13 +210,29 @@ const FALLBACK_WELCOME =
   "Hola, soy AIDA2 👋\n\nEstoy lista para ayudarte con comida, glucosa, ejercicio, protocolos y medicamentos en diabetes tipo 2.";
 
 export default function Chat2Page() {
-  const [deviceId, setDeviceId] = useState("");
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [input, setInput] = useState("");
-  const [isSending, setIsSending] = useState(false);
-  const [isLoadingWelcome, setIsLoadingWelcome] = useState(true);
+  const [deviceId, setDeviceId] =
+    useState("");
 
-  const bottomRef = useRef<HTMLDivElement | null>(null);
+  const [messages, setMessages] =
+    useState<ChatMessage[]>([]);
+
+  const [input, setInput] = useState("");
+  const [isSending, setIsSending] =
+    useState(false);
+
+  const [
+    isLoadingWelcome,
+    setIsLoadingWelcome,
+  ] = useState(true);
+
+  const [isMenuOpen, setIsMenuOpen] =
+    useState(false);
+
+  const bottomRef =
+    useRef<HTMLDivElement | null>(null);
+
+  const menuRef =
+    useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     const id = getDeviceId();
@@ -197,16 +248,27 @@ export default function Chat2Page() {
       setIsLoadingWelcome(true);
 
       try {
-        const res = await fetch("/api/chat2/welcome", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ deviceId }),
-        });
+        const response = await fetch(
+          "/api/chat2/welcome",
+          {
+            method: "POST",
+            headers: {
+              "Content-Type":
+                "application/json",
+            },
+            body: JSON.stringify({
+              deviceId,
+            }),
+          }
+        );
 
-        const data = await res.json();
+        const data = await response.json();
 
-        if (!res.ok || !data?.ok) {
-          throw new Error(safeReadText(data?.error) || "Error al cargar bienvenida");
+        if (!response.ok || !data?.ok) {
+          throw new Error(
+            safeReadText(data?.error) ||
+              "Error al cargar bienvenida"
+          );
         }
 
         if (cancelled) return;
@@ -214,7 +276,9 @@ export default function Chat2Page() {
         setMessages([
           {
             role: "assistant",
-            content: safeReadText(data.welcome) || FALLBACK_WELCOME,
+            content:
+              safeReadText(data.welcome) ||
+              FALLBACK_WELCOME,
           },
         ]);
       } catch {
@@ -233,7 +297,7 @@ export default function Chat2Page() {
       }
     }
 
-    loadWelcome();
+    void loadWelcome();
 
     return () => {
       cancelled = true;
@@ -241,20 +305,92 @@ export default function Chat2Page() {
   }, [deviceId]);
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, isSending, isLoadingWelcome]);
+    bottomRef.current?.scrollIntoView({
+      behavior: "smooth",
+    });
+  }, [
+    messages,
+    isSending,
+    isLoadingWelcome,
+  ]);
+
+  useEffect(() => {
+    function handleOutsideClick(
+      event: MouseEvent
+    ) {
+      if (
+        menuRef.current &&
+        !menuRef.current.contains(
+          event.target as Node
+        )
+      ) {
+        setIsMenuOpen(false);
+      }
+    }
+
+    function handleEscape(
+      event: KeyboardEvent
+    ) {
+      if (event.key === "Escape") {
+        setIsMenuOpen(false);
+      }
+    }
+
+    document.addEventListener(
+      "mousedown",
+      handleOutsideClick
+    );
+
+    document.addEventListener(
+      "keydown",
+      handleEscape
+    );
+
+    return () => {
+      document.removeEventListener(
+        "mousedown",
+        handleOutsideClick
+      );
+
+      document.removeEventListener(
+        "keydown",
+        handleEscape
+      );
+    };
+  }, []);
 
   const canSend = useMemo(() => {
-    return input.trim().length > 0 && !isSending && !isLoadingWelcome && !!deviceId;
-  }, [input, isSending, isLoadingWelcome, deviceId]);
+    return (
+      input.trim().length > 0 &&
+      !isSending &&
+      !isLoadingWelcome &&
+      Boolean(deviceId)
+    );
+  }, [
+    input,
+    isSending,
+    isLoadingWelcome,
+    deviceId,
+  ]);
 
   async function handleSend() {
     const text = input.trim();
-    if (!text || isSending || isLoadingWelcome || !deviceId) return;
+
+    if (
+      !text ||
+      isSending ||
+      isLoadingWelcome ||
+      !deviceId
+    ) {
+      return;
+    }
 
     const nextMessages: ChatMessage[] = [
       ...messages,
-      { role: "user", content: text },
+      {
+        role: "user",
+        content: text,
+      },
     ];
 
     setMessages(nextMessages);
@@ -262,38 +398,48 @@ export default function Chat2Page() {
     setIsSending(true);
 
     try {
-      const res = await fetch("/api/chat2", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          deviceId,
-          messages: nextMessages,
-        }),
-      });
+      const response = await fetch(
+        "/api/chat2",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type":
+              "application/json",
+          },
+          body: JSON.stringify({
+            deviceId,
+            messages: nextMessages,
+          }),
+        }
+      );
 
-      const data = await res.json();
+      const data = await response.json();
 
-      if (!res.ok || !data?.ok) {
+      if (!response.ok || !data?.ok) {
         throw new Error(
-          safeReadText(data?.error) || "Error al llamar /api/chat2"
+          safeReadText(data?.error) ||
+            "Error al llamar /api/chat2"
         );
       }
 
-      setMessages((prev) => [
-        ...prev,
-        {
-          role: "assistant",
-          content: safeReadText(data.reply) || "No pude responder ahora.",
-        },
-      ]);
-    } catch (error: any) {
-      setMessages((prev) => [
-        ...prev,
+      setMessages((current) => [
+        ...current,
         {
           role: "assistant",
           content:
-            error?.message ||
-            "Tuve un problema técnico al responder. Inténtalo de nuevo.",
+            safeReadText(data.reply) ||
+            "No pude responder ahora.",
+        },
+      ]);
+    } catch (error: unknown) {
+      setMessages((current) => [
+        ...current,
+        {
+          role: "assistant",
+          content:
+            error instanceof Error
+              ? error.message
+              : "Tuve un problema técnico al responder. Inténtalo de nuevo.",
         },
       ]);
     } finally {
@@ -301,10 +447,15 @@ export default function Chat2Page() {
     }
   }
 
-  function onKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      handleSend();
+  function onKeyDown(
+    event: React.KeyboardEvent<HTMLTextAreaElement>
+  ) {
+    if (
+      event.key === "Enter" &&
+      !event.shiftKey
+    ) {
+      event.preventDefault();
+      void handleSend();
     }
   }
 
@@ -318,18 +469,189 @@ export default function Chat2Page() {
         display: "flex",
         flexDirection: "column",
         gap: 12,
+        background: "#ffffff",
       }}
     >
       <header
         style={{
-          borderBottom: "1px solid #e5e7eb",
+          borderBottom:
+            "1px solid #e5e7eb",
           paddingBottom: 12,
+          display: "flex",
+          justifyContent:
+            "space-between",
+          alignItems: "flex-start",
+          gap: 14,
+          position: "relative",
+          zIndex: 20,
         }}
       >
-        <h1 style={{ fontSize: 22, margin: 0 }}>AIDA2</h1>
-        <p style={{ fontSize: 13, opacity: 0.7, margin: "4px 0 0" }}>
-          Chat limpio de desarrollo · Cerebro nuevo
-        </p>
+        <div>
+          <h1
+            style={{
+              fontSize: 22,
+              margin: 0,
+              color: "#111827",
+            }}
+          >
+            AIDA2
+          </h1>
+
+          <p
+            style={{
+              fontSize: 13,
+              opacity: 0.7,
+              margin: "4px 0 0",
+              color: "#111827",
+            }}
+          >
+            Chat limpio de desarrollo ·
+            Cerebro nuevo
+          </p>
+        </div>
+
+        <div
+          ref={menuRef}
+          style={{
+            position: "relative",
+          }}
+        >
+          <button
+            type="button"
+            onClick={() =>
+              setIsMenuOpen(
+                (current) => !current
+              )
+            }
+            aria-expanded={isMenuOpen}
+            aria-haspopup="menu"
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 7,
+              border:
+                "1px solid #d1d5db",
+              borderRadius: 999,
+              padding: "8px 13px",
+              background: "#ffffff",
+              color: "#111827",
+              fontSize: 13,
+              fontWeight: 850,
+              cursor: "pointer",
+              whiteSpace: "nowrap",
+            }}
+          >
+            Menú
+
+            <span
+              aria-hidden="true"
+              style={{
+                display: "inline-block",
+                fontSize: 11,
+                transform: isMenuOpen
+                  ? "rotate(180deg)"
+                  : "rotate(0deg)",
+                transition:
+                  "transform 0.15s ease",
+              }}
+            >
+              ▼
+            </span>
+          </button>
+
+          {isMenuOpen ? (
+            <div
+              role="menu"
+              style={{
+                position: "absolute",
+                top: "calc(100% + 8px)",
+                right: 0,
+                width: 220,
+                border:
+                  "1px solid #e5e7eb",
+                borderRadius: 16,
+                background: "#ffffff",
+                boxShadow:
+                  "0 18px 45px rgba(15, 23, 42, 0.15)",
+                padding: 8,
+                zIndex: 50,
+              }}
+            >
+              <a
+                href="/chat2/mi-cuenta"
+                role="menuitem"
+                onClick={() =>
+                  setIsMenuOpen(false)
+                }
+                style={{
+                  display: "block",
+                  borderRadius: 11,
+                  padding: "11px 12px",
+                  color: "#111827",
+                  textDecoration: "none",
+                  background: "#ffffff",
+                }}
+              >
+                <div
+                  style={{
+                    fontSize: 14,
+                    fontWeight: 900,
+                  }}
+                >
+                  Mi cuenta
+                </div>
+
+                <div
+                  style={{
+                    marginTop: 3,
+                    fontSize: 12,
+                    lineHeight: 1.4,
+                    color: "#6b7280",
+                  }}
+                >
+                  Perfil, glucosa y fase
+                  actual
+                </div>
+              </a>
+
+              <div
+                style={{
+                  height: 1,
+                  background: "#e5e7eb",
+                  margin: "6px 4px",
+                }}
+              />
+
+              <div
+                style={{
+                  borderRadius: 11,
+                  padding: "11px 12px",
+                  color: "#9ca3af",
+                }}
+              >
+                <div
+                  style={{
+                    fontSize: 14,
+                    fontWeight: 850,
+                  }}
+                >
+                  Más opciones
+                </div>
+
+                <div
+                  style={{
+                    marginTop: 3,
+                    fontSize: 12,
+                    lineHeight: 1.4,
+                  }}
+                >
+                  Próximamente
+                </div>
+              </div>
+            </div>
+          ) : null}
+        </div>
       </header>
 
       <section
@@ -356,27 +678,40 @@ export default function Chat2Page() {
           </div>
         ) : null}
 
-        {messages.map((message, index) => {
-          const isUser = message.role === "user";
+        {messages.map(
+          (message, index) => {
+            const isUser =
+              message.role === "user";
 
-          return (
-            <div
-              key={index}
-              style={{
-                alignSelf: isUser ? "flex-end" : "flex-start",
-                maxWidth: "85%",
-                borderRadius: 16,
-                padding: "12px 14px",
-                background: isUser ? "#111827" : "#f3f4f6",
-                color: isUser ? "white" : "#111827",
-                fontSize: 15,
-                lineHeight: 1.58,
-              }}
-            >
-              {renderMessageContent(message.content)}
-            </div>
-          );
-        })}
+            return (
+              <div
+                key={index}
+                style={{
+                  alignSelf: isUser
+                    ? "flex-end"
+                    : "flex-start",
+                  maxWidth: "85%",
+                  borderRadius: 16,
+                  padding: "12px 14px",
+                  background: isUser
+                    ? "#111827"
+                    : "#f3f4f6",
+                  color: isUser
+                    ? "#ffffff"
+                    : "#111827",
+                  fontSize: 15,
+                  lineHeight: 1.58,
+                  overflowWrap:
+                    "break-word",
+                }}
+              >
+                {renderMessageContent(
+                  message.content
+                )}
+              </div>
+            );
+          }
+        )}
 
         {isSending ? (
           <div
@@ -399,43 +734,66 @@ export default function Chat2Page() {
 
       <footer
         style={{
-          borderTop: "1px solid #e5e7eb",
+          borderTop:
+            "1px solid #e5e7eb",
           paddingTop: 12,
           display: "flex",
           gap: 8,
+          position: "sticky",
+          bottom: 0,
+          background: "#ffffff",
+          paddingBottom: 8,
         }}
       >
         <textarea
           value={input}
-          onChange={(e) => setInput(e.target.value)}
+          onChange={(event) =>
+            setInput(event.target.value)
+          }
           onKeyDown={onKeyDown}
           placeholder="Escribe aquí..."
           rows={1}
-          disabled={isLoadingWelcome}
+          disabled={
+            isLoadingWelcome ||
+            isSending
+          }
           style={{
             flex: 1,
             resize: "none",
-            border: "1px solid #d1d5db",
+            border:
+              "1px solid #d1d5db",
             borderRadius: 14,
             padding: "10px 12px",
             fontSize: 15,
             outline: "none",
-            opacity: isLoadingWelcome ? 0.7 : 1,
+            color: "#111827",
+            background: "#ffffff",
+            opacity:
+              isLoadingWelcome ||
+              isSending
+                ? 0.7
+                : 1,
           }}
         />
 
         <button
           type="button"
-          onClick={handleSend}
+          onClick={() =>
+            void handleSend()
+          }
           disabled={!canSend}
           style={{
             border: "none",
             borderRadius: 14,
             padding: "0 16px",
-            background: canSend ? "#111827" : "#9ca3af",
-            color: "white",
+            background: canSend
+              ? "#111827"
+              : "#9ca3af",
+            color: "#ffffff",
             fontWeight: 700,
-            cursor: canSend ? "pointer" : "not-allowed",
+            cursor: canSend
+              ? "pointer"
+              : "not-allowed",
           }}
         >
           Enviar

@@ -113,7 +113,42 @@ const DEFAULT_GLUCOSE_TARGETS = {
   postMealMaxMgDl: 140,
 };
 
-function resolveProtocolId(_activePhase: string | null | undefined): ProtocolId {
+function normalizeActivePhase(
+  activePhase: string | null | undefined
+): "DIAGNOSTICO" | "FASE_1" | "FASE_2" {
+  const normalized = activePhase?.trim().toUpperCase();
+
+  if (
+    normalized === "DIAGNOSTICO" ||
+    normalized === "DIAGNOSTICO_7_DIAS"
+  ) {
+    return "DIAGNOSTICO";
+  }
+
+  if (normalized === "FASE_2") {
+    return "FASE_2";
+  }
+
+  if (normalized === "FASE_1") {
+    return "FASE_1";
+  }
+
+  return "DIAGNOSTICO";
+}
+
+function resolveProtocolId(
+  activePhase: string | null | undefined
+): ProtocolId {
+  const normalizedPhase = normalizeActivePhase(activePhase);
+
+  if (normalizedPhase === "FASE_1") {
+    return "FASE_1";
+  }
+
+  if (normalizedPhase === "FASE_2") {
+    return "FASE_2";
+  }
+
   return "DIAGNOSTICO_7_DIAS";
 }
 
@@ -198,19 +233,20 @@ function buildMetadata(params: {
   activeProtocol: string;
   activePhase: string;
 }) {
-  const { previous, activeProtocol, activePhase } = params;
+  const { previous, activePhase } = params;
   const coerced = coerceMetadataVersion(previous);
+  const normalizedPhase = normalizeActivePhase(activePhase);
 
   const protocol = runProtocolModule({
-    protocolId: resolveProtocolId(activePhase),
+    protocolId: resolveProtocolId(normalizedPhase),
   });
 
   const now = new Date().toISOString();
 
   return {
     version: 2,
-    activeProtocol,
-    activePhase,
+    activeProtocol: protocol.protocolId,
+    activePhase: normalizedPhase,
     glucoseTargets: coerced?.glucoseTargets ?? DEFAULT_GLUCOSE_TARGETS,
     allowedFoodsSnapshot: {
       proteins: protocol.structured.allowedFoods.proteins,
@@ -221,9 +257,9 @@ function buildMetadata(params: {
       fruits: protocol.structured.allowedFoods.fruits,
       beverages: protocol.structured.allowedFoods.beverages,
     },
-    restrictedFoodsSnapshot:
-      coerced?.restrictedFoodsSnapshot ??
-      extractRestrictedFoods(protocol.sections.restrictedFoods),
+    restrictedFoodsSnapshot: extractRestrictedFoods(
+      protocol.sections.restrictedFoods
+    ),
     lastFoodDecision: coerced?.lastFoodDecision ?? null,
     pendingAction: coerced?.pendingAction ?? null,
     knownUserPatterns: coerced?.knownUserPatterns ?? [],
@@ -246,8 +282,8 @@ async function ensureUserState(userId: string) {
     },
     create: {
       id: userId,
-      activeProtocol: "PROTOCOL_1",
-      activePhase: "FASE_1",
+      activeProtocol: "DIAGNOSTICO_7_DIAS",
+      activePhase: "DIAGNOSTICO",
       lastMsgAt: new Date(),
       totalMsgCount: 1,
       licenseStatus: "trial",
@@ -284,10 +320,13 @@ export async function loadAida2ContextMemory(params: {
 
   const previousMetadata = safeParseMetadata(context.metadataJson);
 
+  const normalizedPhase = normalizeActivePhase(userState.activePhase);
+  const resolvedProtocolId = resolveProtocolId(normalizedPhase);
+
   const metadata = buildMetadata({
     previous: previousMetadata,
-    activeProtocol: userState.activeProtocol ?? "PROTOCOL_1",
-    activePhase: userState.activePhase ?? "FASE_1",
+    activeProtocol: resolvedProtocolId,
+    activePhase: normalizedPhase,
   });
 
   await prisma.conversationContext.update({
@@ -304,8 +343,8 @@ export async function loadAida2ContextMemory(params: {
     userId,
     userState: {
       name: userState.name ?? null,
-      activeProtocol: userState.activeProtocol ?? "PROTOCOL_1",
-      activePhase: userState.activePhase ?? "FASE_1",
+      activeProtocol: resolvedProtocolId,
+      activePhase: normalizedPhase,
       currentNutritionGoal: userState.currentNutritionGoal ?? null,
       clinicalState: userState.clinicalState ?? null,
       lastRecommendation: userState.lastRecommendation ?? null,

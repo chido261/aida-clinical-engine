@@ -14,10 +14,13 @@ import {
   type MealType,
 } from "@/app/lib/aida2/specialists/mealSpecialist";
 
+import type { ProtocolId } from "@/app/lib/aida2/modules/protocolModule";
+
 export type Aida2ModuleRunnerInput = {
   workPlan: Aida2WorkPlan;
   history: string;
   userMessage: string;
+  protocolId?: ProtocolId;
 };
 
 export type Aida2MealModuleOutput = {
@@ -226,7 +229,12 @@ function buildMealSpecialistMessage(params: {
 export function runAida2Modules(
   input: Aida2ModuleRunnerInput
 ): Aida2ModuleResults {
-  const { workPlan, history, userMessage } = input;
+  const {
+    workPlan,
+    history,
+    userMessage,
+    protocolId,
+  } = input;
 
   const executionPlan = buildAida2ExecutionPlan(workPlan);
 
@@ -252,6 +260,7 @@ export function runAida2Modules(
 
     const mealResult = generateMealRecommendation({
       mealType,
+      protocolId,
       userMessage: buildMealSpecialistMessage({
         workPlan,
         history,

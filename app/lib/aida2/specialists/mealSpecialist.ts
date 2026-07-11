@@ -1,12 +1,16 @@
 // app/lib/aida2/specialists/mealSpecialist.ts
 
-import { runProtocolModule } from "../modules/protocolModule";
+import {
+  runProtocolModule,
+  type ProtocolId,
+} from "../modules/protocolModule";
 
 export type MealType = "desayuno" | "comida" | "cena" | "snack";
 
 export type MealRequest = {
   mealType: MealType;
   userMessage?: string;
+  protocolId?: ProtocolId;
 };
 
 type AllowedFoods = {
@@ -223,7 +227,9 @@ const PROTEIN_RECIPE_OPTIONS: Array<{ match: string[]; recipes: string[] }> = [
 ];
 
 export function generateMealRecommendation(request: MealRequest) {
-  const protocol = runProtocolModule();
+  const protocol = runProtocolModule({
+    protocolId: request.protocolId,
+  });
   const foods = protocol.structured.allowedFoods;
   const rawMessage = request.userMessage ?? "";
   const currentUserMessage = extractCurrentUserMessage(rawMessage);
