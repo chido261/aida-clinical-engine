@@ -17,37 +17,6 @@ export type ProtocolModuleInput = {
   protocolId?: ProtocolId;
 };
 
-export type ProtocolDecisionStatus =
-  | "ALLOWED"
-  | "ALLOWED_WITH_VALIDATION"
-  | "NOT_ALLOWED"
-  | "UNKNOWN";
-
-export type ProtocolFoodCategory =
-  | "PROTEIN"
-  | "DAIRY"
-  | "HEALTHY_FAT"
-  | "VEGETABLE"
-  | "LEGUME"
-  | "FRUIT"
-  | "BEVERAGE"
-  | "OPERATIONAL_CATEGORY"
-  | "UNKNOWN";
-
-export type ProtocolFoodDecision = {
-  protocolId: ProtocolId;
-  protocolVersion: string;
-  requestedFood: string;
-  canonicalFood: string | null;
-  category: ProtocolFoodCategory;
-  status: ProtocolDecisionStatus;
-  reason: string;
-  shouldMeasureGlucose: boolean;
-  validationRules: ReturnType<
-    typeof buildStructuredProtocol
-  >["validationRules"];
-};
-
 export type ProtocolModuleOutput = {
   protocolId: ProtocolId;
   protocolName: string;
@@ -57,14 +26,48 @@ export type ProtocolModuleOutput = {
   structured: ReturnType<typeof buildStructuredProtocol>;
 };
 
+export type ProtocolFoodStatus =
+  | "ALLOWED"
+  | "ALLOWED_WITH_CONDITION"
+  | "ALLOWED_WITH_VALIDATION"
+  | "RESTRICTED"
+  | "UNKNOWN";
+
+export type ProtocolFoodCategory =
+  | "allowed"
+  | "allowedWithCondition"
+  | "allowedWithValidation"
+  | "restricted"
+  | "unknown";
+
+export type ProtocolFoodDecision = {
+  protocolId: ProtocolId;
+  protocolVersion: string;
+  requestedFood: string;
+  canonicalFood: string | null;
+  category: ProtocolFoodCategory;
+  status: ProtocolFoodStatus;
+  reason: string;
+  shouldMeasureGlucose: boolean;
+};
+
+export type ValidateFoodWithProtocolInput = {
+  protocolId?: ProtocolId;
+  food: string;
+};
+
 type CachedProtocol = {
   modifiedAtMs: number;
   output: ProtocolModuleOutput;
 };
 
-type FoodGroup = {
-  category: ProtocolFoodCategory;
-  foods: string[];
+type FoodRule = {
+  canonicalFood: string;
+  normalizedFood: string;
+  category: Exclude<ProtocolFoodCategory, "unknown">;
+  status: Exclude<ProtocolFoodStatus, "UNKNOWN">;
+  shouldMeasureGlucose: boolean;
+  priority: number;
 };
 
 const PROTOCOL_FILES: Record<ProtocolId, string> = {
@@ -72,6 +75,10 @@ const PROTOCOL_FILES: Record<ProtocolId, string> = {
   FASE_1: "docs/protocols/fase1.md",
   FASE_2: "docs/protocols/fase2.md",
 };
+
+// FASE_3 queda reservada para una etapa futura fuera de AIDA2,
+// posiblemente enfocada en resistencia a la insulina, músculo,
+// recomposición corporal y mantenimiento metabólico avanzado.
 
 const PROTOCOL_NAMES: Record<ProtocolId, string> = {
   DIAGNOSTICO_7_DIAS: "Fase Diagnóstico 7 días",
@@ -99,6 +106,7 @@ const SECTION_MAP: Record<string, string> = {
   "LISTA DE ALIMENTOS PERMITIDOS": "allowedFoods",
   "REGLA DE VALIDACIÓN DE CARBOHIDRATOS": "validationRule",
   "REGLA DE VALIDACION DE CARBOHIDRATOS": "validationRule",
+  "CRITERIOS DE AVANCE": "advancementCriteria",
 };
 
 const protocolCache = new Map<ProtocolId, CachedProtocol>();
@@ -141,24 +149,38 @@ function buildProtocolVersion(markdown: string) {
     .slice(0, 16);
 }
 
+function normalizeSectionTitle(value: string) {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toUpperCase()
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 function parseSections(markdown: string): ProtocolSections {
   const result: ProtocolSections = {};
-  const lines = markdown.split("\n");
+  const lines = markdown.replace(/\r\n?/g, "\n").split("\n");
 
   let currentKey: string | null = null;
 
   for (const rawLine of lines) {
     const line = rawLine.trim();
 
-    if (line.startsWith("# ")) {
-      const title = line.replace(/^#\s*/, "").trim().toUpperCase();
+    if (/^#\s+/.test(line)) {
+      const rawTitle = line.replace(/^#\s*/, "").trim();
+      const normalizedTitle = normalizeSectionTitle(rawTitle);
+
+      const mappedEntry = Object.entries(SECTION_MAP).find(
+        ([title]) => normalizeSectionTitle(title) === normalizedTitle
+      );
 
       currentKey =
-        SECTION_MAP[title] ??
-        title
-          .toLowerCase()
+        mappedEntry?.[1] ??
+        rawTitle
           .normalize("NFD")
           .replace(/[\u0300-\u036f]/g, "")
+          .toLowerCase()
           .replace(/[^\w\s]/g, "")
           .replace(/\s+/g, "_");
 
@@ -184,98 +206,249 @@ function buildProtocolOutput(params: {
   sourceFile: string;
   markdown: string;
 }): ProtocolModuleOutput {
-  const sections = parseSections(params.markdown);
+  const {
+    protocolId,
+    protocolName,
+    sourceFile,
+    markdown,
+  } = params;
+
+  const sections = parseSections(markdown);
   const structured = buildStructuredProtocol(sections);
 
   return {
-    protocolId: params.protocolId,
-    protocolName: params.protocolName,
-    protocolVersion: buildProtocolVersion(params.markdown),
-    sourceFile: params.sourceFile,
+    protocolId,
+    protocolName,
+    protocolVersion: buildProtocolVersion(markdown),
+    sourceFile,
     sections,
     structured,
   };
 }
 
-function normalizeText(value: string) {
+function normalizeFood(value: string) {
   return value
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase()
-    .replace(/[¿?¡!.,;:()[\]{}]/g, " ")
+    .replace(/[()[\]{}.,;:!?¿¡"'`´]/g, " ")
     .replace(/\s+/g, " ")
     .trim();
 }
 
-function findBestMatch(
-  requestedFood: string,
-  foods: string[]
-): string | null {
-  const normalizedRequested = normalizeText(requestedFood);
+function uniqueFoodNames(values: string[]) {
+  const seen = new Set<string>();
+  const result: string[] = [];
 
-  if (!normalizedRequested) {
-    return null;
+  for (const value of values) {
+    const cleaned = value.replace(/\s+/g, " ").trim();
+
+    if (!cleaned) continue;
+
+    const normalized = normalizeFood(cleaned);
+
+    if (!normalized || seen.has(normalized)) continue;
+
+    seen.add(normalized);
+    result.push(cleaned);
   }
 
-  const exactMatch = foods.find(
-    (food) => normalizeText(food) === normalizedRequested
-  );
-
-  if (exactMatch) {
-    return exactMatch;
-  }
-
-  const orderedFoods = [...foods].sort(
-    (a, b) => normalizeText(b).length - normalizeText(a).length
-  );
-
-  return (
-    orderedFoods.find((food) => {
-      const normalizedFood = normalizeText(food);
-
-      return (
-        normalizedRequested.includes(normalizedFood) ||
-        normalizedFood.includes(normalizedRequested)
-      );
-    }) ?? null
-  );
+  return result;
 }
 
-function getAllowedFoodGroups(
-  protocol: ProtocolModuleOutput
-): FoodGroup[] {
-  const foods = protocol.structured.allowedFoods;
-
-  return [
-    { category: "PROTEIN", foods: foods.proteins },
-    { category: "DAIRY", foods: foods.dairy },
-    { category: "HEALTHY_FAT", foods: foods.healthyFats },
-    { category: "VEGETABLE", foods: foods.vegetables },
-    { category: "LEGUME", foods: foods.legumes },
-    { category: "FRUIT", foods: foods.fruits },
-    { category: "BEVERAGE", foods: foods.beverages },
-  ];
+function flattenAllowedFoods(
+  allowedFoods: ProtocolModuleOutput["structured"]["allowedFoods"]
+) {
+  return uniqueFoodNames([
+    ...allowedFoods.proteins,
+    ...allowedFoods.dairy,
+    ...allowedFoods.healthyFats,
+    ...allowedFoods.vegetables,
+    ...allowedFoods.legumes,
+    ...allowedFoods.fruits,
+    ...allowedFoods.beverages,
+  ]);
 }
 
-function findAllowedFood(
-  requestedFood: string,
+function buildFoodRules(
   protocol: ProtocolModuleOutput
-): {
-  canonicalFood: string;
-  category: ProtocolFoodCategory;
-} | null {
-  for (const group of getAllowedFoodGroups(protocol)) {
-    const match = findBestMatch(requestedFood, group.foods);
+): FoodRule[] {
+  const { structured } = protocol;
 
-    if (match) {
-      return {
-        canonicalFood: match,
-        category: group.category,
-      };
+  const restricted = uniqueFoodNames([
+    ...structured.restrictedFoods,
+    ...structured.operationalCategories.restricted,
+    ...structured.fruits.restricted,
+  ]);
+
+  const allowedWithValidation = uniqueFoodNames([
+    ...structured.operationalCategories.allowedWithValidation,
+  ]);
+
+  const allowedWithCondition = uniqueFoodNames([
+    ...structured.operationalCategories.allowedWithCondition,
+    ...structured.legumes.foods,
+    ...structured.fruits.foods,
+  ]);
+
+  const allowed = uniqueFoodNames([
+    ...structured.operationalCategories.allowed,
+    ...flattenAllowedFoods(structured.allowedFoods),
+  ]);
+
+  const rules: FoodRule[] = [];
+
+  const appendRules = (
+    foods: string[],
+    rule: Omit<FoodRule, "canonicalFood" | "normalizedFood">
+  ) => {
+    for (const food of foods) {
+      rules.push({
+        canonicalFood: food,
+        normalizedFood: normalizeFood(food),
+        ...rule,
+      });
     }
+  };
+
+  appendRules(restricted, {
+    category: "restricted",
+    status: "RESTRICTED",
+    shouldMeasureGlucose: false,
+    priority: 400,
+  });
+
+  appendRules(allowedWithValidation, {
+    category: "allowedWithValidation",
+    status: "ALLOWED_WITH_VALIDATION",
+    shouldMeasureGlucose: true,
+    priority: 300,
+  });
+
+  appendRules(allowedWithCondition, {
+    category: "allowedWithCondition",
+    status: "ALLOWED_WITH_CONDITION",
+    shouldMeasureGlucose: false,
+    priority: 200,
+  });
+
+  appendRules(allowed, {
+    category: "allowed",
+    status: "ALLOWED",
+    shouldMeasureGlucose: false,
+    priority: 100,
+  });
+
+  return rules;
+}
+
+function containsWholePhrase(
+  fullText: string,
+  phrase: string
+) {
+  if (!fullText || !phrase) return false;
+
+  return ` ${fullText} `.includes(` ${phrase} `);
+}
+
+function getRuleMatchScore(
+  requestedFood: string,
+  ruleFood: string
+) {
+  if (!requestedFood || !ruleFood) return -1;
+
+  if (requestedFood === ruleFood) {
+    return 10_000 + ruleFood.length;
   }
 
-  return null;
+  if (containsWholePhrase(requestedFood, ruleFood)) {
+    return 5_000 + ruleFood.length;
+  }
+
+  if (containsWholePhrase(ruleFood, requestedFood)) {
+    return 1_000 + requestedFood.length;
+  }
+
+  return -1;
+}
+
+function findBestFoodRule(
+  requestedFood: string,
+  rules: FoodRule[]
+) {
+  const normalizedRequestedFood = normalizeFood(requestedFood);
+
+  return rules
+    .map((rule) => ({
+      rule,
+      matchScore: getRuleMatchScore(
+        normalizedRequestedFood,
+        rule.normalizedFood
+      ),
+    }))
+    .filter(({ matchScore }) => matchScore >= 0)
+    .sort((left, right) => {
+      if (right.matchScore !== left.matchScore) {
+        return right.matchScore - left.matchScore;
+      }
+
+      if (right.rule.normalizedFood.length !== left.rule.normalizedFood.length) {
+        return (
+          right.rule.normalizedFood.length -
+          left.rule.normalizedFood.length
+        );
+      }
+
+      return right.rule.priority - left.rule.priority;
+    })[0]?.rule;
+}
+
+function buildValidationReason(
+  protocol: ProtocolModuleOutput
+) {
+  const rule = protocol.structured.validationRule;
+  const details: string[] = [];
+
+  if (rule.measurementTiming) {
+    details.push(`medir glucosa ${rule.measurementTiming}`);
+  }
+
+  if (rule.targetMaxMgDl !== null) {
+    details.push(
+      `usar ${rule.targetMaxMgDl} mg/dL como límite de referencia`
+    );
+  }
+
+  if (rule.toleratedAction) {
+    details.push(rule.toleratedAction);
+  }
+
+  if (details.length === 0) {
+    return "El protocolo permite este alimento únicamente con validación de la respuesta de glucosa.";
+  }
+
+  return `El protocolo permite este alimento con validación: ${details.join(
+    "; "
+  )}.`;
+}
+
+function buildDecisionReason(
+  protocol: ProtocolModuleOutput,
+  rule: FoodRule
+) {
+  switch (rule.status) {
+    case "RESTRICTED":
+      return `El protocolo activo clasifica “${rule.canonicalFood}” como alimento no recomendado o restringido.`;
+
+    case "ALLOWED_WITH_VALIDATION":
+      return buildValidationReason(protocol);
+
+    case "ALLOWED_WITH_CONDITION":
+      return `El protocolo activo permite “${rule.canonicalFood}” únicamente bajo las condiciones y porciones definidas en el Markdown.`;
+
+    case "ALLOWED":
+      return `El protocolo activo incluye “${rule.canonicalFood}” entre los alimentos permitidos.`;
+  }
 }
 
 export function clearProtocolCache(protocolId?: ProtocolId) {
@@ -319,94 +492,41 @@ export function runProtocolModule(
   return output;
 }
 
-export function validateFoodWithProtocol(params: {
-  protocolId: ProtocolId;
-  food: string;
-}): ProtocolFoodDecision {
+export function validateFoodWithProtocol(
+  input: ValidateFoodWithProtocolInput
+): ProtocolFoodDecision {
+  const requestedFood = input.food.trim();
   const protocol = runProtocolModule({
-    protocolId: params.protocolId,
+    protocolId: input.protocolId ?? "DIAGNOSTICO_7_DIAS",
   });
 
-  const requestedFood = params.food.trim();
-  const validationRules = protocol.structured.validationRules;
-
-  const conditionalMatch = findBestMatch(
-    requestedFood,
-    protocol.structured.operationalCategories.conditional
-  );
-
-  if (conditionalMatch) {
+  if (!requestedFood) {
     return {
       protocolId: protocol.protocolId,
       protocolVersion: protocol.protocolVersion,
       requestedFood,
-      canonicalFood: conditionalMatch,
-      category: "OPERATIONAL_CATEGORY",
-      status: "ALLOWED_WITH_VALIDATION",
-      reason:
-        "El protocolo activo permite este alimento únicamente bajo sus condiciones de validación.",
-      shouldMeasureGlucose: validationRules.required,
-      validationRules,
+      canonicalFood: null,
+      category: "unknown",
+      status: "UNKNOWN",
+      reason: "No se recibió un alimento válido para consultar.",
+      shouldMeasureGlucose: false,
     };
   }
 
-  const restrictedMatch = findBestMatch(
-    requestedFood,
-    protocol.structured.restrictedFoods
-  );
+  const rules = buildFoodRules(protocol);
+  const matchedRule = findBestFoodRule(requestedFood, rules);
 
-  if (restrictedMatch) {
+  if (!matchedRule) {
     return {
       protocolId: protocol.protocolId,
       protocolVersion: protocol.protocolVersion,
       requestedFood,
-      canonicalFood: restrictedMatch,
-      category: "UNKNOWN",
-      status: "NOT_ALLOWED",
+      canonicalFood: null,
+      category: "unknown",
+      status: "UNKNOWN",
       reason:
-        "El protocolo activo incluye este alimento entre los no recomendados.",
+        "El alimento no aparece de forma suficientemente clara en las reglas del protocolo activo. No debe asumirse que está permitido ni restringido.",
       shouldMeasureGlucose: false,
-      validationRules,
-    };
-  }
-
-  const allowedFood = findAllowedFood(
-    requestedFood,
-    protocol
-  );
-
-  if (allowedFood) {
-    return {
-      protocolId: protocol.protocolId,
-      protocolVersion: protocol.protocolVersion,
-      requestedFood,
-      canonicalFood: allowedFood.canonicalFood,
-      category: allowedFood.category,
-      status: "ALLOWED",
-      reason:
-        "El alimento aparece dentro de las listas permitidas del protocolo activo.",
-      shouldMeasureGlucose: false,
-      validationRules,
-    };
-  }
-
-  const operationalAllowedMatch = findBestMatch(
-    requestedFood,
-    protocol.structured.operationalCategories.allowed
-  );
-
-  if (operationalAllowedMatch) {
-    return {
-      protocolId: protocol.protocolId,
-      protocolVersion: protocol.protocolVersion,
-      requestedFood,
-      canonicalFood: operationalAllowedMatch,
-      category: "OPERATIONAL_CATEGORY",
-      status: "ALLOWED",
-      reason:
-        "El alimento o su categoría aparece como permitido base en el protocolo activo.",
-      shouldMeasureGlucose: false,
-      validationRules,
     };
   }
 
@@ -414,12 +534,10 @@ export function validateFoodWithProtocol(params: {
     protocolId: protocol.protocolId,
     protocolVersion: protocol.protocolVersion,
     requestedFood,
-    canonicalFood: null,
-    category: "UNKNOWN",
-    status: "UNKNOWN",
-    reason:
-      "El protocolo activo no contiene una regla suficiente para decidir sobre este alimento.",
-    shouldMeasureGlucose: false,
-    validationRules,
+    canonicalFood: matchedRule.canonicalFood,
+    category: matchedRule.category,
+    status: matchedRule.status,
+    reason: buildDecisionReason(protocol, matchedRule),
+    shouldMeasureGlucose: matchedRule.shouldMeasureGlucose,
   };
 }
