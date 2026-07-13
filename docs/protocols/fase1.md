@@ -207,6 +207,7 @@ Son alimentos que pueden usarse como base del plato en Fase 1:
 Son alimentos compatibles solo si se respetan porción, horario y contexto glucémico:
 
 - leguminosas
+- pan preparado con harina de almendra, solo si no contiene harinas o endulzantes restringidos
 - frutas no tropicales
 - lácteos enteros sin azúcar
 - leche vegetal sin azúcar

@@ -351,22 +351,99 @@ function containsWholePhrase(
   return ` ${fullText} `.includes(` ${phrase} `);
 }
 
+function uniqueNormalizedValues(values: string[]) {
+  const seen = new Set<string>();
+  const result: string[] = [];
+
+  for (const value of values) {
+    const normalized = normalizeFood(value);
+
+    if (!normalized || seen.has(normalized)) continue;
+
+    seen.add(normalized);
+    result.push(normalized);
+  }
+
+  return result;
+}
+
+function stripFoodRequestLanguage(value: string) {
+  return normalizeFood(value)
+    .replace(
+      /^(?:hola\s+)?(?:dame|quiero|necesito|busco|sugiere|recomienda|prepara|hazme)\s+/,
+      ""
+    )
+    .replace(
+      /^(?:puedo|podria|conviene)\s+(?:comer|tomar|beber|preparar|hacer)\s+/,
+      ""
+    )
+    .replace(
+      /^(?:una?|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|\d+)\s+/,
+      ""
+    )
+    .replace(
+      /^(?:recetas?|ideas?|opciones?|platillos?|preparaciones?)\s+(?:con|de|para)\s+/,
+      ""
+    )
+    .replace(/^(?:recetas?|ideas?|opciones?|platillos?|preparaciones?)\s+/, "")
+    .trim();
+}
+
+function extractFoodSearchCandidates(value: string) {
+  const normalized = normalizeFood(value);
+  const stripped = stripFoodRequestLanguage(value);
+  const candidates: string[] = [normalized, stripped];
+
+  const patterns = [
+    /\b(?:con|de|para)\s+(.+)$/,
+    /\b(?:comer|tomar|beber|preparar|hacer)\s+(.+)$/,
+    /\b(?:lleva|tiene|contiene)\s+(.+)$/,
+  ];
+
+  for (const pattern of patterns) {
+    const match = stripped.match(pattern) ?? normalized.match(pattern);
+
+    if (match?.[1]) {
+      candidates.push(match[1]);
+    }
+  }
+
+  const words = stripped.split(" ").filter(Boolean);
+  const maxGramSize = Math.min(words.length, 5);
+
+  for (let gramSize = maxGramSize; gramSize >= 1; gramSize -= 1) {
+    for (
+      let startIndex = 0;
+      startIndex + gramSize <= words.length;
+      startIndex += 1
+    ) {
+      candidates.push(
+        words.slice(startIndex, startIndex + gramSize).join(" ")
+      );
+    }
+  }
+
+  return uniqueNormalizedValues(candidates);
+}
+
 function getRuleMatchScore(
-  requestedFood: string,
-  ruleFood: string
+  candidate: string,
+  rule: FoodRule
 ) {
-  if (!requestedFood || !ruleFood) return -1;
+  const ruleFood = rule.normalizedFood;
 
-  if (requestedFood === ruleFood) {
-    return 10_000 + ruleFood.length;
+  if (!candidate || !ruleFood) return -1;
+
+  if (candidate === ruleFood) {
+    return 100_000 + ruleFood.length * 100 + rule.priority;
   }
 
-  if (containsWholePhrase(requestedFood, ruleFood)) {
-    return 5_000 + ruleFood.length;
+  if (containsWholePhrase(candidate, ruleFood)) {
+    return 50_000 + ruleFood.length * 100 + rule.priority;
   }
 
-  if (containsWholePhrase(ruleFood, requestedFood)) {
-    return 1_000 + requestedFood.length;
+  if (containsWholePhrase(ruleFood, candidate)) {
+    return 10_000 + candidate.length * 100 + rule.priority;
   }
 
   return -1;
@@ -376,20 +453,24 @@ function findBestFoodRule(
   requestedFood: string,
   rules: FoodRule[]
 ) {
-  const normalizedRequestedFood = normalizeFood(requestedFood);
+  const candidates = extractFoodSearchCandidates(requestedFood);
 
   return rules
-    .map((rule) => ({
-      rule,
-      matchScore: getRuleMatchScore(
-        normalizedRequestedFood,
-        rule.normalizedFood
-      ),
-    }))
+    .flatMap((rule) =>
+      candidates.map((candidate) => ({
+        rule,
+        candidate,
+        matchScore: getRuleMatchScore(candidate, rule),
+      }))
+    )
     .filter(({ matchScore }) => matchScore >= 0)
     .sort((left, right) => {
       if (right.matchScore !== left.matchScore) {
         return right.matchScore - left.matchScore;
+      }
+
+      if (right.candidate.length !== left.candidate.length) {
+        return right.candidate.length - left.candidate.length;
       }
 
       if (right.rule.normalizedFood.length !== left.rule.normalizedFood.length) {

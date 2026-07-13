@@ -343,7 +343,7 @@ export function runAida2Modules(
       workPlan,
     });
 
-    const mealResult = generateMealRecommendation({
+    const mealRequest = {
       mealType,
       protocolId,
       userMessage: buildMealSpecialistMessage({
@@ -353,7 +353,10 @@ export function runAida2Modules(
         mealType,
         protocolDecision: results.protocol?.foodDecision,
       }),
-    });
+      protocolDecision: results.protocol?.foodDecision,
+    };
+
+    const mealResult = generateMealRecommendation(mealRequest);
 
     results.meal = {
       module: "MEAL_SPECIALIST",

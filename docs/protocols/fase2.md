@@ -316,6 +316,7 @@ Son alimentos que pueden usarse como base del plato en Fase 2:
 
 Son alimentos que pueden usarse si el usuario mide y confirma que no elevan glucosa postcomida por encima de 140 mg/dL:
 
+- pan preparado con harina de almendra, en porción controlada y con validación de glucosa
 - tortilla
 - tostadas horneadas
 - cereales integrales intactos

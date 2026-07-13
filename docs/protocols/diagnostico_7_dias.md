@@ -163,6 +163,7 @@ Esta fase usa categorías simples para facilitar decisiones rápidas.
 - leche vegetal sin azúcar
 - stevia
 - Splenda
+- pan preparado con harina de almendra, solo si no contiene harinas o endulzantes restringidos
 
 Las leguminosas cuentan dentro del 25% del plato.
 
