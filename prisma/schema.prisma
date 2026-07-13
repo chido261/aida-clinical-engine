@@ -24,13 +24,14 @@ model UserState {
   onboardingDoneAt  DateTime?
 
   // baseline
-  baselineA1c        Float?
-  baselineAvgGlucose Int?
-  baselineSetAt      DateTime?
+  baselineA1c         Float?
+  baselineAvgGlucose  Int?
+  baselineSetAt       DateTime?
 
   // protocolo / fase actual
   activeProtocol           String  @default("PROTOCOL_1")
   activePhase              String  @default("FASE_1")
+  protocolVersion          String  @default("1")
   protocolStartedAt        DateTime?
   eligibleForNextProtocol  Boolean @default(false)
   protocolReviewReason     String?
@@ -59,7 +60,7 @@ model UserState {
   phoneVerifiedAt DateTime?
 
   // estado clínico persistente
-  clinicalState String? 
+  clinicalState String?
   // STABLE | HYPO_ACTIVE | RECOVERING_FROM_HYPO | POSTMEAL_ELEVATED | POSTMEAL_RECOVERY | null
 
   // seguimiento conversacional persistente

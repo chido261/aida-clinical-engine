@@ -10,12 +10,16 @@ import {
   type Aida2ContextModuleOutput,
 } from "@/app/lib/aida2/modules/contextModule";
 import {
+  runProtocolModule,
+  validateFoodWithProtocol,
+  type ProtocolFoodDecision,
+  type ProtocolId,
+} from "@/app/lib/aida2/modules/protocolModule";
+import {
   generateMealRecommendation,
   type MealSpecialistDecision,
   type MealType,
 } from "@/app/lib/aida2/specialists/mealSpecialist";
-
-import type { ProtocolId } from "@/app/lib/aida2/modules/protocolModule";
 
 export type Aida2ModuleRunnerInput = {
   workPlan: Aida2WorkPlan;
@@ -31,9 +35,17 @@ export type Aida2MealModuleOutput = {
   decision: MealSpecialistDecision;
 };
 
+export type Aida2ProtocolModuleOutput = {
+  module: "PROTOCOL";
+  protocolId: ProtocolId;
+  protocolVersion: string;
+  foodDecision?: ProtocolFoodDecision;
+};
+
 export type Aida2ModuleResults = {
   executionPlan: Aida2ExecutionPlan;
   context?: Aida2ContextModuleOutput;
+  protocol?: Aida2ProtocolModuleOutput;
   meal?: Aida2MealModuleOutput;
 };
 
@@ -95,8 +107,16 @@ function buildMealSpecialistMessage(params: {
   history: string;
   userMessage: string;
   mealType: MealType;
+  protocolDecision?: ProtocolFoodDecision;
 }) {
-  const { workPlan, history, userMessage, mealType } = params;
+  const {
+    workPlan,
+    history,
+    userMessage,
+    mealType,
+    protocolDecision,
+  } = params;
+
   const { foodContext, modulePlan, conversationState } = workPlan;
   const { pendingAction } = conversationState;
 
@@ -124,6 +144,31 @@ function buildMealSpecialistMessage(params: {
   if (foodContext.shouldValidatePreparation) {
     lines.push(
       "- El usuario parece describir una preparación; validar por ingredientes cuando aplique."
+    );
+  }
+
+  if (protocolDecision) {
+    lines.push("");
+    lines.push("DECISIÓN PRELIMINAR DEL PROTOCOLO ACTIVO:");
+    lines.push(`- Protocolo: ${protocolDecision.protocolId}.`);
+    lines.push(`- Versión: ${protocolDecision.protocolVersion}.`);
+    lines.push(`- Alimento consultado: ${protocolDecision.requestedFood}.`);
+    lines.push(
+      `- Alimento canónico: ${protocolDecision.canonicalFood ?? "no identificado"}.`
+    );
+    lines.push(`- Categoría: ${protocolDecision.category}.`);
+    lines.push(`- Estado: ${protocolDecision.status}.`);
+    lines.push(`- Motivo: ${protocolDecision.reason}.`);
+    lines.push(
+      `- Requiere medición de glucosa: ${
+        protocolDecision.shouldMeasureGlucose ? "sí" : "no"
+      }.`
+    );
+    lines.push(
+      "- Esta decisión proviene del Markdown activo y debe conservarse como referencia técnica."
+    );
+    lines.push(
+      "- Si el estado es UNKNOWN y se trata de una preparación, puedes analizar ingredientes con la lógica actual sin inventar permisos."
     );
   }
 
@@ -222,10 +267,41 @@ function buildMealSpecialistMessage(params: {
   lines.push("");
   lines.push("LÍMITE:");
   lines.push(
-    "- Clasifica y valida técnicamente con el protocolo. No cambies el objetivo de la conversación."
+    "- Conserva las capacidades actuales de clasificación, análisis de ingredientes y construcción culinaria."
+  );
+  lines.push(
+    "- No contradigas una decisión explícita del protocolo activo."
+  );
+  lines.push(
+    "- No cambies el objetivo de la conversación."
   );
 
   return lines.join("\n");
+}
+
+function buildProtocolResult(params: {
+  workPlan: Aida2WorkPlan;
+  protocolId: ProtocolId;
+}): Aida2ProtocolModuleOutput {
+  const { workPlan, protocolId } = params;
+  const protocol = runProtocolModule({ protocolId });
+
+  const targetText = workPlan.foodContext.targetText?.trim();
+
+  const foodDecision =
+    workPlan.foodContext.isFoodRelated && targetText
+      ? validateFoodWithProtocol({
+          protocolId,
+          food: targetText,
+        })
+      : undefined;
+
+  return {
+    module: "PROTOCOL",
+    protocolId: protocol.protocolId,
+    protocolVersion: protocol.protocolVersion,
+    foodDecision,
+  };
 }
 
 export function runAida2Modules(
@@ -235,7 +311,7 @@ export function runAida2Modules(
     workPlan,
     history,
     userMessage,
-    protocolId,
+    protocolId = "DIAGNOSTICO_7_DIAS",
   } = input;
 
   const executionPlan = buildAida2ExecutionPlan(workPlan);
@@ -250,6 +326,13 @@ export function runAida2Modules(
       executionPlan,
       history,
       userMessage,
+    });
+  }
+
+  if (workPlan.modulePlan.runProtocol) {
+    results.protocol = buildProtocolResult({
+      workPlan,
+      protocolId,
     });
   }
 
@@ -268,6 +351,7 @@ export function runAida2Modules(
         history,
         userMessage,
         mealType,
+        protocolDecision: results.protocol?.foodDecision,
       }),
     });
 
