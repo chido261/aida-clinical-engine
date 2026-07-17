@@ -4,6 +4,7 @@ import type { Aida2WorkPlan } from "@/app/lib/aida2/brain";
 import type { Aida2ConversationStrategy } from "@/app/lib/aida2/conversationStrategy";
 import type { Aida2ContextModuleOutput } from "@/app/lib/aida2/modules/contextModule";
 import type { Aida2MealModuleOutput } from "@/app/lib/aida2/moduleRunner";
+import type { SemanticFoodInterpretation } from "@/app/lib/aida2/modules/foodDecisionTypes";
 
 export function buildAida2ComposerPrompt(params: {
   workPlan: Aida2WorkPlan;
@@ -12,6 +13,7 @@ export function buildAida2ComposerPrompt(params: {
   contextModule?: Aida2ContextModuleOutput;
   mealModule?: Aida2MealModuleOutput;
   conversationStrategy?: Aida2ConversationStrategy;
+  semanticInterpretation?: SemanticFoodInterpretation | null;
 }) {
   const {
     workPlan,
@@ -20,6 +22,7 @@ export function buildAida2ComposerPrompt(params: {
     contextModule,
     mealModule,
     conversationStrategy,
+    semanticInterpretation,
   } = params;
 
   const foodContext = workPlan.foodContext;
@@ -173,6 +176,20 @@ export function buildAida2ComposerPrompt(params: {
           mealModule.recommendation,
         ].join("\n")
       : "MealSpecialist no ejecutado.",
+
+    "",
+    "Interpretación semántica del platillo:",
+    semanticInterpretation
+      ? [
+          `- Platillo: ${semanticInterpretation.dishName ?? "no identificado"}`,
+          `- Tipo semántico: ${semanticInterpretation.semanticType}`,
+          `- Ingredientes base: ${semanticInterpretation.baseIngredients.join(", ") || "ninguno confirmado"}`,
+          `- Ingredientes declarados: ${semanticInterpretation.declaredIngredients.join(", ") || "ninguno adicional"}`,
+          `- Referencias de estilo o imitación (no tratarlas como ingredientes): ${semanticInterpretation.styleReferences.join(", ") || "ninguna"}`,
+          `- Producto comercial: ${semanticInterpretation.isCommercialProduct ? "Sí" : "No"}`,
+          `- Confianza: ${semanticInterpretation.confidence}`,
+        ].join("\n")
+      : "No aplica.",
 
     "",
     "Plan de seguridad:",
