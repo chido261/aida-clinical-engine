@@ -293,9 +293,13 @@ export function generateMealRecommendation(
   const requestedCount =
     instruction.count ?? extractRequestedCount(currentUserMessage) ?? (shouldBuildOptions ? 3 : 1);
 
+  const contextualUserMessage = restoreConfirmedPreparationFromHistory({
+    rawMessage,
+    currentUserMessage,
+  });
   const messageForValidation = shouldBuildOptions
-    ? removeAvoidedFoodPhrases(currentUserMessage, avoidFoods)
-    : currentUserMessage;
+    ? removeAvoidedFoodPhrases(contextualUserMessage, avoidFoods)
+    : contextualUserMessage;
 
   const validations = validateMentionedFoods({
     userMessage: messageForValidation,
@@ -1126,6 +1130,41 @@ function extractCurrentUserMessage(userMessage: string | undefined) {
   );
 
   return match?.[1]?.trim() ?? userMessage;
+}
+
+function restoreConfirmedPreparationFromHistory(params: {
+  rawMessage: string;
+  currentUserMessage: string | undefined;
+}) {
+  const { rawMessage, currentUserMessage } = params;
+  if (!currentUserMessage) return currentUserMessage;
+
+  const isConfirmationFollowUp =
+    /\b(?:entonces|finalmente|en resumen|s[ií]\s+puedo|puedo\s+comer)\b/i.test(
+      currentUserMessage
+    );
+  const alreadyDescribesIngredients =
+    /\b(?:preparo|prepar[eé]|hago|hice|hech[ao]s?|ingredientes?|lleva|contiene)\b/i.test(
+      currentUserMessage
+    );
+
+  if (!isConfirmationFollowUp || alreadyDescribesIngredients) {
+    return currentUserMessage;
+  }
+
+  const ingredientMessages = [...rawMessage.matchAll(/^USER:\s*(.+)$/gim)]
+    .map(match => match[1]?.trim())
+    .filter((message): message is string => Boolean(message))
+    .filter(message =>
+      /\b(?:preparo|prepar[eé]|hago|hice|hech[ao]s?|ingredientes?|lleva|contiene)\b/i.test(
+        message
+      )
+    );
+  const latestIngredientMessage = ingredientMessages.at(-1);
+
+  return latestIngredientMessage
+    ? `${currentUserMessage}. ${latestIngredientMessage}`
+    : currentUserMessage;
 }
 
 function isConditionalFoodListRequest(userMessage: string | undefined) {
