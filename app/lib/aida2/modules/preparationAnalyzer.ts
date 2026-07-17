@@ -29,12 +29,19 @@ export const PREPARATION_TERMS = [
 
 function uniqueTerms(values: string[]) {
   const seen = new Set<string>();
-  return values.filter(value => {
+  const selected: string[] = [];
+
+  for (const value of [...values].sort(
+    (left, right) => normalizeFoodText(right).length - normalizeFoodText(left).length
+  )) {
     const normalized = normalizeFoodText(value);
-    if (!normalized || seen.has(normalized)) return false;
+    if (!normalized || seen.has(normalized)) continue;
+    if (selected.some(existing => normalizeFoodText(existing).includes(normalized))) continue;
     seen.add(normalized);
-    return true;
-  });
+    selected.push(value);
+  }
+
+  return selected;
 }
 
 function hasAffirmedIngredient(message: string, ingredient: string) {
