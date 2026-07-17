@@ -16,12 +16,14 @@ import {
 } from "@/app/lib/aida2/specialists/mealSpecialist";
 
 import type { ProtocolId } from "@/app/lib/aida2/modules/protocolModule";
+import type { SemanticFoodInterpretation } from "@/app/lib/aida2/modules/foodDecisionTypes";
 
 export type Aida2ModuleRunnerInput = {
   workPlan: Aida2WorkPlan;
   history: string;
   userMessage: string;
   protocolId?: ProtocolId;
+  semanticInterpretation?: SemanticFoodInterpretation | null;
 };
 
 export type Aida2MealModuleOutput = {
@@ -236,6 +238,7 @@ export function runAida2Modules(
     history,
     userMessage,
     protocolId,
+    semanticInterpretation,
   } = input;
 
   const executionPlan = buildAida2ExecutionPlan(workPlan);
@@ -263,6 +266,7 @@ export function runAida2Modules(
     const mealResult = generateMealRecommendation({
       mealType,
       protocolId,
+      semanticInterpretation,
       userMessage: buildMealSpecialistMessage({
         workPlan,
         history,
