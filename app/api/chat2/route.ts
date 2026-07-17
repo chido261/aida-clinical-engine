@@ -5,7 +5,7 @@ export const runtime = "nodejs";
 import { NextResponse } from "next/server";
 import OpenAI from "openai";
 import { prisma } from "@/app/lib/prisma";
-import { saveReading } from "@/app/lib/aidaMemory";
+import { ensureUserState, saveReading } from "@/app/lib/aidaMemory";
 import { buildAida2WorkPlan } from "@/app/lib/aida2/brain";
 import { runAida2Modules } from "@/app/lib/aida2/moduleRunner";
 import type { ProtocolId } from "@/app/lib/aida2/modules/protocolModule";
@@ -17,6 +17,7 @@ import {
   loadAida2ContextMemory,
   updateAida2ContextMemoryAfterResponse,
 } from "@/app/lib/aida2/contextMemory";
+import { reviewCurrentProtocolWeekIfDue } from "@/app/lib/aida2/weeklyProtocolReview";
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
@@ -174,6 +175,29 @@ function inferReadingMomentFromMessage(message: string) {
   return "DESCONOCIDO";
 }
 
+function inferReadingSlotFromMessage(message: string) {
+  if (/\b(ayunas|en ayunas|despert[eé]|despertar|antes de desayunar)\b/i.test(message)) {
+    return "AYUNO";
+  }
+
+  const isAfter = /\b(postcomida|post comida|despu[eé]s de|2\s*h|2\s*horas|dos horas)\b/i.test(message);
+  const isBefore = /\b(antes de|previo a|precomida)\b/i.test(message);
+
+  if (/\b(desayuno|desayunar)\b/i.test(message)) {
+    return isAfter ? "POST_DESAYUNO" : "AYUNO";
+  }
+
+  if (/\b(cena|cenar)\b/i.test(message)) {
+    return isAfter ? "POST_CENA" : isBefore ? "PRE_CENA" : null;
+  }
+
+  if (/\b(comida|comer|almuerzo|almorzar)\b/i.test(message)) {
+    return isAfter ? "POST_COMIDA" : isBefore ? "PRE_COMIDA" : null;
+  }
+
+  return null;
+}
+
 function classifyReadingEvent(glucose: number) {
   if (glucose < 70) {
     return {
@@ -218,6 +242,7 @@ async function persistGlucoseReadingFromChat2(params: {
   if (!glucose) return null;
 
   const moment = inferReadingMomentFromMessage(userMessage);
+  const readingSlot = inferReadingSlotFromMessage(userMessage);
   const classification = classifyReadingEvent(glucose);
 
   const reading = await saveReading({
@@ -227,6 +252,7 @@ async function persistGlucoseReadingFromChat2(params: {
     symptoms: [],
     eventType: classification.eventType,
     nutritionGoal: classification.nutritionGoal,
+    readingSlot,
   });
 
   await prisma.userState.update({
@@ -268,6 +294,33 @@ export async function POST(req: Request) {
 
     const userId = resolveUserId(body);
 
+    const access = await ensureUserState(userId);
+
+    if (!access.onboardingDoneAt) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "onboarding_required",
+          onboardingRequired: true,
+          message: "Completa tu formulario inicial antes de conversar con AIDA.",
+        },
+        { status: 428 }
+      );
+    }
+
+    if (access.licenseStatus === "expired") {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "plan_expired",
+          activationRequired: true,
+          message:
+            "Tu prueba de 7 días terminó. Activa la versión completa para continuar con la Fase 1.",
+        },
+        { status: 403 }
+      );
+    }
+
     let memory = await loadAida2ContextMemory({ userId });
 
     await persistNameIfMissing({
@@ -279,6 +332,8 @@ export async function POST(req: Request) {
       userId,
       userMessage: lastUserMessage,
     });
+
+    const weeklyReview = await reviewCurrentProtocolWeekIfDue({ userId });
 
     memory = await loadAida2ContextMemory({ userId });
 
@@ -358,8 +413,10 @@ export async function POST(req: Request) {
             glucose: savedReading.glucose,
             moment: savedReading.moment,
             createdAt: savedReading.createdAt,
+            readingSlot: savedReading.readingSlot,
           }
         : null,
+      weeklyReview,
       workPlan,
       modules: moduleResults,
       conversationStrategy,
