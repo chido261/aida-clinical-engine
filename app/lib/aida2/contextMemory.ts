@@ -325,6 +325,8 @@ export async function loadAida2ContextMemory(params: {
 
   const normalizedPhase = normalizeActivePhase(userState.activePhase);
   const resolvedProtocolId = resolveProtocolId(normalizedPhase);
+  const canonicalGlucoseGoal =
+    "Mantener glucosa en ayunas entre 70 y 100 mg/dL y las demás lecturas entre 100 y 140 mg/dL.";
 
   const metadata = buildMetadata({
     previous: previousMetadata,
@@ -336,9 +338,7 @@ export async function loadAida2ContextMemory(params: {
     where: { userId },
     data: {
       metadataJson: JSON.stringify(metadata),
-      currentGoal:
-        context.currentGoal ??
-        "Mantener glucosa en ayunas entre 70 y 100 mg/dL y las demás lecturas entre 100 y 140 mg/dL, limitando carbohidratos de alta carga glucémica.",
+      currentGoal: canonicalGlucoseGoal,
     },
   });
 
@@ -363,9 +363,7 @@ export async function loadAida2ContextMemory(params: {
     conversation: {
       clinicalSummary: context.clinicalSummary ?? null,
       activeGlucoseTopics: context.activeGlucoseTopics ?? null,
-      currentGoal:
-        context.currentGoal ??
-        "Mantener glucosa en ayunas entre 70 y 100 mg/dL y las demás lecturas entre 100 y 140 mg/dL.",
+      currentGoal: canonicalGlucoseGoal,
       detectedPatterns: context.detectedPatterns ?? null,
       medicationContext: context.medicationContext ?? null,
       lastConcern: context.lastConcern ?? null,
