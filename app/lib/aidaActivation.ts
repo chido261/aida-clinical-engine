@@ -168,6 +168,11 @@ export async function createOrRenewActivationCode(params: {
           fullEndsAt: updatedCode.fullEndsAt,
           activePlan: updatedCode.plan,
           activePlanSource: "payment",
+          activePhase: "FASE_1",
+          activeProtocol: "FASE_1",
+          protocolVersion: "1.0",
+          protocolStartedAt: new Date(),
+          eligibleForNextProtocol: false,
         },
       });
     }
@@ -208,6 +213,11 @@ export async function createOrRenewActivationCode(params: {
         fullEndsAt: createdCode.fullEndsAt,
         activePlan: createdCode.plan,
         activePlanSource: "payment",
+        activePhase: "FASE_1",
+        activeProtocol: "FASE_1",
+        protocolVersion: "1.0",
+        protocolStartedAt: new Date(),
+        eligibleForNextProtocol: false,
       },
     });
   }
@@ -332,6 +342,11 @@ export async function activateCodeOnDevice(params: {
       fullEndsAt: updatedCode.fullEndsAt,
       activePlan: updatedCode.plan,
       activePlanSource: "activation-code",
+      activePhase: "FASE_1",
+      activeProtocol: "FASE_1",
+      protocolVersion: "1.0",
+      protocolStartedAt: new Date(),
+      eligibleForNextProtocol: false,
     },
     update: {
       phoneE164,
@@ -341,6 +356,11 @@ export async function activateCodeOnDevice(params: {
       fullEndsAt: updatedCode.fullEndsAt,
       activePlan: updatedCode.plan,
       activePlanSource: "activation-code",
+      activePhase: "FASE_1",
+      activeProtocol: "FASE_1",
+      protocolVersion: "1.0",
+      protocolStartedAt: new Date(),
+      eligibleForNextProtocol: false,
     },
   });
 
