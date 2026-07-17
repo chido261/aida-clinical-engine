@@ -5,6 +5,8 @@ import path from "path";
 
 import { buildStructuredProtocol } from "./protocolParsers";
 
+export { evaluateFoodWithProtocol } from "./protocolFoodEngine";
+
 export type ProtocolId =
   | "DIAGNOSTICO_7_DIAS"
   | "FASE_1"
