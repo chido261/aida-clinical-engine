@@ -338,7 +338,7 @@ export async function loadAida2ContextMemory(params: {
       metadataJson: JSON.stringify(metadata),
       currentGoal:
         context.currentGoal ??
-        "Mantener glucosa en ayunas por debajo de 100 mg/dL y postcomida entre 100 y 140 mg/dL, limitando carbohidratos de alta carga glucémica.",
+        "Mantener glucosa en ayunas entre 70 y 100 mg/dL y las demás lecturas entre 100 y 140 mg/dL, limitando carbohidratos de alta carga glucémica.",
     },
   });
 
