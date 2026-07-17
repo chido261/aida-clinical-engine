@@ -31,6 +31,18 @@ export function enforceAida2StructuredDecision(params: {
     ].join("\n\n");
   }
 
+  const compatibleBases = extractCompatibleBases(mealModule.recommendation);
+
+  if (mealModule.decision.shouldBuildRecipes && compatibleBases.length > 0) {
+    return [
+      `La tortilla convencional sigue sin estar recomendada en ${phaseLabel(
+        mealModule.decision.protocolId
+      )}, pero estas preparaciones se validan por sus ingredientes:`,
+      ...compatibleBases.map((base, index) => `${index + 1}. ${base}`),
+      "Estas opciones no llevan harina de maíz, trigo ni almidones añadidos.",
+    ].join("\n\n");
+  }
+
   const notAllowed = mealModule.decision.foods.filter(
     (food) => food.status === "NOT_ALLOWED"
   );
@@ -81,4 +93,16 @@ export function enforceAida2StructuredDecision(params: {
   }
 
   return reply;
+}
+
+function extractCompatibleBases(recommendation: string) {
+  const section = recommendation.match(
+    /BASES CULINARIAS COMPATIBLES:\s*([\s\S]*?)(?:\n\s*LÍMITES DE REDACCIÓN:|$)/i
+  )?.[1];
+
+  if (!section) return [];
+
+  return [...section.matchAll(/^\d+\.\s+(.+)$/gm)]
+    .map(match => match[1]?.trim())
+    .filter((value): value is string => Boolean(value));
 }
