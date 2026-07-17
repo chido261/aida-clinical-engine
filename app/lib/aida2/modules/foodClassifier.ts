@@ -52,7 +52,9 @@ export function normalizeFoodText(value: string) {
 function matches(candidate: string, term: string) {
   const left = normalizeFoodText(candidate);
   const right = normalizeFoodText(term);
-  return left === right || ` ${left} `.includes(` ${right} `);
+  return left === right ||
+    ` ${left} `.includes(` ${right} `) ||
+    (left.split(" ").length === 1 && ` ${right} `.includes(` ${left} `));
 }
 
 function compatible(
