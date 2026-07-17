@@ -10,6 +10,7 @@ import type {
   FoodCategory,
   FoodValidation,
   MealSpecialistDecision,
+  SemanticFoodInterpretation,
 } from "../modules/foodDecisionTypes";
 
 export type {
@@ -26,6 +27,7 @@ export type MealRequest = {
   mealType: MealType;
   userMessage?: string;
   protocolId?: ProtocolId;
+  semanticInterpretation?: SemanticFoodInterpretation | null;
 };
 
 export type MealRecommendationResult = {
@@ -186,6 +188,7 @@ export function generateMealRecommendation(
     shouldBuildRecipes: shouldBuildOptions,
     ignoreFoods: avoidFoods,
     requestedConditionalFoodList: isConditionalFoodListRequest(currentUserMessage),
+    semanticInterpretation: request.semanticInterpretation,
   });
   const { validations, incompatibleFoods, compatibleFoods, conditionalFoods } = evaluation;
   const canBuildDespiteIncompatible =
@@ -202,6 +205,7 @@ export function generateMealRecommendation(
           validations: compatibleFoods,
           avoidFoods,
           requestedText: currentUserMessage,
+          semanticInterpretation: request.semanticInterpretation,
         })
       : [];
 
@@ -386,8 +390,30 @@ function buildCompatibleOptions(params: {
   validations: FoodValidation[];
   avoidFoods: string[];
   requestedText?: string;
+  semanticInterpretation?: SemanticFoodInterpretation | null;
 }) {
-  const { mealType, requestedCount, validations, avoidFoods, requestedText } = params;
+  const { mealType, requestedCount, validations, avoidFoods, requestedText, semanticInterpretation } = params;
+
+  if (
+    semanticInterpretation?.dishName &&
+    semanticInterpretation.confidence >= 0.65 &&
+    semanticInterpretation.semanticType !== "literal_food"
+  ) {
+    const dish = capitalize(semanticInterpretation.dishName);
+    const semanticOptions = [
+      `${dish} con pepino, jitomate, aguacate y limón.`,
+      `${dish} con nopal, pimiento y aceite de oliva extra virgen.`,
+      `${dish} con calabaza, espinaca y champiñones.`,
+    ];
+    return Array.from({ length: requestedCount }, (_, index) => ({
+      title: semanticOptions[index % semanticOptions.length],
+      proteins: [],
+      vegetables: [],
+      fats: [],
+      legumes: [],
+      fruits: [],
+    })).filter(option => !containsFood(option.title, avoidFoods));
+  }
 
   if (/\btortillas?\b/i.test(requestedText ?? "")) {
     const tortillaOptions = [
