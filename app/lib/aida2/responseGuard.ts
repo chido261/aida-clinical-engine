@@ -53,9 +53,9 @@ export function enforceAida2StructuredDecision(params: {
       (food) => food.status === "ALLOWED"
     );
     const allowedExplanation = allowed.length > 0
-      ? `${formatFoods(allowed.map((food) => food.canonicalFood))} sí ${
+      ? capitalizeSentence(`${formatFoods(allowed.map((food) => food.canonicalFood))} sí ${
           allowed.length === 1 ? "es compatible" : "son compatibles"
-        }: ${[...new Set(allowed.map((food) => food.reason))].join("; ")}.`
+        }: ${[...new Set(allowed.map((food) => food.reason))].join("; ")}.`)
       : null;
 
     return [
@@ -80,7 +80,7 @@ export function enforceAida2StructuredDecision(params: {
       `Sí. Por la composición que describiste, esta preparación es compatible con ${phaseLabel(
         mealModule.decision.protocolId
       )}.`,
-      `${reasons.join("; ")}. La decisión se basa en sus ingredientes y no en el nombre de la preparación.`,
+      `${capitalizeSentence(reasons.join("; "))}. La decisión se basa en sus ingredientes y no en el nombre de la preparación.`,
     ].join("\n\n");
   }
 
@@ -92,6 +92,11 @@ export function enforceAida2StructuredDecision(params: {
   }
 
   return reply;
+}
+
+function capitalizeSentence(value: string) {
+  if (!value) return value;
+  return value.charAt(0).toUpperCase() + value.slice(1);
 }
 
 function extractCompatibleBases(recommendation: string) {
