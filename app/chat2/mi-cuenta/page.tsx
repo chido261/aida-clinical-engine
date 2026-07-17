@@ -259,12 +259,8 @@ export default function Chat2MiCuentaPage() {
     postMealPeakMgDl: "",
   });
 
-  const [selectedPhase, setSelectedPhase] =
-    useState<AllowedPhase>("DIAGNOSTICO");
-
   const [isLoading, setIsLoading] = useState(true);
   const [isSavingProfile, setIsSavingProfile] = useState(false);
-  const [isSavingPhase, setIsSavingPhase] = useState(false);
 
   const [errorMessage, setErrorMessage] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
@@ -313,7 +309,6 @@ export default function Chat2MiCuentaPage() {
   function applyAccountData(nextAccount: Chat2Account) {
     setAccount(nextAccount);
     setProfileForm(buildProfileForm(nextAccount));
-    setSelectedPhase(nextAccount.protocol.activePhase);
   }
 
   async function loadAccount() {
@@ -376,38 +371,6 @@ export default function Chat2MiCuentaPage() {
       );
     } finally {
       setIsSavingProfile(false);
-    }
-  }
-
-  async function savePhase() {
-    if (!deviceId || isSavingPhase) {
-      return;
-    }
-
-    setIsSavingPhase(true);
-    setErrorMessage("");
-    setSuccessMessage("");
-
-    try {
-      const data = await requestAccount({
-        action: "UPDATE_PHASE",
-        activePhase: selectedPhase,
-      });
-
-      if (data.ok) {
-        applyAccountData(data.account);
-        setSuccessMessage(
-          data.message || "La fase fue actualizada correctamente."
-        );
-      }
-    } catch (error: unknown) {
-      setErrorMessage(
-        error instanceof Error
-          ? error.message
-          : "No se pudo guardar la fase."
-      );
-    } finally {
-      setIsSavingPhase(false);
     }
   }
 
@@ -570,89 +533,16 @@ export default function Chat2MiCuentaPage() {
 
             <div
               style={{
-                display: "grid",
-                gridTemplateColumns:
-                  "minmax(0, 1fr) minmax(130px, auto)",
-                gap: 10,
-                alignItems: "end",
+                borderRadius: 12,
+                padding: "11px 12px",
+                background: "#eff6ff",
+                color: "#1e3a8a",
+                fontSize: 13,
+                lineHeight: 1.5,
               }}
             >
-              <label
-                style={{
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: 6,
-                }}
-              >
-                <span
-                  style={{
-                    fontSize: 13,
-                    fontWeight: 850,
-                    color: "#374151",
-                  }}
-                >
-                  Seleccionar fase
-                </span>
-
-                <select
-                  value={selectedPhase}
-                  onChange={(event) =>
-                    setSelectedPhase(
-                      event.target.value as AllowedPhase
-                    )
-                  }
-                  disabled={isSavingPhase}
-                  style={{
-                    width: "100%",
-                    border: "1px solid #93c5fd",
-                    borderRadius: 12,
-                    padding: "11px 12px",
-                    background: "#ffffff",
-                    color: "#111827",
-                    fontSize: 15,
-                    fontWeight: 750,
-                    outline: "none",
-                  }}
-                >
-                  {account.protocol.availablePhases.map((phase) => (
-                    <option key={phase.value} value={phase.value}>
-                      {phase.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-
-              <button
-                type="button"
-                onClick={savePhase}
-                disabled={
-                  isSavingPhase ||
-                  selectedPhase ===
-                    account.protocol.activePhase
-                }
-                style={{
-                  border: "none",
-                  borderRadius: 12,
-                  padding: "11px 16px",
-                  background:
-                    isSavingPhase ||
-                    selectedPhase ===
-                      account.protocol.activePhase
-                      ? "#9ca3af"
-                      : "#1d4ed8",
-                  color: "#ffffff",
-                  fontSize: 14,
-                  fontWeight: 900,
-                  cursor:
-                    isSavingPhase ||
-                    selectedPhase ===
-                      account.protocol.activePhase
-                      ? "not-allowed"
-                      : "pointer",
-                }}
-              >
-                {isSavingPhase ? "Guardando..." : "Guardar fase"}
-              </button>
+              La fase se actualiza automáticamente de acuerdo con tu plan,
+              tus mediciones y los criterios del protocolo.
             </div>
 
             <div
