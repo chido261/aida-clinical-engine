@@ -2,6 +2,38 @@
 
 ---
 
+# CONFIGURACIÓN OPERATIVA
+
+```json
+{
+  "version": "1.0",
+  "phase": "DIAGNOSTICO",
+  "durationDays": 7,
+  "expiresWhenComplete": true,
+  "readings": {
+    "timezone": "America/Mexico_City",
+    "postMealMinutes": 120,
+    "slots": ["AYUNO", "POST_DESAYUNO", "PRE_COMIDA", "POST_COMIDA", "PRE_CENA", "POST_CENA"],
+    "fastingTarget": { "min": 70, "max": 100 },
+    "otherSafeRange": { "min": 70, "max": 140 },
+    "otherIdealRange": { "min": 100, "max": 140 },
+    "hypoglycemiaBelow": 70,
+    "severeHypoglycemiaBelow": 54
+  },
+  "weeklyReview": {
+    "enabled": true,
+    "weekStartsOn": "MONDAY",
+    "reviewDay": "SUNDAY",
+    "expectedReadings": 42,
+    "minimumCompletionPercent": 80,
+    "minimumControlledPercent": 80,
+    "requiresNoHypoglycemia": true
+  }
+}
+```
+
+---
+
 ## IDENTIFICACIÓN
 
 Nombre: Fase de Diagnóstico 7 días
