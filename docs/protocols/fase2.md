@@ -87,7 +87,7 @@ Fortalecer la respuesta metabólica del cuerpo mediante movimiento suave despué
 
 ## Objetivo 4
 
-Mantener glucosa en ayunas por debajo de 100 mg/dL.
+Mantener glucosa en ayunas entre 70 y 100 mg/dL.
 
 ---
 
@@ -264,7 +264,7 @@ El usuario debe permanecer en Fase 2 hasta cumplir criterios clínicos y metabó
 
 Puede avanzar cuando:
 
-1. Mantenga glucosa en ayunas habitualmente por debajo de 100 mg/dL.
+1. Mantenga glucosa en ayunas habitualmente entre 70 y 100 mg/dL.
 
 2. Mantenga glucosa postcomida entre 100 y 140 mg/dL.
 
@@ -1346,6 +1346,6 @@ Cada carbohidrato se gana con evidencia.
 
 Cada avance se valida con glucosa.
 
-La meta es que el usuario pueda manejar más flexibilidad sin medicamentos, con glucosa en ayunas menor a 100 mg/dL, glucosa postcomida entre 100 y 140 mg/dL y HbA1c menor a 5.6%.
+La meta es que el usuario pueda manejar más flexibilidad sin medicamentos, con glucosa en ayunas entre 70 y 100 mg/dL, glucosa postcomida entre 100 y 140 mg/dL y HbA1c menor a 5.6%.
 
 AIDA debe acompañar con claridad, firmeza, medición y confianza.
