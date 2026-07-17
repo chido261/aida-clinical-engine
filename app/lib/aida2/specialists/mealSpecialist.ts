@@ -245,12 +245,18 @@ function shouldBuildCompatibleOptions(
   instruction: SpecialistInstruction
 ) {
   if (isConditionalFoodListRequest(currentUserMessage)) return false;
+  if (
+    instruction.expectedAction === "VALIDATE_FOOD" ||
+    instruction.expectedAction === "VALIDATE_PREPARATION"
+  ) return false;
   if (instruction.expectedAction === "BUILD_OPTIONS") return true;
+  if (isRecipeRequest(currentUserMessage)) return true;
+  if (!instruction.shouldContinuePendingAction) return false;
   if (instruction.pendingActionType === "BUILD_ALTERNATIVES") return true;
   if (instruction.pendingActionType === "BUILD_RECIPES") return true;
   if (instruction.pendingActionType === "CONTINUE_PREVIOUS") return true;
 
-  return isRecipeRequest(currentUserMessage);
+  return false;
 }
 
 function buildProtocolGuidance(params: {
