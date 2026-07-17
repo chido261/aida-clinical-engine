@@ -753,6 +753,13 @@ function validateFood(params: {
 
   if (phaseConditionalFood) return phaseConditionalFood;
 
+  const preparationValidation = validateConditionalPreparation({
+    candidate,
+    userMessage,
+  });
+
+  if (preparationValidation) return preparationValidation;
+
   const normalizedCandidate = normalizeText(candidate);
   const restrictedMatch = restrictedFoods.find(food => {
     const normalizedFood = normalizeText(food);
@@ -774,9 +781,6 @@ function validateFood(params: {
       source: "restricted",
     };
   }
-
-  const conditionalPreparation = validateConditionalPreparation({ candidate, userMessage });
-  if (conditionalPreparation) return conditionalPreparation;
 
   const protocolMatch = findInAllowedFoods({ candidate, foods });
   if (protocolMatch) return protocolMatch;
@@ -849,6 +853,27 @@ function validateConditionalPreparation(params: {
   );
 
   if (!mentionsConditionalName) return null;
+
+  const explicitlyDescribesIngredients = /\b(?:la|lo|las|los)?\s*(?:preparo|prepar[eé]|hago|hice)\s+con\b|\b(?:hech[ao]s?|preparad[ao]s?)\s+con\b|\b(?:ingredientes?|lleva|contiene)\b/i.test(
+    userMessage
+  );
+  const describesAlternativePreparation = /\b(?:tortilla|pan|pizza|galleta|base)\s+de\s+(?:linaza|ch[ií]a|nopal|almendra|br[oó]coli|coliflor|calabaza|espinaca|queso)\b/i.test(
+    userMessage
+  );
+
+  if (!explicitlyDescribesIngredients) {
+    if (!describesAlternativePreparation) return null;
+
+    return {
+      food: lowerFirst(candidate),
+      canonicalFood: candidate,
+      category: "preparación",
+      isCompatible: true,
+      reason:
+        "parece una preparación alternativa, pero requiere conocer todos sus ingredientes antes de decidir",
+      source: "preparation",
+    };
+  }
 
   const incompatibleIngredients = INCOMPATIBLE_PREPARATION_INGREDIENTS.filter(ingredient =>
     normalizedMessage.includes(normalizeText(ingredient))
