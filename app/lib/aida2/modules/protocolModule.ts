@@ -44,6 +44,7 @@ const PROTOCOL_NAMES: Record<ProtocolId, string> = {
 
 const SECTION_MAP: Record<string, string> = {
   "IDENTIFICACIÓN": "identification",
+  "CONFIGURACIÓN OPERATIVA": "operationalConfiguration",
   "PROPÓSITO DEL PROTOCOLO": "purpose",
   "FILOSOFÍA DEL PROTOCOLO": "philosophy",
   "DISTRIBUCIÓN DEL PLATO": "plateDistribution",
