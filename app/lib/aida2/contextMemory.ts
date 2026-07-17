@@ -365,7 +365,7 @@ export async function loadAida2ContextMemory(params: {
       activeGlucoseTopics: context.activeGlucoseTopics ?? null,
       currentGoal:
         context.currentGoal ??
-        "Mantener glucosa en ayunas por debajo de 100 mg/dL y postcomida entre 100 y 140 mg/dL.",
+        "Mantener glucosa en ayunas entre 70 y 100 mg/dL y las demás lecturas entre 100 y 140 mg/dL.",
       detectedPatterns: context.detectedPatterns ?? null,
       medicationContext: context.medicationContext ?? null,
       lastConcern: context.lastConcern ?? null,
@@ -864,7 +864,7 @@ export async function updateAida2ContextMemoryAfterResponse(params: {
       activeGlucoseTopics: compact(metadata.conversationContext.lastGlucoseSituation),
       currentGoal:
         memory.conversation.currentGoal ??
-        "Mantener glucosa en ayunas por debajo de 100 mg/dL y postcomida entre 100 y 140 mg/dL.",
+        "Mantener glucosa en ayunas entre 70 y 100 mg/dL y las demás lecturas entre 100 y 140 mg/dL.",
       detectedPatterns:
         metadata.knownUserPatterns.length > 0
           ? metadata.knownUserPatterns.join(" ")
