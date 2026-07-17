@@ -125,6 +125,8 @@ function protocolIdFromPhase(phase: string): ProtocolId {
 export async function reviewCurrentProtocolWeekIfDue(params: {
   userId: string;
   now?: Date;
+  force?: boolean;
+  weekOffset?: number;
 }) {
   const user = await prisma.userState.findUnique({ where: { id: params.userId } });
   if (!user) return null;
@@ -133,11 +135,14 @@ export async function reviewCurrentProtocolWeekIfDue(params: {
     protocolId: protocolIdFromPhase(user.activePhase),
   });
   const config = protocol.structured.operational;
-  const now = DateTime.fromJSDate(params.now ?? new Date()).setZone(
-    config.readings.timezone
-  );
+  const now = DateTime.fromJSDate(params.now ?? new Date())
+    .setZone(config.readings.timezone)
+    .minus({ weeks: params.weekOffset ?? 0 });
 
-  if (!config.weeklyReview.enabled || now.weekday !== 7) return null;
+  if (
+    !config.weeklyReview.enabled ||
+    (!params.force && now.weekday !== 7)
+  ) return null;
 
   const weekStart = now.startOf("week");
   const weekEnd = now.endOf("week");
@@ -185,7 +190,14 @@ export async function reviewCurrentProtocolWeekIfDue(params: {
       take: requiredWeeks,
     });
     const consecutivePassing =
-      recent.length === requiredWeeks && recent.every((review) => review.passed);
+      recent.length === requiredWeeks &&
+      recent.every((review) => review.passed) &&
+      recent.every((review, index) => {
+        if (index === recent.length - 1) return true;
+        const current = DateTime.fromJSDate(review.weekStart);
+        const previous = DateTime.fromJSDate(recent[index + 1].weekStart);
+        return Math.round(current.diff(previous, "days").days) === 7;
+      });
     const requiredReduction =
       config.weeklyReview.requiresMedicationReductionPercent ?? 50;
     const medicationCriterion =
