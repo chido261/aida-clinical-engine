@@ -25,10 +25,8 @@ export function enforceAida2StructuredDecision(params: {
   );
 
   if (needsIngredients.length > 0) {
-    const foods = formatFoods(needsIngredients.map((food) => food.food));
-
     return [
-      `${foods} puede ser una preparación compatible, pero el nombre por sí solo no permite saberlo.`,
+      "Esta preparación puede ser compatible, pero el nombre por sí solo no permite saberlo.",
       "Dime todos sus ingredientes —incluidas harinas, almidones o productos añadidos— y la evaluaré por su composición, no solamente por llamarse tortilla, pan o base.",
     ].join("\n\n");
   }
@@ -40,8 +38,17 @@ export function enforceAida2StructuredDecision(params: {
   if (notAllowed.length > 0) {
     const foods = formatFoods(notAllowed.map((food) => food.food));
     const reasons = [...new Set(notAllowed.map((food) => food.reason))];
+    const allowed = mealModule.decision.foods.filter(
+      (food) => food.status === "ALLOWED"
+    );
+    const allowedExplanation = allowed.length > 0
+      ? `${formatFoods(allowed.map((food) => food.canonicalFood))} sí ${
+          allowed.length === 1 ? "es compatible" : "son compatibles"
+        }: ${[...new Set(allowed.map((food) => food.reason))].join("; ")}.`
+      : null;
 
     return [
+      allowedExplanation,
       `En ${phaseLabel(mealModule.decision.protocolId)}, ${foods} no ${
         notAllowed.length === 1 ? "está recomendado" : "están recomendados"
       } por el protocolo.`,
@@ -50,6 +57,21 @@ export function enforceAida2StructuredDecision(params: {
         : `Estas son las razones: ${reasons.join("; ")}.`,
       "Por ahora no lo incluyas ni intentes validarlo con una porción pequeña. Esa validación corresponderá únicamente cuando una fase posterior del protocolo lo permita.",
       "Si quieres, dime qué comida estás preparando y te ayudo a construir una alternativa compatible con tu fase.",
+    ].filter(Boolean).join("\n\n");
+  }
+
+  const ingredientBasedPreparations = mealModule.decision.foods.filter(
+    (food) => food.source === "ingredient_based_preparation" && food.status === "ALLOWED"
+  );
+
+  if (ingredientBasedPreparations.length > 0) {
+    const reasons = [...new Set(ingredientBasedPreparations.map((food) => food.reason))];
+
+    return [
+      `Sí. Por la composición que describiste, esta preparación es compatible con ${phaseLabel(
+        mealModule.decision.protocolId
+      )}.`,
+      `${reasons.join("; ")}. La decisión se basa en sus ingredientes y no en el nombre de la preparación.`,
     ].join("\n\n");
   }
 
