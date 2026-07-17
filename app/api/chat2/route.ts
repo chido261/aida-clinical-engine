@@ -8,7 +8,11 @@ import { prisma } from "@/app/lib/prisma";
 import { ensureUserState, saveReading } from "@/app/lib/aidaMemory";
 import { buildAida2WorkPlan } from "@/app/lib/aida2/brain";
 import { runAida2Modules } from "@/app/lib/aida2/moduleRunner";
-import type { ProtocolId } from "@/app/lib/aida2/modules/protocolModule";
+import {
+  runProtocolModule,
+  type ProtocolId,
+} from "@/app/lib/aida2/modules/protocolModule";
+import { interpretFoodSemantics } from "@/app/lib/aida2/modules/semanticFoodInterpreter";
 import { buildAida2ConversationStrategy } from "@/app/lib/aida2/conversationStrategy";
 import { buildAida2ComposerPrompt } from "@/app/lib/aida2/responseComposer";
 import {
@@ -361,11 +365,20 @@ export async function POST(req: Request) {
       memory.userState.activeProtocol
     );
 
+    const semanticInterpretation = workPlan.foodContext.isFoodRelated
+      ? await interpretFoodSemantics({
+          openai,
+          userMessage: lastUserMessage,
+          protocol: runProtocolModule({ protocolId }),
+        })
+      : null;
+
     const moduleResults = runAida2Modules({
       workPlan,
       history,
       userMessage: lastUserMessage,
       protocolId,
+      semanticInterpretation,
     });
 
     const conversationStrategy = buildAida2ConversationStrategy({
@@ -381,6 +394,7 @@ export async function POST(req: Request) {
       contextModule: moduleResults.context,
       mealModule: moduleResults.meal,
       conversationStrategy,
+      semanticInterpretation,
     });
 
     const response = await openai.chat.completions.create({
