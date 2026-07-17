@@ -753,9 +753,6 @@ function validateFood(params: {
 
   if (phaseConditionalFood) return phaseConditionalFood;
 
-  const conditionalPreparation = validateConditionalPreparation({ candidate, userMessage });
-  if (conditionalPreparation) return conditionalPreparation;
-
   const normalizedCandidate = normalizeText(candidate);
   const restrictedMatch = restrictedFoods.find(food => {
     const normalizedFood = normalizeText(food);
@@ -777,6 +774,9 @@ function validateFood(params: {
       source: "restricted",
     };
   }
+
+  const conditionalPreparation = validateConditionalPreparation({ candidate, userMessage });
+  if (conditionalPreparation) return conditionalPreparation;
 
   const protocolMatch = findInAllowedFoods({ candidate, foods });
   if (protocolMatch) return protocolMatch;
