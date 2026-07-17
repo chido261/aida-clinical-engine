@@ -605,6 +605,29 @@ function restorePreparationContext(params: {
     normalizeText(currentUserMessage).includes(normalizeText(name))
   );
 
+  const substitution = currentUserMessage.match(
+    /\bsustituy[oa]?\s+(?:la|el)?\s*(.+?)\s+por\s+(.+?)[?.!]*$/i
+  );
+
+  if (substitution?.[1] && substitution[2]) {
+    const previousPreparation = [...rawMessage.matchAll(/^USER:\s*(.+)$/gim)]
+      .map(match => match[1]?.trim())
+      .filter((message): message is string => Boolean(message))
+      .filter(message => PREPARATION_NAMES.some(name =>
+        normalizeText(message).includes(normalizeText(name))
+      ))
+      .at(-1);
+
+    if (previousPreparation) {
+      const replaced = previousPreparation.replace(
+        new RegExp(escapeRegExp(substitution[1].trim()), "i"),
+        substitution[2].trim()
+      );
+
+      if (replaced !== previousPreparation) return replaced;
+    }
+  }
+
   if (describesIngredients && !namesPreparation) {
     const lastTarget = rawMessage.match(
       /- Último alimento consultado:\s*(.+?)\.(?:\n|$)/i
