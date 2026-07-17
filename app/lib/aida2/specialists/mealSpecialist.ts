@@ -317,7 +317,9 @@ export function generateMealRecommendation(
   const compatibleFoods = validations.filter(item => item.isCompatible);
   const canBuildDespiteIncompatible =
     shouldBuildOptions &&
-    (instruction.pendingActionType === "BUILD_ALTERNATIVES" || avoidFoods.length > 0);
+    (instruction.pendingActionType === "BUILD_ALTERNATIVES" ||
+      avoidFoods.length > 0 ||
+      requestsCompatiblePreparationAlternatives(currentUserMessage));
 
   const mealBases =
     shouldBuildOptions && (incompatibleFoods.length === 0 || canBuildDespiteIncompatible)
@@ -326,6 +328,7 @@ export function generateMealRecommendation(
           requestedCount,
           validations: compatibleFoods,
           avoidFoods,
+          requestedText: currentUserMessage,
         })
       : [];
 
@@ -358,6 +361,16 @@ export function generateMealRecommendation(
     }),
     decision,
   };
+}
+
+function requestsCompatiblePreparationAlternatives(
+  userMessage: string | undefined
+) {
+  if (!userMessage) return false;
+
+  return /\b(?:opciones?|recetas?|alternativas?)\b[\s\S]*\b(?:tortillas?|pan|pizza|galletas?|bases?)\b[\s\S]*\b(?:pueda|permitid[ao]s?|compatibles?|alternativas?)\b/i.test(
+    userMessage
+  );
 }
 
 function buildStructuredMealDecision(params: {
@@ -582,8 +595,27 @@ function buildCompatibleOptions(params: {
   requestedCount: number;
   validations: FoodValidation[];
   avoidFoods: string[];
+  requestedText?: string;
 }) {
-  const { mealType, requestedCount, validations, avoidFoods } = params;
+  const { mealType, requestedCount, validations, avoidFoods, requestedText } = params;
+
+  if (/\btortillas?\b/i.test(requestedText ?? "")) {
+    const tortillaOptions = [
+      "Tortilla de linaza preparada con linaza molida, huevo, agua y especias.",
+      "Tortilla de nopal preparada con nopal, huevo y linaza, sin harina de maíz ni trigo.",
+      "Tortilla de coliflor preparada con coliflor, huevo y queso natural, sin harinas ni almidones.",
+    ];
+
+    return Array.from({ length: requestedCount }, (_, index) => ({
+      title: tortillaOptions[index % tortillaOptions.length],
+      proteins: [],
+      vegetables: [],
+      fats: [],
+      legumes: [],
+      fruits: [],
+    }));
+  }
+
   const requestedProteins = getFoodsByCategory(validations, "proteína");
   const requestedVegetables = getFoodsByCategory(validations, "vegetal bajo en carga glucémica");
   const requestedFats = getFoodsByCategory(validations, "grasa saludable");
@@ -962,7 +994,8 @@ function findInAllowedFoods(params: {
 }): FoodValidation | null {
   const { candidate, foods } = params;
   const groups: Array<{ category: FoodCategory; foods: string[]; reason: string }> = [
-    { category: "proteína", foods: [...foods.proteins, ...foods.dairy], reason: "aparece como proteína o lácteo natural compatible" },
+    { category: "proteína", foods: foods.proteins, reason: "aparece como proteína natural compatible" },
+    { category: "proteína", foods: foods.dairy, reason: "aparece como lácteo natural compatible" },
     { category: "grasa saludable", foods: foods.healthyFats, reason: "aparece como grasa saludable de referencia" },
     { category: "vegetal bajo en carga glucémica", foods: foods.vegetables, reason: "aparece como vegetal sin almidón de referencia" },
     { category: "leguminosa", foods: foods.legumes, reason: "aparece como leguminosa compatible dentro del plato" },
