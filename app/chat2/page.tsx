@@ -219,6 +219,8 @@ export default function Chat2Page() {
   const [input, setInput] = useState("");
   const [isSending, setIsSending] =
     useState(false);
+  const [activationRequired, setActivationRequired] =
+    useState(false);
 
   const [
     isLoadingWelcome,
@@ -272,6 +274,8 @@ export default function Chat2Page() {
         }
 
         if (cancelled) return;
+
+        setActivationRequired(Boolean(data.activationRequired));
 
         setMessages([
           {
@@ -364,12 +368,14 @@ export default function Chat2Page() {
       input.trim().length > 0 &&
       !isSending &&
       !isLoadingWelcome &&
+      !activationRequired &&
       Boolean(deviceId)
     );
   }, [
     input,
     isSending,
     isLoadingWelcome,
+    activationRequired,
     deviceId,
   ]);
 
@@ -416,8 +422,17 @@ export default function Chat2Page() {
       const data = await response.json();
 
       if (!response.ok || !data?.ok) {
+        if (data?.activationRequired) {
+          setActivationRequired(true);
+          throw new Error(
+            safeReadText(data?.message) ||
+              "Tu prueba terminó. Activa la versión completa para continuar."
+          );
+        }
+
         throw new Error(
-          safeReadText(data?.error) ||
+          safeReadText(data?.message) ||
+            safeReadText(data?.error) ||
             "Error al llamar /api/chat2"
         );
       }
@@ -753,6 +768,38 @@ export default function Chat2Page() {
         <div ref={bottomRef} />
       </section>
 
+      {activationRequired ? (
+        <div
+          style={{
+            border: "1px solid #f59e0b",
+            borderRadius: 16,
+            padding: 14,
+            background: "#fffbeb",
+            color: "#78350f",
+          }}
+        >
+          <strong>Tu prueba de 7 días terminó.</strong>
+          <div style={{ marginTop: 6, fontSize: 14, lineHeight: 1.5 }}>
+            Activa la versión completa para continuar con la Fase 1.
+          </div>
+          <a
+            href="/pago"
+            style={{
+              display: "inline-block",
+              marginTop: 10,
+              borderRadius: 10,
+              padding: "9px 12px",
+              background: "#92400e",
+              color: "#ffffff",
+              textDecoration: "none",
+              fontWeight: 800,
+            }}
+          >
+            Activar AIDA
+          </a>
+        </div>
+      ) : null}
+
       <footer
         style={{
           borderTop:
@@ -776,7 +823,8 @@ export default function Chat2Page() {
           rows={1}
           disabled={
             isLoadingWelcome ||
-            isSending
+            isSending ||
+            activationRequired
           }
           style={{
             flex: 1,
@@ -791,7 +839,8 @@ export default function Chat2Page() {
             background: "#ffffff",
             opacity:
               isLoadingWelcome ||
-              isSending
+              isSending ||
+              activationRequired
                 ? 0.7
                 : 1,
           }}
