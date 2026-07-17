@@ -13,6 +13,7 @@ import type {
   FoodValidation,
   MealDecisionStatus,
   MealSpecialistDecision,
+  SemanticFoodInterpretation,
 } from "./foodDecisionTypes";
 
 const COMMON_RESTRICTED_TERMS = [
@@ -169,18 +170,48 @@ export function evaluateFoodWithProtocol(params: {
   shouldBuildRecipes: boolean;
   ignoreFoods?: string[];
   requestedConditionalFoodList?: boolean;
+  semanticInterpretation?: SemanticFoodInterpretation | null;
 }): ProtocolFoodEvaluation {
   const { protocol, userMessage, shouldBuildRecipes } = params;
   const ignored = (params.ignoreFoods ?? []).map(normalizeFoodText);
   const restricted = restrictedTerms(protocol);
   const conditional = conditionalTerms(protocol);
+  const semantic = params.semanticInterpretation;
+  const hasReliableSemanticComposition =
+    Boolean(semantic) &&
+    (semantic?.confidence ?? 0) >= 0.65 &&
+    ((semantic?.baseIngredients.length ?? 0) > 0 ||
+      (semantic?.declaredIngredients.length ?? 0) > 0);
   const preparationName = PREPARATION_NAMES.find(name =>
     ` ${normalizeFoodText(userMessage)} `.includes(` ${normalizeFoodText(name)} `)
   );
   const preparation = analyzePreparation({ message: userMessage, preparationName });
 
   let validations: FoodValidation[];
-  if (preparation) {
+  if (hasReliableSemanticComposition && semantic) {
+    if (semantic.isCommercialProduct && semantic.requiresClarification) {
+      validations = [{
+        food: semantic.dishName ?? userMessage,
+        canonicalFood: semantic.dishName ?? userMessage,
+        category: "preparación",
+        isCompatible: true,
+        reason: semantic.clarificationReason ?? "requiere revisar los ingredientes del producto comercial",
+        source: "preparation",
+      }];
+    } else {
+      const semanticIngredients = unique([
+        ...semantic.baseIngredients,
+        ...semantic.declaredIngredients,
+      ]).filter(candidate =>
+        !semantic.styleReferences.some(reference =>
+          normalizeFoodText(reference) === normalizeFoodText(candidate)
+        )
+      );
+      validations = semanticIngredients.map(candidate =>
+        validateCandidate({ candidate, protocol, restricted, conditional })
+      );
+    }
+  } else if (preparation) {
     validations = [preparation];
   } else {
     const candidates = extractCandidates(userMessage, [
