@@ -789,8 +789,8 @@ function validateFood(params: {
   const protocolMatch = findInAllowedFoods({ candidate, foods });
   if (protocolMatch) return protocolMatch;
 
-  // La clasificación final debe provenir del protocolo activo.
-  // Las listas auxiliares solo ayudan a detectar términos, no a decidir permisos.
+  const clinicalMatch = classifyCompatibleFoodByClinicalCategory(candidate);
+  if (clinicalMatch) return clinicalMatch;
 
   return {
     food: lowerFirst(candidate),
@@ -800,6 +800,41 @@ function validateFood(params: {
     reason: "el protocolo activo no ofrece una clasificación explícita para este alimento",
     source: "unknown",
   };
+}
+
+function classifyCompatibleFoodByClinicalCategory(
+  candidate: string
+): FoodValidation | null {
+  const normalizedCandidate = normalizeText(candidate);
+
+  if (matchesList(normalizedCandidate, FLEXIBLE_PROTEINS)) {
+    return compatible(
+      candidate,
+      canonicalizeProtein(candidate),
+      "proteína",
+      "se clasifica como proteína animal o fuente proteica compatible con las categorías permitidas del protocolo"
+    );
+  }
+
+  if (matchesList(normalizedCandidate, FLEXIBLE_FATS)) {
+    return compatible(
+      candidate,
+      canonicalizeFat(candidate),
+      "grasa saludable",
+      "se clasifica como grasa saludable compatible con las categorías permitidas del protocolo"
+    );
+  }
+
+  if (matchesList(normalizedCandidate, FLEXIBLE_VEGETABLES)) {
+    return compatible(
+      candidate,
+      canonicalizeVegetable(candidate),
+      "vegetal bajo en carga glucémica",
+      "se clasifica como vegetal sin almidón compatible con las categorías permitidas del protocolo"
+    );
+  }
+
+  return null;
 }
 
 function validateProtocolConditionalFood(params: {
