@@ -57,10 +57,18 @@ export function enforceAida2StructuredDecision(params: {
           allowed.length === 1 ? "es compatible" : "son compatibles"
         }: ${[...new Set(allowed.map((food) => food.reason))].join("; ")}.`)
       : null;
+    const rejectedPreparation = notAllowed.find(food =>
+      /contiene ingredientes? no compatibles?/i.test(food.reason)
+    );
+    const restrictionHeading = rejectedPreparation
+      ? `En ${phaseLabel(mealModule.decision.protocolId)}, no se recomienda ${demonstrativePreparation(
+          rejectedPreparation.canonicalFood
+        )}.`
+      : `En ${phaseLabel(mealModule.decision.protocolId)}, el protocolo no recomienda ${foods}.`;
 
     return [
       allowedExplanation,
-      `En ${phaseLabel(mealModule.decision.protocolId)}, el protocolo no recomienda ${foods}.`,
+      restrictionHeading,
       reasons.length === 1
         ? `La razón es que ${reasons[0]}.`
         : `Estas son las razones: ${reasons.join("; ")}.`,
@@ -75,9 +83,12 @@ export function enforceAida2StructuredDecision(params: {
 
   if (ingredientBasedPreparations.length > 0) {
     const reasons = [...new Set(ingredientBasedPreparations.map((food) => food.reason))];
+    const preparation = ingredientBasedPreparations[0]?.canonicalFood ?? "preparación";
 
     return [
-      `Sí. Por la composición que describiste, esta preparación es compatible con ${phaseLabel(
+      `Sí. Por la composición que describiste, ${demonstrativePreparation(
+        preparation
+      )} es compatible con ${phaseLabel(
         mealModule.decision.protocolId
       )}.`,
       `${capitalizeSentence(reasons.join("; "))}. La decisión se basa en sus ingredientes y no en el nombre de la preparación.`,
@@ -97,6 +108,16 @@ export function enforceAida2StructuredDecision(params: {
 function capitalizeSentence(value: string) {
   if (!value) return value;
   return value.charAt(0).toUpperCase() + value.slice(1);
+}
+
+function demonstrativePreparation(food: string) {
+  const normalized = food.toLowerCase();
+  if (normalized.includes("pan")) return "este pan";
+  if (normalized.includes("tortilla")) return "esta tortilla";
+  if (normalized.includes("pizza")) return "esta pizza";
+  if (normalized.includes("galleta")) return "esta galleta";
+  if (normalized.includes("base")) return "esta base";
+  return "esta preparación";
 }
 
 function extractCompatibleBases(recommendation: string) {
