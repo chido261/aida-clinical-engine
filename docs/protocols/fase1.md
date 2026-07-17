@@ -67,7 +67,7 @@ Busca sostenerlo, profundizarlo y convertirlo en una estrategia práctica de con
 
 ## Objetivo 1
 
-Mantener o mejorar la glucosa en ayunas por debajo de 100 mg/dL.
+Mantener la glucosa en ayunas entre 70 y 100 mg/dL.
 
 ---
 
@@ -187,7 +187,7 @@ El usuario puede permanecer en Fase 1 hasta cumplir criterios clínicos y conduc
 
 Puede avanzar cuando:
 
-1. Su glucosa en ayunas se mantenga habitualmente por debajo de 100 mg/dL.
+1. Su glucosa en ayunas se mantenga habitualmente entre 70 y 100 mg/dL.
 
 2. Su glucosa postcomida se mantenga habitualmente entre 100 y 140 mg/dL.
 
