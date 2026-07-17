@@ -35,11 +35,10 @@ export function enforceAida2StructuredDecision(params: {
 
   if (mealModule.decision.shouldBuildRecipes && compatibleBases.length > 0) {
     return [
-      `La tortilla convencional sigue sin estar recomendada en ${phaseLabel(
+      `Estas opciones son compatibles con ${phaseLabel(
         mealModule.decision.protocolId
-      )}, pero estas preparaciones se validan por sus ingredientes:`,
+      )} según la validación alimentaria:`,
       ...compatibleBases.map((base, index) => `${index + 1}. ${base}`),
-      "Estas opciones no llevan harina de maíz, trigo ni almidones añadidos.",
     ].join("\n\n");
   }
 
