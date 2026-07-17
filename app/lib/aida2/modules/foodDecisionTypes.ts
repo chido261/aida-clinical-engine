@@ -31,6 +31,26 @@ export type FoodValidation = {
   source: FoodValidationSource;
 };
 
+export type SemanticFoodInterpretation = {
+  originalText: string;
+  dishName: string | null;
+  semanticType:
+    | "literal_food"
+    | "composite_dish"
+    | "plant_based_substitute"
+    | "shape_or_style"
+    | "commercial_product"
+    | "unknown";
+  baseIngredients: string[];
+  declaredIngredients: string[];
+  styleReferences: string[];
+  isCommercialProduct: boolean;
+  requiresClarification: boolean;
+  clarificationReason: string | null;
+  confidence: number;
+  source: "semantic_model" | "semantic_fallback" | "web_knowledge";
+};
+
 export type MealDecisionStatus =
   | "ALLOWED"
   | "ALLOWED_WITH_VALIDATION"
