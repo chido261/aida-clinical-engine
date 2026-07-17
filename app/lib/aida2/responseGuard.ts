@@ -49,9 +49,7 @@ export function enforceAida2StructuredDecision(params: {
 
     return [
       allowedExplanation,
-      `En ${phaseLabel(mealModule.decision.protocolId)}, ${foods} no ${
-        notAllowed.length === 1 ? "está recomendado" : "están recomendados"
-      } por el protocolo.`,
+      `En ${phaseLabel(mealModule.decision.protocolId)}, el protocolo no recomienda ${foods}.`,
       reasons.length === 1
         ? `La razón es que ${reasons[0]}.`
         : `Estas son las razones: ${reasons.join("; ")}.`,
