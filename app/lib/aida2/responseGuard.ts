@@ -20,6 +20,19 @@ export function enforceAida2StructuredDecision(params: {
   const { reply, mealModule } = params;
   if (!mealModule) return reply;
 
+  const needsIngredients = mealModule.decision.foods.filter(
+    (food) => food.status === "NEEDS_INGREDIENTS"
+  );
+
+  if (needsIngredients.length > 0) {
+    const foods = formatFoods(needsIngredients.map((food) => food.food));
+
+    return [
+      `${foods} puede ser una preparación compatible, pero el nombre por sí solo no permite saberlo.`,
+      "Dime todos sus ingredientes —incluidas harinas, almidones o productos añadidos— y la evaluaré por su composición, no solamente por llamarse tortilla, pan o base.",
+    ].join("\n\n");
+  }
+
   const notAllowed = mealModule.decision.foods.filter(
     (food) => food.status === "NOT_ALLOWED"
   );
@@ -49,4 +62,3 @@ export function enforceAida2StructuredDecision(params: {
 
   return reply;
 }
-
