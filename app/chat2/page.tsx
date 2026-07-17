@@ -623,6 +623,27 @@ export default function Chat2Page() {
                 }}
               />
 
+              {process.env.NODE_ENV === "development" ? (
+                <a
+                  href="/dev/aida2-tests"
+                  role="menuitem"
+                  onClick={() => setIsMenuOpen(false)}
+                  style={{
+                    display: "block",
+                    borderRadius: 11,
+                    padding: "11px 12px",
+                    color: "#7c3aed",
+                    textDecoration: "none",
+                    background: "#faf5ff",
+                  }}
+                >
+                  <div style={{ fontSize: 14, fontWeight: 900 }}>Panel de pruebas</div>
+                  <div style={{ marginTop: 3, fontSize: 12, lineHeight: 1.4 }}>
+                    Simular fases, semanas y vencimiento
+                  </div>
+                </a>
+              ) : null}
+
               <div
                 style={{
                   borderRadius: 11,
