@@ -18,6 +18,7 @@ import {
   updateAida2ContextMemoryAfterResponse,
 } from "@/app/lib/aida2/contextMemory";
 import { reviewCurrentProtocolWeekIfDue } from "@/app/lib/aida2/weeklyProtocolReview";
+import { enforceAida2StructuredDecision } from "@/app/lib/aida2/responseGuard";
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
@@ -391,9 +392,14 @@ export async function POST(req: Request) {
       ],
     });
 
-    const reply =
+    const modelReply =
       response.choices[0]?.message?.content ??
       "No pude generar una respuesta en este momento.";
+
+    const reply = enforceAida2StructuredDecision({
+      reply: modelReply,
+      mealModule: moduleResults.meal,
+    });
 
     await updateAida2ContextMemoryAfterResponse({
       userId,
