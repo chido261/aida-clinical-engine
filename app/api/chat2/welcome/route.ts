@@ -10,6 +10,7 @@ import {
   buildReturnWelcome,
 } from "@/app/lib/aida/welcomeContextBuilder";
 import { loadAida2ContextMemory } from "@/app/lib/aida2/contextMemory";
+import { ensureUserState } from "@/app/lib/aidaMemory";
 
 type Body = {
   deviceId?: string;
@@ -94,6 +95,17 @@ export async function POST(req: Request) {
   try {
     const body = (await req.json()) as Body;
     const userId = resolveUserId(body);
+    const access = await ensureUserState(userId);
+
+    if (access.licenseStatus === "expired") {
+      return NextResponse.json({
+        ok: true,
+        welcome:
+          "Tu prueba de 7 días terminó. Ya comprobaste cómo puede responder tu glucosa cuando cambias la alimentación. Activa la versión completa para continuar con la Fase 1 y conservar el acompañamiento de AIDA.",
+        userId,
+        activationRequired: true,
+      });
+    }
 
     const [memory, userState, lastReading] = await Promise.all([
       loadAida2ContextMemory({ userId }),
