@@ -293,7 +293,7 @@ export function generateMealRecommendation(
   const requestedCount =
     instruction.count ?? extractRequestedCount(currentUserMessage) ?? (shouldBuildOptions ? 3 : 1);
 
-  const contextualUserMessage = restoreConfirmedPreparationFromHistory({
+  const contextualUserMessage = restorePreparationContext({
     rawMessage,
     currentUserMessage,
   });
@@ -893,7 +893,7 @@ function validateConditionalPreparation(params: {
 
   if (!mentionsConditionalName) return null;
 
-  const explicitlyDescribesIngredients = /\b(?:la|lo|las|los)?\s*(?:preparo|prepar[eé]|hago|hice)\s+con\b|\b(?:hech[ao]s?|preparad[ao]s?)\s+con\b|\b(?:ingredientes?|lleva|contiene)\b/i.test(
+  const explicitlyDescribesIngredients = /\b(?:la|lo|las|los)?\s*(?:preparo|prepar[eé]|hago|hice)\s+(?:(?:solamente|solo|s[oó]lo|[uú]nicamente)\s+)?con\b|\b(?:hech[ao]s?|preparad[ao]s?)\s+(?:(?:solamente|solo|s[oó]lo|[uú]nicamente)\s+)?con\b|\b(?:ingredientes?|lleva|contiene)\b/i.test(
     userMessage
   );
   const describesAlternativePreparation = /\b(?:tortilla|pan|pizza|galleta|base)\s+de\s+(?:linaza|ch[ií]a|nopal|almendra|br[oó]coli|coliflor|calabaza|espinaca|queso)\b/i.test(
@@ -914,8 +914,10 @@ function validateConditionalPreparation(params: {
     };
   }
 
-  const incompatibleIngredients = INCOMPATIBLE_PREPARATION_INGREDIENTS.filter(ingredient =>
-    normalizedMessage.includes(normalizeText(ingredient))
+  const incompatibleIngredients = normalizeFoodList(
+    INCOMPATIBLE_PREPARATION_INGREDIENTS.filter(ingredient =>
+      containsAffirmedIngredient(normalizedMessage, ingredient)
+    )
   );
 
   if (incompatibleIngredients.length > 0) {
@@ -1167,7 +1169,7 @@ function extractCurrentUserMessage(userMessage: string | undefined) {
   return match?.[1]?.trim() ?? userMessage;
 }
 
-function restoreConfirmedPreparationFromHistory(params: {
+function restorePreparationContext(params: {
   rawMessage: string;
   currentUserMessage: string | undefined;
 }) {
@@ -1178,12 +1180,25 @@ function restoreConfirmedPreparationFromHistory(params: {
     /\b(?:entonces|finalmente|en resumen|s[ií]\s+puedo|puedo\s+comer)\b/i.test(
       currentUserMessage
     );
-  const alreadyDescribesIngredients =
+  const describesIngredients =
     /\b(?:preparo|prepar[eé]|hago|hice|hech[ao]s?|ingredientes?|lleva|contiene)\b/i.test(
       currentUserMessage
     );
+  const namesPreparation = CONDITIONAL_PREPARATION_NAMES.some(name =>
+    normalizeText(currentUserMessage).includes(normalizeText(name))
+  );
 
-  if (!isConfirmationFollowUp || alreadyDescribesIngredients) {
+  if (describesIngredients && !namesPreparation) {
+    const lastTarget = rawMessage.match(
+      /- Último alimento consultado:\s*(.+?)\.(?:\n|$)/i
+    )?.[1]?.trim();
+
+    if (lastTarget && !/^ninguno|sin /i.test(lastTarget)) {
+      return `${lastTarget}. ${currentUserMessage}`;
+    }
+  }
+
+  if (!isConfirmationFollowUp || describesIngredients) {
     return currentUserMessage;
   }
 
@@ -1200,6 +1215,23 @@ function restoreConfirmedPreparationFromHistory(params: {
   return latestIngredientMessage
     ? `${currentUserMessage}. ${latestIngredientMessage}`
     : currentUserMessage;
+}
+
+function containsAffirmedIngredient(
+  normalizedMessage: string,
+  ingredient: string
+) {
+  const normalizedIngredient = normalizeText(ingredient);
+  if (!normalizedMessage.includes(normalizedIngredient)) return false;
+
+  const negatedPatterns = [
+    `sin ${normalizedIngredient}`,
+    `no contiene ${normalizedIngredient}`,
+    `no lleva ${normalizedIngredient}`,
+    `libre de ${normalizedIngredient}`,
+  ];
+
+  return !negatedPatterns.some(pattern => normalizedMessage.includes(pattern));
 }
 
 function isConditionalFoodListRequest(userMessage: string | undefined) {
