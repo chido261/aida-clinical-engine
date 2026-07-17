@@ -57,9 +57,10 @@ export type Aida2MemoryMetadata = {
   activeProtocol: string;
   activePhase: string;
   glucoseTargets: {
+    fastingMinMgDl: number;
     fastingMaxMgDl: number;
-    postMealMinMgDl: number;
-    postMealMaxMgDl: number;
+    otherReadingMinMgDl: number;
+    otherReadingMaxMgDl: number;
   };
   allowedFoodsSnapshot: {
     proteins: string[];
@@ -114,9 +115,10 @@ export type Aida2ContextMemory = {
 };
 
 const DEFAULT_GLUCOSE_TARGETS = {
+  fastingMinMgDl: 70,
   fastingMaxMgDl: 100,
-  postMealMinMgDl: 100,
-  postMealMaxMgDl: 140,
+  otherReadingMinMgDl: 100,
+  otherReadingMaxMgDl: 140,
 };
 
 function normalizeActivePhase(
@@ -246,6 +248,7 @@ function buildMetadata(params: {
   const protocol = runProtocolModule({
     protocolId: resolveProtocolId(normalizedPhase),
   });
+  const readings = protocol.structured.operational.readings;
 
   const now = new Date().toISOString();
 
@@ -253,7 +256,21 @@ function buildMetadata(params: {
     version: 2,
     activeProtocol: protocol.protocolId,
     activePhase: normalizedPhase,
-    glucoseTargets: coerced?.glucoseTargets ?? DEFAULT_GLUCOSE_TARGETS,
+    // Los rangos siempre provienen del protocolo activo. No reutilizamos una
+    // copia anterior porque podría conservar reglas obsoletas tras un cambio
+    // de protocolo o una actualización de sus lineamientos.
+    glucoseTargets: {
+      fastingMinMgDl:
+        readings.fastingTarget.min ?? DEFAULT_GLUCOSE_TARGETS.fastingMinMgDl,
+      fastingMaxMgDl:
+        readings.fastingTarget.max ?? DEFAULT_GLUCOSE_TARGETS.fastingMaxMgDl,
+      otherReadingMinMgDl:
+        readings.otherIdealRange.min ??
+        DEFAULT_GLUCOSE_TARGETS.otherReadingMinMgDl,
+      otherReadingMaxMgDl:
+        readings.otherIdealRange.max ??
+        DEFAULT_GLUCOSE_TARGETS.otherReadingMaxMgDl,
+    },
     allowedFoodsSnapshot: {
       proteins: protocol.structured.allowedFoods.proteins,
       dairy: protocol.structured.allowedFoods.dairy,
@@ -401,7 +418,7 @@ export function buildAida2MemoryPrompt(memory: Aida2ContextMemory) {
     `- Medicamentos registrados: ${userState.meds ?? "ninguno registrado"}.`,
     `- Protocolo activo: ${metadata.activeProtocol}.`,
     `- Fase activa: ${metadata.activePhase}.`,
-    `- Objetivo glucémico: ayunas < ${metadata.glucoseTargets.fastingMaxMgDl} mg/dL; postcomida ${metadata.glucoseTargets.postMealMinMgDl}-${metadata.glucoseTargets.postMealMaxMgDl} mg/dL.`,
+    `- Objetivo glucémico: ayunas entre ${metadata.glucoseTargets.fastingMinMgDl} y ${metadata.glucoseTargets.fastingMaxMgDl} mg/dL; todas las demás lecturas entre ${metadata.glucoseTargets.otherReadingMinMgDl} y ${metadata.glucoseTargets.otherReadingMaxMgDl} mg/dL.`,
     `- Objetivo conversacional actual: ${conversation.currentGoal ?? "mantener estabilidad glucémica"}.`,
     `- Confianza de memoria: ${metadata.memoryConfidence}.`,
   ];
