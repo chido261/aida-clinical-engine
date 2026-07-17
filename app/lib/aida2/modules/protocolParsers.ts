@@ -17,10 +17,49 @@ export type StructuredFruits = {
   foods: string[];
 };
 
+export type ProtocolReadingSlot =
+  | "AYUNO"
+  | "POST_DESAYUNO"
+  | "PRE_COMIDA"
+  | "POST_COMIDA"
+  | "PRE_CENA"
+  | "POST_CENA";
+
+export type OperationalProtocolConfig = {
+  version: string;
+  phase: "DIAGNOSTICO" | "FASE_1" | "FASE_2";
+  durationDays: number | null;
+  expiresWhenComplete: boolean;
+  readings: {
+    timezone: string;
+    postMealMinutes: number;
+    slots: ProtocolReadingSlot[];
+    fastingTarget: { min: number; max: number };
+    otherSafeRange: { min: number; max: number };
+    otherIdealRange: { min: number; max: number };
+    hypoglycemiaBelow: number;
+    severeHypoglycemiaBelow: number;
+  };
+  weeklyReview: {
+    enabled: boolean;
+    weekStartsOn: "MONDAY";
+    reviewDay: "SUNDAY";
+    expectedReadings: number;
+    minimumCompletionPercent: number;
+    minimumControlledPercent: number;
+    requiresNoHypoglycemia: boolean;
+    consecutivePassingWeeksForAdvance?: number;
+    requiresMedicationReductionPercent?: number;
+  };
+};
+
 export function buildStructuredProtocol(
   sections: ProtocolSections
 ) {
   return {
+    operational: parseOperationalConfiguration(
+      sections.operationalConfiguration ?? ""
+    ),
     allowedFoods: parseAllowedFoods(
       sections.allowedFoods ?? ""
     ),
@@ -33,6 +72,22 @@ export function buildStructuredProtocol(
       sections.controlSheet ?? ""
     ),
   };
+}
+
+function parseOperationalConfiguration(text: string): OperationalProtocolConfig {
+  const match = text.match(/```json\s*([\s\S]*?)```/i);
+
+  if (!match?.[1]) {
+    throw new Error("El protocolo no contiene CONFIGURACIÓN OPERATIVA en JSON.");
+  }
+
+  const parsed = JSON.parse(match[1]) as OperationalProtocolConfig;
+
+  if (!parsed.version || !parsed.phase || parsed.readings?.slots?.length !== 6) {
+    throw new Error("La CONFIGURACIÓN OPERATIVA del protocolo es inválida.");
+  }
+
+  return parsed;
 }
 
 /* =======================================================
