@@ -282,10 +282,7 @@ function buildMetadata(params: {
 async function ensureUserState(userId: string) {
   return prisma.userState.upsert({
     where: { id: userId },
-    update: {
-      lastMsgAt: new Date(),
-      totalMsgCount: { increment: 1 },
-    },
+    update: {},
     create: {
       id: userId,
       activeProtocol: "DIAGNOSTICO_7_DIAS",
@@ -879,6 +876,14 @@ export async function updateAida2ContextMemoryAfterResponse(params: {
         metadata.pendingAction?.reason ??
         null,
       metadataJson: JSON.stringify(metadata),
+    },
+  });
+
+  await prisma.userState.update({
+    where: { id: userId },
+    data: {
+      lastMsgAt: new Date(),
+      totalMsgCount: { increment: 1 },
     },
   });
 }
