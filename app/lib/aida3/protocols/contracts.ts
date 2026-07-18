@@ -41,6 +41,12 @@ export type ProtocolFoodCatalog = {
   sweeteners: string[];
 };
 
+export type ProtocolPolicyCatalog = {
+  base: string[];
+  conditional: string[];
+  restricted: string[];
+};
+
 export type ProtocolDocument = {
   id: ProtocolId;
   name: string;
@@ -48,4 +54,5 @@ export type ProtocolDocument = {
   sections: Readonly<Record<string, string>>;
   operational: OperationalProtocolConfig;
   foods: ProtocolFoodCatalog;
+  policies: ProtocolPolicyCatalog;
 };
