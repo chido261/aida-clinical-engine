@@ -26,10 +26,9 @@ import {
 import { reviewCurrentProtocolWeekIfDue } from "@/app/lib/aida2/weeklyProtocolReview";
 import { enforceAida2StructuredDecision } from "@/app/lib/aida2/responseGuard";
 import type { SemanticFoodInterpretation } from "@/app/lib/aida2/modules/foodDecisionTypes";
-import { auditTaskGraphCoverage, understandTurnWithBrain } from "@/app/lib/aida2/turnCognition";
+import { understandTurnWithBrain } from "@/app/lib/aida2/turnCognition";
 import { verifyTurnContract } from "@/app/lib/aida2/turnContract";
-import { executeMultiTaskGraph } from "@/app/lib/aida2/multiTaskExecutor";
-import { resolveTaskGraphTurn } from "@/app/lib/aida2/taskGraphOrchestrator";
+import { runTaskGraphBrainTurn } from "@/app/lib/aida2/taskGraphOrchestrator";
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
@@ -401,13 +400,23 @@ export async function POST(req: Request) {
       recentHistory,
       culinaryMemory: memory.metadata.activeCulinaryPlan,
     });
-    const taskGraphAudit = await auditTaskGraphCoverage({
+    const protocolId = resolveProtocolId(
+      memory.userState.activePhase,
+      memory.userState.activeProtocol
+    );
+
+    const protocol = runProtocolModule({ protocolId });
+    const taskGraphBrainTurn = await runTaskGraphBrainTurn({
       openai,
       message: lastUserMessage,
       cognition: turnCognition,
       culinaryMemory: memory.metadata.activeCulinaryPlan,
+      protocol,
     });
-    turnCognition = taskGraphAudit.cognition;
+    turnCognition = taskGraphBrainTurn.cognition;
+    const taskGraphAudit = taskGraphBrainTurn.audit;
+    const multiTaskResult = taskGraphBrainTurn.execution;
+    const taskGraphTurn = taskGraphBrainTurn.resolution;
 
     const workPlan = buildAida2WorkPlan({
       userId,
@@ -415,23 +424,6 @@ export async function POST(req: Request) {
       history,
       conversationState,
       turnCognition,
-    });
-
-    const protocolId = resolveProtocolId(
-      memory.userState.activePhase,
-      memory.userState.activeProtocol
-    );
-
-    const protocol = runProtocolModule({ protocolId });
-
-    const multiTaskResult = await executeMultiTaskGraph({
-      openai,
-      cognition: turnCognition,
-      protocol,
-    });
-    const taskGraphTurn = resolveTaskGraphTurn({
-      audit: taskGraphAudit,
-      execution: multiTaskResult,
     });
     if (taskGraphTurn.handled) {
       const moduleResults = runAida2Modules({
