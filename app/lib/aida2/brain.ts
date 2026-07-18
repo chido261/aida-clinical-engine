@@ -11,6 +11,7 @@ import {
   understandCurrentTurn,
   type Aida2TurnDirective,
 } from "@/app/lib/aida2/turnUnderstanding";
+import type { Aida2TurnCognition } from "@/app/lib/aida2/turnCognition";
 
 export type Aida2Intent =
   | "FOOD_ADVICE"
@@ -98,6 +99,7 @@ export type Aida2BrainInput = {
   message: string;
   history?: string | null;
   conversationState?: Aida2ConversationState | null;
+  turnCognition?: Aida2TurnCognition | null;
 };
 
 export type Aida2Understanding = {
@@ -181,6 +183,7 @@ export type Aida2WorkPlan = {
   personality: string;
   conversationState: Aida2ConversationState;
   turnDirective: Aida2TurnDirective;
+  turnCognition: Aida2TurnCognition;
   understanding: Aida2Understanding;
   foodContext: Aida2FoodContext;
   modulePlan: Aida2ModulePlan;
@@ -527,8 +530,7 @@ function buildFoodContext(
   conversationState: Aida2ConversationState,
   turnDirective: Aida2TurnDirective
 ): Aida2FoodContext {
-  const isFoodRelated =
-    understanding.intent === "FOOD_ADVICE" || understanding.mentionsFood;
+  const isFoodRelated = turnDirective.dialogueAct !== "NON_FOOD";
 
   const conversationMode = turnDirective.requiresHistory
     ? "FOLLOW_UP"
@@ -542,6 +544,7 @@ function buildFoodContext(
     ASK_PREPARATION: "HOW_TO_PREPARE",
     PAIR_FOOD_OR_DRINK: "WHAT_TO_PAIR",
     VALIDATE_PREPARATION: "VALIDATE_PREPARATION",
+    REPAIR_PREVIOUS_RESPONSE: "RECIPE_REQUEST",
   };
   const questionType = isFoodRelated
     ? directiveQuestionTypes[turnDirective.dialogueAct] ?? detectFoodQuestionType(message)
@@ -1217,10 +1220,42 @@ export function buildAida2WorkPlan(input: Aida2BrainInput): Aida2WorkPlan {
     conversationState
   );
 
-  const turnDirective = understandCurrentTurn({
-    message,
-    conversationState,
-  });
+  const fallbackDirective = understandCurrentTurn({ message, conversationState });
+  const turnCognition = input.turnCognition ?? {
+    dialogueAct: fallbackDirective.dialogueAct,
+    confidence: 0.45,
+    explicitCurrentGoal: fallbackDirective.reason,
+    foodTarget: fallbackDirective.targetHint,
+    preparationStyle: null,
+    requestedCount: null,
+    selectedOption: fallbackDirective.selectedOption,
+    requestedAddition: null,
+    constraints: [],
+    referencesPreviousTurn: fallbackDirective.requiresHistory,
+    needsConversationHistory: fallbackDirective.requiresHistory,
+    capabilities: fallbackDirective.allowsCulinaryPlan
+      ? ["SEMANTIC_FOOD_ANALYSIS" as const, "CULINARY_PLANNING" as const]
+      : fallbackDirective.dialogueAct === "VALIDATE_FOOD"
+        ? ["PROTOCOL_VALIDATION" as const]
+        : ["GENERAL_COMPOSITION" as const],
+    responseContract: {
+      answerCurrentQuestionFirst: true,
+      exactOptionCount: null,
+      preservePreviousTarget: fallbackDirective.requiresHistory,
+      mustRepairPreviousResponse: false,
+    },
+    source: "deterministic_fallback" as const,
+  };
+  const turnDirective: Aida2TurnDirective = {
+    dialogueAct: turnCognition.dialogueAct,
+    explicitCurrentIntent: turnCognition.confidence >= 0.5,
+    requiresHistory: turnCognition.needsConversationHistory,
+    contextPolicy: turnCognition.needsConversationHistory ? "SELECTIVE_HISTORY" : "CURRENT_TURN_ONLY",
+    allowsCulinaryPlan: turnCognition.capabilities.includes("CULINARY_PLANNING"),
+    selectedOption: turnCognition.selectedOption,
+    targetHint: turnCognition.foodTarget,
+    reason: turnCognition.explicitCurrentGoal,
+  };
 
   const safety = buildSafetyPlan(understanding);
 
@@ -1259,6 +1294,7 @@ export function buildAida2WorkPlan(input: Aida2BrainInput): Aida2WorkPlan {
       "Responde como asesor cercano, profesional y práctico. Debe ser claro, breve, humano, sin sermones, sin tecnicismos innecesarios y con una acción concreta. Debe adaptar la respuesta al nivel del usuario.",
     conversationState,
     turnDirective,
+    turnCognition,
     understanding,
     foodContext,
     modulePlan,
