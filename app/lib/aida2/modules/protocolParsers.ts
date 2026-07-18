@@ -10,6 +10,7 @@ export type StructuredAllowedFoods = {
   legumes: string[];
   fruits: string[];
   beverages: string[];
+  sweeteners: string[];
 };
 
 export type StructuredFruits = {
@@ -60,9 +61,10 @@ export function buildStructuredProtocol(
     operational: parseOperationalConfiguration(
       sections.operationalConfiguration ?? ""
     ),
-    allowedFoods: parseAllowedFoods(
-      sections.allowedFoods ?? ""
-    ),
+    allowedFoods: {
+      ...parseAllowedFoods(sections.allowedFoods ?? ""),
+      sweeteners: parseAllowedSweeteners(sections.endulzantes ?? ""),
+    },
 
     fruits: parseFruits(
       sections.fruits ?? ""
@@ -132,8 +134,14 @@ function parseAllowedFoods(
 
     beverages: extractCategory(text, [
       "## BEBIDAS"
-    ])
+    ]),
+    sweeteners: [],
   };
+}
+
+function parseAllowedSweeteners(text: string) {
+  const allowed = text.match(/Permitidos:\s*([\s\S]*?)(?=\nNo recomendados:|$)/i)?.[1] ?? "";
+  return extractBullets(allowed);
 }
 
 /* =======================================================
