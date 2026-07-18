@@ -94,8 +94,7 @@ export class ChefExpert implements Aida3Expert {
     const options = await this.beverages.generate(input);
     const excluded = input.constraints.exclude.map(normalized);
     if (options.length !== input.count || new Set(options.map(option => option.id)).size !== options.length ||
-      options.some(option => excluded.some(value => normalized(option.name).includes(value)) ||
-        option.ingredients.some(ingredient => excluded.some(value => normalized(ingredient).includes(value))))) {
+      options.some(option => excluded.includes(normalized(option.name)))) {
       return this.failed(context, "INVALID_BEVERAGE_TOOL_OUTPUT");
     }
     return this.completed(context, "BEVERAGES_GENERATED", { beverages: options, count: options.length }, `${options.length} bebidas preparadas`);
