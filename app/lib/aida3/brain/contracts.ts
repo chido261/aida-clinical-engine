@@ -4,6 +4,7 @@ import type { ProtocolId } from "../protocols/contracts";
 
 export type BrainRequest =
   | { id: string; type: "GREETING" }
+  | { id: string; type: "PROTOCOL_STATUS" }
   | { id: string; type: "GLUCOSE_READING"; valueMgDl: number; moment: string | null }
   | { id: string; type: "FOOD_VALIDATION"; foods: NutritionCandidate[] }
   | { id: string; type: "MEAL_OPTIONS"; count: number; requiredEveryOption: NutritionCandidate[];
