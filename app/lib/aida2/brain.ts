@@ -1231,6 +1231,7 @@ export function buildAida2WorkPlan(input: Aida2BrainInput): Aida2WorkPlan {
     selectedOption: fallbackDirective.selectedOption,
     requestedAddition: null,
     constraints: [],
+    obligations: [],
     tasks: [],
     referencesPreviousTurn: fallbackDirective.requiresHistory,
     needsConversationHistory: fallbackDirective.requiresHistory,
