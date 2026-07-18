@@ -2,7 +2,7 @@ import type OpenAI from "openai";
 import type { NutritionCandidate } from "../experts/nutrition";
 import type { BrainRequest, CurrentTurnAnalysis, CurrentTurnAnalyzer } from "./contracts";
 
-const TYPES = ["GREETING", "GLUCOSE_READING", "FOOD_VALIDATION", "MEAL_OPTIONS", "BEVERAGE_OPTIONS", "RECIPE_STEPS"] as const;
+const TYPES = ["GREETING", "PROTOCOL_STATUS", "GLUCOSE_READING", "FOOD_VALIDATION", "MEAL_OPTIONS", "BEVERAGE_OPTIONS", "RECIPE_STEPS"] as const;
 const CATEGORIES = ["PROTEIN", "DAIRY", "HEALTHY_FAT", "VEGETABLE", "LEGUME", "FRUIT", "BEVERAGE", "SWEETENER", "CARBOHYDRATE", "UNKNOWN"] as const;
 const LENGTHS = ["SHORT", "MEDIUM", "DETAILED"] as const;
 const FOOD_SCHEMA = { type: "object", additionalProperties: false, required: ["name", "canonicalName", "category"],
@@ -28,6 +28,7 @@ type RawRequest = { id: string; type: typeof TYPES[number]; valueMgDl: number | 
 function request(raw: RawRequest): BrainRequest {
   if (!raw.id.trim() || !TYPES.includes(raw.type)) throw new Error("AIDA3_CURRENT_ANALYSIS_INVALID_REQUEST");
   if (raw.type === "GREETING") return { id: raw.id, type: raw.type };
+  if (raw.type === "PROTOCOL_STATUS") return { id: raw.id, type: raw.type };
   if (raw.type === "GLUCOSE_READING") {
     if (typeof raw.valueMgDl !== "number") throw new Error("AIDA3_CURRENT_ANALYSIS_GLUCOSE_MISSING");
     return { id: raw.id, type: raw.type, valueMgDl: raw.valueMgDl, moment: raw.moment };
@@ -54,6 +55,7 @@ export class OpenAiCurrentTurnAnalyzer implements CurrentTurnAnalyzer {
       "Eres la capa de análisis actual de AIDA. Sólo conviertes el mensaje actual en una lista de solicitudes; no respondes ni decides.",
       "Nunca conviertas datos del contexto en solicitudes. El contexto sólo resuelve referencias explícitas como 'la opción 2'.",
       "GREETING es sólo saludo. GLUCOSE_READING registra el número indicado y no crea solicitudes de comida.",
+      "PROTOCOL_STATUS se usa cuando el paciente pregunta en qué fase o protocolo se encuentra.",
       "FOOD_VALIDATION valida alimentos sin pedir recetas. MEAL_OPTIONS conserva exactamente la cantidad solicitada.",
       "En MEAL_OPTIONS: requiredEveryOption contiene lo que debe aparecer en todas; requiredAtLeastOne lo que debe aparecer al menos en una; validateOnly lo que sólo se consulta.",
       "BEVERAGE_OPTIONS es independiente y conserva cantidad y exclusiones. RECIPE_STEPS contiene únicamente ids resueltos de recetas elegidas.",
