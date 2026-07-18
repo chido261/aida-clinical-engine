@@ -51,6 +51,7 @@ function flattenAllowed(protocol: ProtocolModuleOutput) {
     ...foods.legumes,
     ...foods.fruits,
     ...foods.beverages,
+    ...foods.sweeteners,
   ];
 }
 
@@ -234,7 +235,11 @@ export function evaluateFoodWithProtocol(params: {
     reason: validation.reason,
     source: validation.source,
   }));
-  const incompatibleFoods = validations.filter(item => !item.isCompatible);
+  // UNKNOWN expresa incertidumbre, no una prohibición. Sólo una decisión
+  // explícitamente restringida puede entrar en incompatibleFoods.
+  const incompatibleFoods = validations.filter(
+    item => !item.isCompatible && item.source !== "unknown"
+  );
   const compatibleFoods = validations.filter(item => item.isCompatible);
   const hasConditionalFoods = foods.some(food => food.status === "ALLOWED_WITH_VALIDATION");
 
