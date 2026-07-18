@@ -5,8 +5,9 @@ import { NextResponse } from "next/server";
 import OpenAI from "openai";
 import { prisma } from "@/app/lib/prisma";
 import {
-  Aida3ExpertRegistry, Aida3TurnEngine, Aida3TurnOrchestrator, Aida3TurnResponseComposer,
-  ChefExpert, NutritionExpert, OpenAiChefTools, OpenAiHumanizerProvider, OpenAiSemanticProvider,
+  Aida3Brain, Aida3BrainTurnEngine, Aida3DeterministicResponseAssembler, Aida3ExpertRegistry,
+  Aida3TurnOrchestrator, ChefExpert, ConversationExpert, GlucoseExpert, NutritionExpert,
+  OpenAiChefTools, OpenAiCurrentTurnAnalyzer,
   type ProtocolId,
 } from "@/app/lib/aida3";
 import { PrismaCulinaryMemory } from "@/app/lib/aida3/infrastructure/prismaCulinaryMemory";
@@ -17,13 +18,15 @@ type Body = { deviceId?: string; messages?: ChatMessage[] };
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 const culinaryMemory = new PrismaCulinaryMemory();
 const culinary = new OpenAiChefTools(openai);
-const registry = new Aida3ExpertRegistry().register(new NutritionExpert()).register(new ChefExpert(
-  { generate: context => culinary.generateMeals(context) },
-  { generate: context => culinary.generateBeverages(context) },
-  { explain: recipe => culinary.explain(recipe) }, culinaryMemory
-));
-const engine = new Aida3TurnEngine(new OpenAiSemanticProvider(openai), new Aida3TurnOrchestrator(registry),
-  new Aida3TurnResponseComposer(new OpenAiHumanizerProvider(openai)));
+const registry = new Aida3ExpertRegistry()
+  .register(new ConversationExpert())
+  .register(new GlucoseExpert())
+  .register(new NutritionExpert())
+  .register(new ChefExpert({ generate: context => culinary.generateMeals(context) },
+    { generate: context => culinary.generateBeverages(context) },
+    { explain: recipe => culinary.explain(recipe) }, culinaryMemory));
+const engine = new Aida3BrainTurnEngine(new OpenAiCurrentTurnAnalyzer(openai), new Aida3Brain(),
+  new Aida3TurnOrchestrator(registry), new Aida3DeterministicResponseAssembler());
 
 function protocolId(activePhase?: string | null, activeProtocol?: string | null): ProtocolId {
   const value = `${activePhase ?? ""} ${activeProtocol ?? ""}`.toUpperCase().replace(/[\s-]+/g, "_");
@@ -41,21 +44,11 @@ export async function POST(request: Request) {
     if (!message) return NextResponse.json({ ok: false, error: "Mensaje requerido" }, { status: 400 });
     const userId = body.deviceId?.trim() || "chat3-local";
     const user = await prisma.userState.upsert({ where: { id: userId }, create: { id: userId }, update: {},
-      select: { name: true, activePhase: true, activeProtocol: true, clinicalState: true,
-        currentNutritionGoal: true, lastRecommendation: true } });
-    const contextRecord = await prisma.conversationContext.findUnique({ where: { userId }, select: {
-      clinicalSummary: true, currentGoal: true, lastConcern: true, pendingConversationFollowUp: true,
-    } });
+      select: { activePhase: true, activeProtocol: true } });
     const options = await culinaryMemory.listOptions(userId);
-    const recentHistory = messages.filter(item => item.role !== "system").slice(-8);
     const execution = await engine.execute({ turnId: randomUUID(), message,
-      protocolId: protocolId(user.activePhase, user.activeProtocol), relevantContext: {
-        conversationId: userId, patientName: user.name, clinicalState: user.clinicalState,
-        nutritionGoal: user.currentNutritionGoal, lastRecommendation: user.lastRecommendation,
-        clinicalSummary: contextRecord?.clinicalSummary, currentGoal: contextRecord?.currentGoal,
-        lastConcern: contextRecord?.lastConcern, pendingFollowUp: contextRecord?.pendingConversationFollowUp,
-        recentHistory, culinaryOptions: options,
-      } });
+      context: { conversationId: userId, protocolId: protocolId(user.activePhase, user.activeProtocol),
+        availableRecipes: options.map(option => ({ id: option.id, name: option.name })) } });
     console.info("AIDA3_TURN_TIMINGS", { userId, turnId: execution.plan.turnId, ...execution.timings });
     if (execution.response.source === "FAILURE") {
       const diagnostics = execution.outcome.bundle.results
