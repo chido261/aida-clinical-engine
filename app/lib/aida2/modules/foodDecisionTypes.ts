@@ -72,6 +72,7 @@ export type CulinaryRecipe = {
 export type CulinaryPlan = {
   requested: boolean;
   requestedCount: number;
+  optionNumberOffset: number;
   presentation: "choices" | "full_recipe";
   constraints: string[];
   recipes: CulinaryRecipe[];
