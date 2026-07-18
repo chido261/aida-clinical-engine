@@ -61,3 +61,6 @@ prisma/*.db
 # local backups (never commit)
 backups/
 *.db
+
+# AIDA3 deterministic core test output
+.aida3-test-build/
