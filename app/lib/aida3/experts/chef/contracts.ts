@@ -15,7 +15,12 @@ export type ChefGenerationContext = {
   approvedFoods: string[];
   conditionalFoods: string[];
   count: number;
-  constraints: Record<string, unknown>;
+  constraints: {
+    requiredEveryOption: string[];
+    requiredAtLeastOne: string[];
+    rejectedFoods: string[];
+    exclude: string[];
+  };
 };
 
 export type GeneratedBeverage = {
