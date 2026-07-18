@@ -20,6 +20,22 @@ export function enforceAida2StructuredDecision(params: {
   const { reply, mealModule } = params;
   if (!mealModule) return reply;
 
+  const culinaryPlan = mealModule.culinaryPlan;
+  if (culinaryPlan?.requested) {
+    if (culinaryPlan.recipes.length === 0) {
+      return culinaryPlan.error ??
+        "No pude construir una receta que pasara todas las validaciones del protocolo. Puedo intentarlo con otra preparación o ingrediente base.";
+    }
+
+    return culinaryPlan.recipes.map((recipe, index) => [
+      `${index + 1}. ${recipe.title}`,
+      "Ingredientes:",
+      ...recipe.ingredients.map(item => `- ${item.amount} de ${item.name}`),
+      "Preparación:",
+      ...recipe.steps.map((step, stepIndex) => `${stepIndex + 1}) ${step}`),
+    ].join("\n")).join("\n\n");
+  }
+
   const needsIngredients = mealModule.decision.foods.filter(
     (food) => food.status === "NEEDS_INGREDIENTS"
   );
@@ -28,6 +44,19 @@ export function enforceAida2StructuredDecision(params: {
     return [
       "Esta preparación puede ser compatible, pero el nombre por sí solo no permite saberlo.",
       "Dime todos sus ingredientes —incluidas harinas, almidones o productos añadidos— y la evaluaré por su composición, no solamente por llamarse tortilla, pan o base.",
+    ].join("\n\n");
+  }
+
+  const unknownFoods = mealModule.decision.foods.filter(
+    (food) => food.status === "UNKNOWN"
+  );
+  const confirmedFoods = mealModule.decision.foods.filter(
+    (food) => food.status === "ALLOWED" || food.status === "ALLOWED_WITH_VALIDATION"
+  );
+  if (unknownFoods.length > 0 && confirmedFoods.length === 0) {
+    return [
+      "No tengo una clasificación suficientemente confiable para decidir todavía.",
+      `Necesito identificar mejor ${formatFoods(unknownFoods.map(food => food.food))} o conocer sus ingredientes antes de compararlo con tu protocolo.`,
     ].join("\n\n");
   }
 
@@ -74,6 +103,25 @@ export function enforceAida2StructuredDecision(params: {
         : `Estas son las razones: ${reasons.join("; ")}.`,
       "Por ahora no lo incluyas ni intentes validarlo con una porción pequeña. Esa validación corresponderá únicamente cuando una fase posterior del protocolo lo permita.",
       "Si quieres, dime qué comida estás preparando y te ayudo a construir una alternativa compatible con tu fase.",
+    ].filter(Boolean).join("\n\n");
+  }
+
+  const allowedFoods = mealModule.decision.foods.filter(
+    food => food.status === "ALLOWED"
+  );
+  const replyContradictsAllowedDecision =
+    allowedFoods.length > 0 &&
+    /\b(no se recomienda|no es compatible|mejor evita|no puedes|no lo incluyas)\b/i.test(reply);
+  if (replyContradictsAllowedDecision) {
+    const subject = mealModule.semanticInterpretation?.dishName ??
+      formatFoods(allowedFoods.map(food => food.food));
+    const reasons = [...new Set(allowedFoods.map(food => food.reason))];
+    return [
+      `Sí, ${subject} es compatible con ${phaseLabel(mealModule.decision.protocolId)}.`,
+      `La decisión se basa en ${formatFoods(allowedFoods.map(food => food.canonicalFood))}: ${reasons.join("; ")}.`,
+      mealModule.semanticInterpretation?.isCommercialProduct
+        ? "Si es un producto comercial, revisa también su lista completa de ingredientes."
+        : null,
     ].filter(Boolean).join("\n\n");
   }
 
