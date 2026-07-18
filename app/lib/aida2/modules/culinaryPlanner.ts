@@ -8,6 +8,8 @@ import type {
 import type { ProtocolModuleOutput } from "./protocolModule";
 import { evaluateFoodWithProtocol } from "./protocolFoodEngine";
 import type { Aida2TurnDirective } from "../turnUnderstanding";
+import type { Aida2TurnCognition } from "../turnCognition";
+import type { Aida2CulinaryMemory } from "../culinaryMemoryTypes";
 
 const NEUTRAL_CULINARY_INGREDIENTS = [
   "agua", "sal", "pimienta", "limón", "limon", "vinagre", "ajo",
@@ -157,7 +159,7 @@ function recipesAreTooSimilar(left: CulinaryRecipe, right: CulinaryRecipe) {
   const rightSet = ingredientSignature(right);
   const intersection = [...leftSet].filter(item => rightSet.has(item)).length;
   const union = new Set([...leftSet, ...rightSet]).size;
-  return union > 0 && intersection / union >= 0.75;
+  return union > 0 && intersection / union >= 0.9;
 }
 
 export async function buildCulinaryPlan(params: {
@@ -167,15 +169,27 @@ export async function buildCulinaryPlan(params: {
   protocol: ProtocolModuleOutput;
   conversationHistory?: string;
   turnDirective?: Aida2TurnDirective;
+  turnCognition?: Aida2TurnCognition;
+  culinaryMemory?: Aida2CulinaryMemory | null;
 }): Promise<CulinaryPlan> {
-  const { openai, userMessage, interpretation, protocol, conversationHistory, turnDirective } = params;
+  const {
+    openai, userMessage, interpretation, protocol, conversationHistory,
+    turnDirective, turnCognition, culinaryMemory,
+  } = params;
   if (!(turnDirective?.allowsCulinaryPlan ?? requestsCulinaryPlan(userMessage))) {
-    return { requested: false, requestedCount: 0, presentation: "choices", constraints: [], recipes: [], rejectedIngredients: [], error: null };
+    return { requested: false, requestedCount: 0, optionNumberOffset: 0, presentation: "choices", constraints: [], recipes: [], rejectedIngredients: [], error: null };
   }
 
-  const requestedCount = turnDirective?.selectedOption
+  const missingFromPrevious = turnCognition?.dialogueAct === "REPAIR_PREVIOUS_RESPONSE" && culinaryMemory
+    ? Math.max(1, culinaryMemory.requestedCount - culinaryMemory.deliveredCount)
+    : null;
+  const requestedCount = missingFromPrevious ?? (turnDirective?.selectedOption
     ? 1
-    : requestedRecipeCount(userMessage);
+    : turnCognition?.responseContract.exactOptionCount ??
+      turnCognition?.requestedCount ?? requestedRecipeCount(userMessage));
+  const optionNumberOffset = missingFromPrevious && culinaryMemory
+    ? culinaryMemory.deliveredCount
+    : 0;
   const presentation = requestsFullRecipe(userMessage) ||
     turnDirective?.dialogueAct === "SELECT_RECIPE_OPTION" ||
     turnDirective?.dialogueAct === "ASK_PREPARATION"
@@ -207,7 +221,7 @@ export async function buildCulinaryPlan(params: {
     });
     if (groundedFallback?.verified) recipes.push(groundedFallback);
 
-    for (let attempt = 0; attempt < 3 && recipes.length < requestedCount; attempt += 1) {
+    for (let attempt = 0; attempt < 4 && recipes.length < requestedCount; attempt += 1) {
       const remaining = requestedCount - recipes.length;
       const response = await openai.chat.completions.create({
         model: "gpt-4.1-mini",
@@ -227,6 +241,8 @@ export async function buildCulinaryPlan(params: {
             "Devuelve JSON {recipes:[{title, ingredients:[{name,amount}], steps:[string]}]}.",
             `Interpretación: ${JSON.stringify(interpretation)}`,
             turnDirective ? `Directiva del turno: ${JSON.stringify(turnDirective)}` : "",
+            turnCognition ? `Contrato cognitivo: ${JSON.stringify(turnCognition)}` : "",
+            culinaryMemory ? `Plan culinario activo: ${JSON.stringify(culinaryMemory)}` : "",
             conversationHistory ? `Contexto reciente para resolver referencias como “la opción 2”:\n${conversationHistory}` : "",
             `Restricciones del usuario: ${constraints.join(", ") || "ninguna adicional"}`,
             `Alimentos permitidos:\n${allowedVocabulary}`,
@@ -266,6 +282,7 @@ export async function buildCulinaryPlan(params: {
     return {
       requested: true,
       requestedCount,
+      optionNumberOffset,
       presentation,
       constraints,
       recipes: recipes.slice(0, requestedCount),
@@ -276,6 +293,7 @@ export async function buildCulinaryPlan(params: {
     return {
       requested: true,
       requestedCount,
+      optionNumberOffset,
       presentation,
       constraints,
       recipes: [],
