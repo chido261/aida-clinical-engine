@@ -56,9 +56,10 @@ export async function POST(request: Request) {
         lastConcern: contextRecord?.lastConcern, pendingFollowUp: contextRecord?.pendingConversationFollowUp,
         recentHistory, culinaryOptions: options,
       } });
+    console.info("AIDA3_TURN_TIMINGS", { userId, turnId: execution.plan.turnId, ...execution.timings });
     return NextResponse.json({ ok: true, reply: execution.response.text, aida3: true,
       ...(process.env.NODE_ENV === "production" ? {} : { turnId: execution.plan.turnId,
-        tasks: execution.plan.tasks, outcome: execution.outcome.status }) });
+        tasks: execution.plan.tasks, outcome: execution.outcome.status, timings: execution.timings }) });
   } catch (error) {
     console.error("API /api/chat3 ERROR:", error);
     return NextResponse.json({ ok: false, error: error instanceof Error ? error.message : "Error desconocido" }, { status: 500 });
