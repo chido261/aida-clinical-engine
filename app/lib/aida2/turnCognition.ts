@@ -132,6 +132,80 @@ function parseCognition(text: string): Aida2TurnCognition | null {
   }
 }
 
+export type Aida2TaskGraphAudit = {
+  cognition: Aida2TurnCognition;
+  audited: boolean;
+  complete: boolean;
+  expectedTasks: number;
+  representedTasks: number;
+  missingObligations: string[];
+};
+
+function messageNeedsCoverageAudit(message: string, cognition: Aida2TurnCognition) {
+  const normalized = message.toLowerCase();
+  const discourseLinks = normalized.match(/\b(y ademas|ademas|tambien|para terminar|por ultimo|y luego|al mismo tiempo)\b/g)?.length ?? 0;
+  return cognition.tasks.length > 1 || message.length >= 120 || discourseLinks > 0;
+}
+
+export async function auditTaskGraphCoverage(params: {
+  openai: OpenAI;
+  message: string;
+  cognition: Aida2TurnCognition;
+  culinaryMemory?: Aida2CulinaryMemory | null;
+}): Promise<Aida2TaskGraphAudit> {
+  const { openai, message, cognition, culinaryMemory } = params;
+  if (!messageNeedsCoverageAudit(message, cognition)) {
+    return {
+      cognition, audited: false, complete: true,
+      expectedTasks: cognition.tasks.length, representedTasks: cognition.tasks.length,
+      missingObligations: [],
+    };
+  }
+  try {
+    const response = await openai.chat.completions.create({
+      model: "gpt-4.1-mini",
+      temperature: 0,
+      response_format: { type: "json_object" },
+      messages: [{
+        role: "system",
+        content: [
+          "Eres el auditor ejecutivo de AIDA. Compara el mensaje original con el grafo candidato.",
+          "Una obligación es cada resultado que el usuario espera: generar N opciones es una tarea; una restricción como 'una con aguacate' pertenece a esa tarea; validar otro alimento es otra; agregar bebida es otra.",
+          "Reconstruye el grafo completo si falta cualquier obligación. No resuelvas las tareas.",
+          "Devuelve JSON {complete, expectedTasks, missingObligations, cognition}.",
+          "cognition debe conservar todos los campos recibidos y reemplazar tasks por la lista completa.",
+          "Cada task usa id, type, target, quantity, selectedOption, relationTarget, requirements, exclusions, preferences, dependsOn.",
+          `Grafo candidato: ${JSON.stringify(cognition)}`,
+          culinaryMemory ? `Memoria culinaria: ${JSON.stringify(culinaryMemory)}` : "",
+        ].filter(Boolean).join("\n"),
+      }, { role: "user", content: message }],
+    });
+    const raw = JSON.parse(response.choices[0]?.message?.content ?? "{}") as Record<string, unknown>;
+    const parsed = raw.cognition && typeof raw.cognition === "object"
+      ? parseCognition(JSON.stringify(raw.cognition))
+      : null;
+    const repaired = authorizeCognition(parsed ?? cognition, culinaryMemory);
+    const expected = Math.max(Number(raw.expectedTasks) || 0, repaired.tasks.length);
+    const missing = strings(raw.missingObligations);
+    const complete = raw.complete === true && repaired.tasks.length >= expected && missing.length === 0;
+    return {
+      cognition: repaired,
+      audited: true,
+      complete,
+      expectedTasks: expected,
+      representedTasks: repaired.tasks.length,
+      missingObligations: missing,
+    };
+  } catch {
+    return {
+      cognition, audited: true, complete: false,
+      expectedTasks: cognition.tasks.length,
+      representedTasks: cognition.tasks.length,
+      missingObligations: ["No fue posible verificar la cobertura completa del mensaje."],
+    };
+  }
+}
+
 function fallbackCognition(message: string): Aida2TurnCognition {
   const directive = understandCurrentTurn({ message });
   return {
