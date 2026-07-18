@@ -12,3 +12,4 @@ export * from "./experts/nutrition";
 export * from "./experts/chef";
 export * from "./semantics";
 export * from "./humanizer";
+export * from "./engine";
