@@ -29,8 +29,9 @@ export class OpenAiChefTools {
     const response = await this.openai.responses.create({ model: this.model,
       instructions: ["Eres la herramienta de opciones del chef de AIDA.",
         "Genera exactamente count opciones distintas usando sólo approvedFoods y conditionalFoods.",
-        "Nunca uses rejectedFoods. Cumple atLeastOneIncludes. No tomes decisiones clínicas.",
-        "Si recibes validationFeedback, corrige cada violación indicada antes de responder.",
+        "Incluye cada alimento de requiredEveryOption en todas las opciones.",
+        "Incluye cada alimento de requiredAtLeastOne en una o más opciones.",
+        "Nunca uses rejectedFoods ni validateOnly. No tomes decisiones clínicas.",
         "Usa ids option-1, option-2, etc."].join("\n"), input: JSON.stringify(context),
       text: { format: { type: "json_schema", name: "aida3_meal_options", strict: true, schema: MEALS_SCHEMA } },
     }, { timeout: Number(process.env.OPENAI_CHEF_TIMEOUT_MS ?? 25_000), maxRetries: 0 });
