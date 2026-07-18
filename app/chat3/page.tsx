@@ -27,11 +27,18 @@ export default function Chat3Page() {
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
   const [elapsedMs, setElapsedMs] = useState<number | null>(null);
+  const [waitingSeconds, setWaitingSeconds] = useState(0);
   const bottom = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => { setDeviceId(getDeviceId()); setMessages(loadMessages()); }, []);
   useEffect(() => { try { localStorage.setItem(STORAGE_KEY, JSON.stringify(messages)); } catch {} }, [messages]);
   useEffect(() => { bottom.current?.scrollIntoView({ behavior: "smooth" }); }, [messages, sending]);
+  useEffect(() => {
+    if (!sending) { setWaitingSeconds(0); return; }
+    const startedAt = Date.now();
+    const timer = window.setInterval(() => setWaitingSeconds(Math.floor((Date.now() - startedAt) / 1000)), 1000);
+    return () => window.clearInterval(timer);
+  }, [sending]);
 
   const canSend = useMemo(() => Boolean(deviceId && input.trim() && !sending), [deviceId, input, sending]);
 
@@ -41,16 +48,18 @@ export default function Chat3Page() {
     const nextMessages = [...messages, { role: "user", content } satisfies ChatMessage];
     setMessages(nextMessages); setInput(""); setSending(true); setElapsedMs(null);
     const startedAt = performance.now();
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), 70_000);
     try {
       const response = await fetch("/api/chat3", { method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ deviceId, messages: nextMessages.slice(-12) }) });
+        body: JSON.stringify({ deviceId, messages: nextMessages.slice(-12) }), signal: controller.signal });
       const data = await response.json() as { ok?: boolean; reply?: string; error?: string };
       if (!response.ok || !data.ok || !data.reply) throw new Error(data.error || "Chat3 no pudo responder.");
       setMessages(current => [...current, { role: "assistant", content: data.reply! }]);
     } catch (error) {
       setMessages(current => [...current, { role: "assistant",
         content: error instanceof Error ? `Error de Chat3: ${error.message}` : "Error de Chat3." }]);
-    } finally { setElapsedMs(Math.round(performance.now() - startedAt)); setSending(false); }
+    } finally { window.clearTimeout(timeout); setElapsedMs(Math.round(performance.now() - startedAt)); setSending(false); }
   }
 
   function clearVisibleConversation() {
@@ -66,11 +75,11 @@ export default function Chat3Page() {
     <div className={styles.messages} aria-live="polite">
       {messages.map((message, index) => <div key={`${message.role}-${index}`}
         className={`${styles.message} ${message.role === "user" ? styles.user : styles.assistant}`}>{message.content}</div>)}
-      {sending && <div className={`${styles.message} ${styles.assistant} ${styles.thinking}`}>AIDA3 está procesando el turno…</div>}
+      {sending && <div className={`${styles.message} ${styles.assistant} ${styles.thinking}`}>AIDA3 está procesando el turno… {waitingSeconds} s</div>}
       <div ref={bottom} />
     </div>
     <div className={styles.composer}>
-      <p className={styles.status}>{sending ? "Procesando…" : elapsedMs === null ? "" : `Última respuesta: ${(elapsedMs / 1000).toFixed(1)} s`}</p>
+      <p className={styles.status}>{sending ? `Procesando… ${waitingSeconds} s` : elapsedMs === null ? "" : `Última respuesta: ${(elapsedMs / 1000).toFixed(1)} s`}</p>
       <div className={styles.row}><textarea className={styles.input} value={input} onChange={event => setInput(event.target.value)}
         onKeyDown={event => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); void send(); } }}
         placeholder="Escribe aquí…" disabled={sending} aria-label="Mensaje para AIDA3" />
