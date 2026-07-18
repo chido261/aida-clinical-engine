@@ -7,6 +7,7 @@ import type {
 } from "./foodDecisionTypes";
 import type { ProtocolModuleOutput } from "./protocolModule";
 import { evaluateFoodWithProtocol } from "./protocolFoodEngine";
+import type { Aida2TurnDirective } from "../turnUnderstanding";
 
 const NEUTRAL_CULINARY_INGREDIENTS = [
   "agua", "sal", "pimienta", "limón", "limon", "vinagre", "ajo",
@@ -165,14 +166,21 @@ export async function buildCulinaryPlan(params: {
   interpretation: SemanticFoodInterpretation;
   protocol: ProtocolModuleOutput;
   conversationHistory?: string;
+  turnDirective?: Aida2TurnDirective;
 }): Promise<CulinaryPlan> {
-  const { openai, userMessage, interpretation, protocol, conversationHistory } = params;
-  if (!requestsCulinaryPlan(userMessage)) {
+  const { openai, userMessage, interpretation, protocol, conversationHistory, turnDirective } = params;
+  if (!(turnDirective?.allowsCulinaryPlan ?? requestsCulinaryPlan(userMessage))) {
     return { requested: false, requestedCount: 0, presentation: "choices", constraints: [], recipes: [], rejectedIngredients: [], error: null };
   }
 
-  const requestedCount = requestedRecipeCount(userMessage);
-  const presentation = requestsFullRecipe(userMessage) ? "full_recipe" : "choices";
+  const requestedCount = turnDirective?.selectedOption
+    ? 1
+    : requestedRecipeCount(userMessage);
+  const presentation = requestsFullRecipe(userMessage) ||
+    turnDirective?.dialogueAct === "SELECT_RECIPE_OPTION" ||
+    turnDirective?.dialogueAct === "ASK_PREPARATION"
+      ? "full_recipe"
+      : "choices";
   const allowed = protocol.structured.allowedFoods;
   const allowedVocabulary = Object.entries(allowed)
     .map(([category, foods]) => `${category}: ${foods.join(", ")}`)
@@ -218,6 +226,7 @@ export async function buildCulinaryPlan(params: {
             rejected.size > 0 ? `No uses ingredientes descartados por el verificador: ${[...rejected].join(", ")}.` : "",
             "Devuelve JSON {recipes:[{title, ingredients:[{name,amount}], steps:[string]}]}.",
             `Interpretación: ${JSON.stringify(interpretation)}`,
+            turnDirective ? `Directiva del turno: ${JSON.stringify(turnDirective)}` : "",
             conversationHistory ? `Contexto reciente para resolver referencias como “la opción 2”:\n${conversationHistory}` : "",
             `Restricciones del usuario: ${constraints.join(", ") || "ninguna adicional"}`,
             `Alimentos permitidos:\n${allowedVocabulary}`,
