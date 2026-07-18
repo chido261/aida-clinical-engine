@@ -8,10 +8,12 @@ import type {
 import type { ProtocolModuleOutput } from "./protocolModule";
 import { evaluateFoodWithProtocol } from "./protocolFoodEngine";
 
-const NEUTRAL_CULINARY_INGREDIENTS = new Set([
+const NEUTRAL_CULINARY_INGREDIENTS = [
   "agua", "sal", "pimienta", "limón", "limon", "vinagre", "ajo",
   "cebolla", "especias", "hierbas", "polvo para hornear", "levadura",
-]);
+  "mostaza sin azúcar", "mostaza sin azucar", "orégano", "oregano",
+  "comino", "paprika", "cilantro", "jugo de limón", "jugo de limon",
+];
 
 function normalize(value: string) {
   return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
@@ -26,6 +28,25 @@ function requestedRecipeCount(message: string) {
 
 export function requestsCulinaryPlan(message: string) {
   return /\b(receta|recetas|opci[oó]n|opciones|ideas|c[oó]mo (?:lo|la|los|las)?\s*preparo|c[oó]mo se prepara)\b/i.test(message);
+}
+
+function requestsFullRecipe(message: string) {
+  return /\b(paso a paso|c[oó]mo (?:la|lo|las|los)?\s*(?:preparo|preparar|elaboro|elaborar|hago|hacer)|ingredientes? y (?:pasos|preparaci[oó]n)|receta completa)\b/i.test(message);
+}
+
+function canonicalizeCulinaryIngredient(value: string) {
+  const clean = normalize(value)
+    .replace(/\b(cocid[oa]s?|hidratad[oa]s?|texturizad[oa]s?|molid[oa]s?|rallad[oa]s?|picad[oa]s?|finamente|escurrid[oa]s?|natural(?:es)?|vegan[oa]s?|sin azucar)\b/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  return clean || normalize(value);
+}
+
+function isNeutralCulinaryIngredient(value: string) {
+  const candidate = normalize(value);
+  return NEUTRAL_CULINARY_INGREDIENTS.some(term =>
+    candidate === normalize(term) || candidate.includes(normalize(term))
+  );
 }
 
 function parseRecipes(output: string): Array<Omit<CulinaryRecipe, "verified" | "rejectedIngredients">> {
@@ -56,11 +77,25 @@ function parseRecipes(output: string): Array<Omit<CulinaryRecipe, "verified" | "
 
 function verifyRecipe(recipe: Omit<CulinaryRecipe, "verified" | "rejectedIngredients">, protocol: ProtocolModuleOutput): CulinaryRecipe {
   const rejectedIngredients = recipe.ingredients.flatMap(({ name }) => {
-    if (NEUTRAL_CULINARY_INGREDIENTS.has(normalize(name))) return [];
+    if (isNeutralCulinaryIngredient(name)) return [];
+    const candidate = canonicalizeCulinaryIngredient(name);
     const evaluation = evaluateFoodWithProtocol({
       protocol,
-      userMessage: name,
+      userMessage: candidate,
       shouldBuildRecipes: false,
+      semanticInterpretation: {
+        originalText: name,
+        dishName: candidate,
+        semanticType: "literal_food",
+        baseIngredients: [candidate],
+        declaredIngredients: [],
+        styleReferences: [],
+        isCommercialProduct: false,
+        requiresClarification: false,
+        clarificationReason: null,
+        confidence: 1,
+        source: "semantic_fallback",
+      },
     });
     const decisions = evaluation.decision.foods;
     return decisions.length > 0 && decisions.every(food => food.status === "ALLOWED" || food.status === "ALLOWED_WITH_VALIDATION")
@@ -79,13 +114,15 @@ export async function buildCulinaryPlan(params: {
   userMessage: string;
   interpretation: SemanticFoodInterpretation;
   protocol: ProtocolModuleOutput;
+  conversationHistory?: string;
 }): Promise<CulinaryPlan> {
-  const { openai, userMessage, interpretation, protocol } = params;
+  const { openai, userMessage, interpretation, protocol, conversationHistory } = params;
   if (!requestsCulinaryPlan(userMessage)) {
-    return { requested: false, requestedCount: 0, constraints: [], recipes: [], error: null };
+    return { requested: false, requestedCount: 0, presentation: "choices", constraints: [], recipes: [], error: null };
   }
 
   const requestedCount = requestedRecipeCount(userMessage);
+  const presentation = requestsFullRecipe(userMessage) ? "full_recipe" : "choices";
   const allowed = protocol.structured.allowedFoods;
   const allowedVocabulary = Object.entries(allowed)
     .map(([category, foods]) => `${category}: ${foods.join(", ")}`)
@@ -101,7 +138,7 @@ export async function buildCulinaryPlan(params: {
     const recipes: CulinaryRecipe[] = [];
     const rejected = new Set<string>();
 
-    for (let attempt = 0; attempt < 2 && recipes.length < requestedCount; attempt += 1) {
+    for (let attempt = 0; attempt < 3 && recipes.length < requestedCount; attempt += 1) {
       const remaining = requestedCount - recipes.length;
       const response = await openai.chat.completions.create({
         model: "gpt-4.1-mini",
@@ -120,6 +157,7 @@ export async function buildCulinaryPlan(params: {
             rejected.size > 0 ? `No uses ingredientes descartados por el verificador: ${[...rejected].join(", ")}.` : "",
             "Devuelve JSON {recipes:[{title, ingredients:[{name,amount}], steps:[string]}]}.",
             `Interpretación: ${JSON.stringify(interpretation)}`,
+            conversationHistory ? `Contexto reciente para resolver referencias como “la opción 2”:\n${conversationHistory}` : "",
             `Restricciones del usuario: ${constraints.join(", ") || "ninguna adicional"}`,
             `Alimentos permitidos:\n${allowedVocabulary}`,
             `Alimentos no recomendados del protocolo:\n${protocol.sections.restrictedFoods ?? ""}`,
@@ -140,6 +178,7 @@ export async function buildCulinaryPlan(params: {
     return {
       requested: true,
       requestedCount,
+      presentation,
       constraints,
       recipes: recipes.slice(0, requestedCount),
       error: recipes.length >= requestedCount ? null : "No fue posible verificar suficientes recetas compatibles.",
@@ -148,6 +187,7 @@ export async function buildCulinaryPlan(params: {
     return {
       requested: true,
       requestedCount,
+      presentation,
       constraints,
       recipes: [],
       error: "No fue posible construir recetas verificadas en este momento.",
