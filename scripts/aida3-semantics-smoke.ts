@@ -14,7 +14,7 @@ const understanding: SemanticTurnUnderstanding = {
       foods: [{ name: "pulpo", category: "PROTEIN" }, { name: "aguacate", category: "HEALTHY_FAT" }],
       constraints: { count: 3, atLeastOneIncludes: ["aguacate"] }, dependsOn: ["validate-foods"], required: true },
     { id: "beverage", kind: "BEVERAGE_OPTIONS", subject: "una bebida sin agua",
-      foods: [], constraints: { count: 1, exclude: ["agua"] }, dependsOn: ["validate-foods"], required: true },
+      foods: [], constraints: { count: 1, exclude: ["agua"] }, dependsOn: [], required: true },
   ],
 };
 
@@ -24,6 +24,7 @@ assert.deepEqual(plan.tasks.map(task => task.expertId), ["NUTRITION", "CHEF", "C
 assert.deepEqual(plan.tasks.find(task => task.id === "meal-options")?.dependsOn, ["validate-foods"]);
 assert.equal(plan.tasks.find(task => task.id === "meal-options")?.input.count, 3);
 assert.deepEqual(plan.tasks.find(task => task.id === "beverage")?.input.exclude, ["agua"]);
+assert.deepEqual(plan.tasks.find(task => task.id === "beverage")?.dependsOn, ["validate-foods"]);
 assert.equal(plan.relevantContext.protocolId, "FASE_1");
 console.log("AIDA3 SEMANTICS OK");
 console.log(JSON.stringify(plan, null, 2));
