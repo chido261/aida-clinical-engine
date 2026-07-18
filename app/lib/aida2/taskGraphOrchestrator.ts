@@ -1,5 +1,8 @@
-import type { Aida2TaskGraphAudit } from "./turnCognition";
-import type { Aida2MultiTaskResult } from "./multiTaskExecutor";
+import type OpenAI from "openai";
+import { auditTaskGraphCoverage, type Aida2TaskGraphAudit, type Aida2TurnCognition } from "./turnCognition";
+import { executeMultiTaskGraph, type Aida2MultiTaskResult } from "./multiTaskExecutor";
+import type { Aida2CulinaryMemory } from "./culinaryMemoryTypes";
+import type { ProtocolModuleOutput } from "./modules/protocolModule";
 import {
   composeTaskGraphOutcome,
   type Aida2TaskGraphOutcome,
@@ -18,10 +21,10 @@ export function resolveTaskGraphTurn(params: {
   const { audit, execution } = params;
   let outcome: Aida2TaskGraphOutcome;
 
-  if (audit.audited && !audit.complete) {
+  if (audit.requiresUserInput) {
     outcome = {
       status: "NEEDS_CLARIFICATION",
-      missingObligations: audit.missingObligations,
+      missingObligations: audit.missingUserInformation,
     };
   } else if (execution.handled && execution.valid) {
     outcome = { status: "COMPLETED", content: execution.reply };
@@ -35,5 +38,26 @@ export function resolveTaskGraphTurn(params: {
     handled: outcome.status !== "NOT_APPLICABLE",
     reply: composeTaskGraphOutcome(outcome),
     outcome,
+  };
+}
+
+export async function runTaskGraphBrainTurn(params: {
+  openai: OpenAI;
+  message: string;
+  cognition: Aida2TurnCognition;
+  culinaryMemory?: Aida2CulinaryMemory | null;
+  protocol: ProtocolModuleOutput;
+}) {
+  const audit = await auditTaskGraphCoverage(params);
+  const execution = await executeMultiTaskGraph({
+    openai: params.openai,
+    cognition: audit.cognition,
+    protocol: params.protocol,
+  });
+  return {
+    cognition: audit.cognition,
+    audit,
+    execution,
+    resolution: resolveTaskGraphTurn({ audit, execution }),
   };
 }
