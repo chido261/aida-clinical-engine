@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import {
   Aida3Brain, Aida3BrainTurnEngine, Aida3DeterministicResponseAssembler, Aida3ExpertRegistry,
   Aida3TurnOrchestrator, ChefExpert, ConversationExpert, GlucoseExpert, InMemoryCulinaryMemory,
-  NutritionExpert, OpenAiCurrentTurnAnalyzer, type BrainContext, type ChefGenerationContext,
+  NutritionExpert, OpenAiCurrentTurnAnalyzer, ProtocolExpert, type BrainContext, type ChefGenerationContext,
   type GeneratedBeverage, type RecipeInstructions, type StoredRecipeOption,
 } from "../app/lib/aida3";
 
@@ -11,6 +11,7 @@ const empty = { valueMgDl: null, moment: null, foods: [], count: null, requiredE
 const analyses = [
   { responseLength: "SHORT", requests: [{ ...empty, id: "greeting", type: "GREETING" }] },
   { responseLength: "SHORT", requests: [{ ...empty, id: "glucose", type: "GLUCOSE_READING", valueMgDl: 110 }] },
+  { responseLength: "SHORT", requests: [{ ...empty, id: "phase", type: "PROTOCOL_STATUS" }] },
   { responseLength: "MEDIUM", requests: [
     { ...empty, id: "meals", type: "MEAL_OPTIONS", count: 3,
       requiredEveryOption: [{ name: "pulpo", canonicalName: "pulpo", category: "PROTEIN" }],
@@ -40,7 +41,7 @@ const meals = { async generate(context: ChefGenerationContext): Promise<StoredRe
 const beverages = { async generate(context: ChefGenerationContext): Promise<GeneratedBeverage[]> {
   chefCalls += 1;
   assert.deepEqual(context.constraints.exclude, ["agua"]);
-  return [{ id: "beverage-1", name: "Té verde sin azúcar", ingredients: ["té verde"] }];
+  return [{ id: "beverage-1", name: "Té verde sin azúcar", ingredients: ["agua", "té verde"] }];
 } };
 const recipes = { async explain(recipe: StoredRecipeOption): Promise<RecipeInstructions> {
   chefCalls += 1;
@@ -49,7 +50,7 @@ const recipes = { async explain(recipe: StoredRecipeOption): Promise<RecipeInstr
 
 const memory = new InMemoryCulinaryMemory();
 const registry = new Aida3ExpertRegistry().register(new ConversationExpert()).register(new GlucoseExpert())
-  .register(new NutritionExpert()).register(new ChefExpert(meals, beverages, recipes, memory));
+  .register(new ProtocolExpert()).register(new NutritionExpert()).register(new ChefExpert(meals, beverages, recipes, memory));
 const engine = new Aida3BrainTurnEngine(new OpenAiCurrentTurnAnalyzer(fakeOpenAi as never, "test-model"),
   new Aida3Brain(), new Aida3TurnOrchestrator(registry), new Aida3DeterministicResponseAssembler());
 const context: BrainContext = { protocolId: "FASE_1", conversationId: "chat3-cycle", availableRecipes: [] };
@@ -61,6 +62,10 @@ async function main() {
 
   const glucose = await engine.execute({ turnId: "glucose-turn", message: "Tengo 110 de glucosa", context });
   assert.equal(glucose.response.text, "Registré 110 mg/dL.");
+  assert.equal(chefCalls, 0);
+
+  const phase = await engine.execute({ turnId: "phase-turn", message: "¿En qué fase estoy?", context });
+  assert.equal(phase.response.text, "Estás en la Fase 1.");
   assert.equal(chefCalls, 0);
 
   const culinary = await engine.execute({ turnId: "culinary-turn",
@@ -76,13 +81,14 @@ async function main() {
   assert.match(detail.response.text, /Pulpo al ajillo/);
   assert.match(detail.response.text, /1\. Corta el pulpo/);
   assert.equal(chefCalls, 3);
-  assert.equal(analysisInputs.length, 4);
-  const lastInput = JSON.parse(String(analysisInputs[3].input)) as Record<string, unknown>;
+  assert.equal(analysisInputs.length, 5);
+  const lastInput = JSON.parse(String(analysisInputs[4].input)) as Record<string, unknown>;
   assert.deepEqual(Object.keys(lastInput).sort(), ["currentMessage", "referenceContext"]);
   assert.equal("recentHistory" in (lastInput.referenceContext as Record<string, unknown>), false);
 
   console.log("AIDA3 CHAT3 CYCLE OK");
-  console.log(JSON.stringify({ greeting: greeting.response, glucose: glucose.response, culinary: culinary.response,
+  console.log(JSON.stringify({ greeting: greeting.response, glucose: glucose.response, phase: phase.response,
+    culinary: culinary.response,
     detail: detail.response, analysisCalls: analysisInputs.length, chefCalls }, null, 2));
 }
 
