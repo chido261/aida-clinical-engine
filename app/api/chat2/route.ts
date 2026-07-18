@@ -25,6 +25,7 @@ import {
 } from "@/app/lib/aida2/contextMemory";
 import { reviewCurrentProtocolWeekIfDue } from "@/app/lib/aida2/weeklyProtocolReview";
 import { enforceAida2StructuredDecision } from "@/app/lib/aida2/responseGuard";
+import type { SemanticFoodInterpretation } from "@/app/lib/aida2/modules/foodDecisionTypes";
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
@@ -96,6 +97,40 @@ function resolveProtocolId(
   }
 
   return "DIAGNOSTICO_7_DIAS";
+}
+
+function normalizeFood(value: string) {
+  return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase()
+    .replace(/^(?:el|la|los|las|un|una)\s+/, "").trim();
+}
+
+function buildFastProtocolInterpretation(params: {
+  message: string;
+  target: string | null;
+  protocol: ReturnType<typeof runProtocolModule>;
+}): SemanticFoodInterpretation | null {
+  const { message, target, protocol } = params;
+  if (!target) return null;
+  const normalizedTarget = normalizeFood(target);
+  const knownFoods = Object.values(protocol.structured.allowedFoods).flat()
+    .map(normalizeFood);
+  const appearsDirectlyInProtocol = knownFoods.some(food =>
+    food === normalizedTarget || food.endsWith(` de ${normalizedTarget}`)
+  );
+  if (!appearsDirectlyInProtocol) return null;
+  return {
+    originalText: message,
+    dishName: target,
+    semanticType: "literal_food",
+    baseIngredients: [target],
+    declaredIngredients: [],
+    styleReferences: [],
+    isCommercialProduct: false,
+    requiresClarification: false,
+    clarificationReason: null,
+    confidence: 1,
+    source: "semantic_fallback",
+  };
 }
 
 function extractNameFromMessage(message: string) {
@@ -367,12 +402,23 @@ export async function POST(req: Request) {
       memory.userState.activeProtocol
     );
 
+    const protocol = runProtocolModule({ protocolId });
+
+    const fastProtocolInterpretation =
+      workPlan.turnDirective.dialogueAct === "VALIDATE_FOOD"
+        ? buildFastProtocolInterpretation({
+            message: lastUserMessage,
+            target: workPlan.turnDirective.targetHint,
+            protocol,
+          })
+        : null;
+
     const initialSemanticInterpretation = workPlan.foodContext.isFoodRelated
-      ? await interpretFoodSemantics({
+      ? fastProtocolInterpretation ?? await interpretFoodSemantics({
           openai,
           userMessage: lastUserMessage,
-          protocol: runProtocolModule({ protocolId }),
-          conversationHistory: recentHistory,
+          protocol,
+          conversationHistory: workPlan.turnDirective.requiresHistory ? recentHistory : undefined,
         })
       : null;
 
@@ -394,13 +440,14 @@ export async function POST(req: Request) {
       semanticInterpretation,
     });
 
-    const culinaryPlan = semanticInterpretation && workPlan.foodContext.isFoodRelated
+    const culinaryPlan = semanticInterpretation && workPlan.turnDirective.allowsCulinaryPlan
       ? await buildCulinaryPlan({
           openai,
           userMessage: lastUserMessage,
           interpretation: semanticInterpretation,
-          protocol: runProtocolModule({ protocolId }),
-          conversationHistory: recentHistory,
+          protocol,
+          conversationHistory: workPlan.turnDirective.requiresHistory ? recentHistory : undefined,
+          turnDirective: workPlan.turnDirective,
         })
       : null;
     if (moduleResults.meal && culinaryPlan?.requested) {
@@ -425,7 +472,10 @@ export async function POST(req: Request) {
 
     // El plan culinario ya contiene una respuesta estructurada y verificada.
     // Evitamos una llamada adicional que sólo sería descartada por el guard.
-    const modelReply = culinaryPlan?.requested
+    const hasDirectStructuredFoodAnswer =
+      workPlan.turnDirective.dialogueAct === "VALIDATE_FOOD" &&
+      Boolean(moduleResults.meal?.decision.foods.length);
+    const modelReply = culinaryPlan?.requested || hasDirectStructuredFoodAnswer
       ? ""
       : (await openai.chat.completions.create({
           model: "gpt-4.1-mini",
