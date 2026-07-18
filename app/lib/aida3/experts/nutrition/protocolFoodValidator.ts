@@ -21,7 +21,12 @@ function matches(candidate: string, policyTerm: string) {
 }
 
 function findMatch(candidate: string, terms: string[]) {
-  return terms.filter(term => matches(candidate, term)).sort((a, b) => normalizeFood(b).length - normalizeFood(a).length)[0];
+  const normalizedCandidate = normalizeFood(candidate);
+  return terms.filter(term => matches(candidate, term)).sort((a, b) => {
+    const aExact = normalizeFood(a) === normalizedCandidate ? 1 : 0;
+    const bExact = normalizeFood(b) === normalizedCandidate ? 1 : 0;
+    return bExact - aExact || normalizeFood(b).length - normalizeFood(a).length;
+  })[0];
 }
 
 const CATEGORY_GROUP: Record<string, keyof ProtocolFoodCatalog | null> = {
