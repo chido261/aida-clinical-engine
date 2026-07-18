@@ -22,6 +22,43 @@ function strings(value: unknown) {
     : [];
 }
 
+function inferRelationalMeaning(originalText: string) {
+  const normalized = originalText
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+  const core = normalized.split(/[,.;?]|\bpero\b|\bsin\b/)[0]?.trim() ?? normalized;
+  const relationIndex = core.lastIndexOf(" de ");
+  if (relationIndex < 0) return null;
+  const base = core.slice(relationIndex + 4)
+    .trim()
+    .replace(/\b(que pueda comer|vegano|vegana)\b.*$/i, "")
+    .trim();
+  if (!base) return null;
+  const before = core.slice(0, relationIndex).trim();
+  const style = (before.split(/\b(?:receta|comer|preparar|prepara|un|una)\b/).at(-1)?.trim() ?? "")
+    .replace(/^de\s+/, "")
+    .trim();
+  return { base, style };
+}
+
+function groundInterpretation(
+  interpretation: SemanticFoodInterpretation
+): SemanticFoodInterpretation {
+  const relation = inferRelationalMeaning(interpretation.originalText);
+  if (!relation) return interpretation;
+  return {
+    ...interpretation,
+    baseIngredients: interpretation.baseIngredients.length > 0
+      ? interpretation.baseIngredients
+      : [relation.base],
+    styleReferences: interpretation.styleReferences.length > 0 || !relation.style
+      ? interpretation.styleReferences
+      : [relation.style],
+    confidence: Math.max(interpretation.confidence, 0.7),
+  };
+}
+
 function parseInterpretation(text: string, originalText: string): SemanticFoodInterpretation | null {
   try {
     const value = JSON.parse(text) as Record<string, unknown>;
@@ -85,10 +122,14 @@ export async function interpretFoodSemantics(params: {
       ],
     });
     const content = response.choices[0]?.message?.content;
-    if (content) return parseInterpretation(content, userMessage) ?? { originalText: userMessage, ...EMPTY };
+    if (content) {
+      return groundInterpretation(
+        parseInterpretation(content, userMessage) ?? { originalText: userMessage, ...EMPTY }
+      );
+    }
   } catch {
     // El flujo determinista continúa si el intérprete semántico no está disponible.
   }
 
-  return { originalText: userMessage, ...EMPTY };
+  return groundInterpretation({ originalText: userMessage, ...EMPTY });
 }
