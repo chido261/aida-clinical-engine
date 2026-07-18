@@ -15,4 +15,5 @@ export type Aida3TurnExecution = {
   plan: Aida3TurnPlan;
   outcome: Aida3TurnOutcome;
   response: ComposedTurnResponse;
+  timings: { semanticsMs: number; expertsMs: number; humanizerMs: number; totalMs: number };
 };
