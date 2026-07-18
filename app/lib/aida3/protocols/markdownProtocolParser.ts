@@ -1,4 +1,9 @@
-import type { OperationalProtocolConfig, ProtocolFoodCatalog, ProtocolPhase } from "./contracts";
+import type {
+  OperationalProtocolConfig,
+  ProtocolFoodCatalog,
+  ProtocolPhase,
+  ProtocolPolicyCatalog,
+} from "./contracts";
 
 const SECTION_NAMES: Record<string, string> = {
   "CONFIGURACION OPERATIVA": "operationalConfiguration", IDENTIFICACION: "identification",
@@ -93,5 +98,21 @@ export function parseFoodCatalog(sections: Readonly<Record<string, string>>): Pr
     proteins: read("PROTEÍNAS"), dairy: read("LÁCTEOS"), healthyFats: read("GRASAS SALUDABLES"),
     vegetables: read("VEGETALES SIN ALMIDÓN"), legumes: read("LEGUMINOSAS"),
     fruits: read("FRUTAS PERMITIDAS"), beverages: read("BEBIDAS"), sweeteners: unique(bullets(permittedSweeteners)),
+  };
+}
+
+export function parsePolicyCatalog(sections: Readonly<Record<string, string>>): ProtocolPolicyCatalog {
+  const categories = sections.categorias_operativas ?? "";
+  const restricted = sections.restrictedFoods ?? "";
+  return {
+    base: unique(bullets(subsection(categories, "Permitidos base"))),
+    conditional: unique([
+      ...bullets(subsection(categories, "Permitidos con condición")),
+      ...bullets(subsection(categories, "Permitidos con validación")),
+    ]),
+    restricted: unique([
+      ...bullets(subsection(categories, "No recomendados")),
+      ...bullets(restricted),
+    ]),
   };
 }
