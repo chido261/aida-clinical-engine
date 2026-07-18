@@ -18,6 +18,6 @@ export interface HumanizerProvider {
 
 export type ComposedTurnResponse = {
   text: string;
-  source: "HUMANIZER" | "CLARIFICATION" | "FAILURE";
+  source: "ASSEMBLER" | "HUMANIZER" | "CLARIFICATION" | "FAILURE";
   coveredTaskIds: string[];
 };
