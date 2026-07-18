@@ -71,6 +71,7 @@ export async function interpretFoodSemantics(params: {
             "Distingue el alimento base de palabras que sólo describen forma, estilo o imitación.",
             "Ejemplos: atún de soya = sustituto con base soya y atún como referencia; pastel de carne = platillo con base carne; ceviche de lentejas = platillo con base lentejas y ceviche como estilo; arroz de coliflor = base coliflor.",
             "No inventes ingredientes. Los ingredientes probables no son ingredientes declarados.",
+            "Palabras como vegano, sin azúcar, sin gluten o bajo en carbohidratos son restricciones, no ingredientes.",
             "requiresClarification sólo debe ser true cuando falta información que realmente podría cambiar la evaluación; una receta solicitada puede construirse usando ingredientes compatibles.",
             "Devuelve JSON con dishName, semanticType, baseIngredients, declaredIngredients, styleReferences, isCommercialProduct, requiresClarification, clarificationReason y confidence (0 a 1).",
             `Vocabulario del protocolo para reconocer equivalencias, no para decidir: ${protocolVocabulary}`,
