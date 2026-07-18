@@ -7,8 +7,7 @@ import {
 let mealToolCalls = 0;
 const meals: MealOptionsTool = { generate: async input => {
   mealToolCalls += 1;
-  const count = mealToolCalls === 1 ? input.count - 1 : input.count;
-  return Array.from({ length: count }, (_, index) => ({
+  return Array.from({ length: input.count }, (_, index) => ({
   id: `option-${index + 1}`, name: `Pulpo opción ${index + 1}`,
   ingredients: index === 0 ? ["pulpo", "aguacate", "jitomate"] : ["pulpo", "espárragos"],
   description: `Opción compatible ${index + 1}`,
@@ -30,7 +29,8 @@ const firstTurn: Aida3TurnPlan = { turnId: "chef-turn-1", originalMessage: "Dame
       input: { protocolId: "FASE_1", foods: [{ name: "pulpo", category: "PROTEIN" }, { name: "aguacate", category: "HEALTHY_FAT" }] },
       dependsOn: [], required: true },
     { id: "options", expertId: "CHEF", action: "GENERATE_MEAL_OPTIONS", subject: "cinco opciones",
-      input: { protocolId: "FASE_1", count: 5, atLeastOneIncludes: ["aguacate"] }, dependsOn: ["nutrition"], required: true },
+      input: { protocolId: "FASE_1", count: 5, requiredEveryOption: [{ name: "pulpo" }],
+        requiredAtLeastOne: [{ name: "aguacate" }], validateOnly: [] }, dependsOn: ["nutrition"], required: true },
     { id: "drink", expertId: "CHEF", action: "GENERATE_BEVERAGE_OPTIONS", subject: "una bebida",
       input: { protocolId: "FASE_1", count: 1, exclude: ["agua"] }, dependsOn: ["nutrition"], required: true },
   ] };
@@ -39,7 +39,7 @@ async function main() {
   const first = await orchestrator.execute(firstTurn);
   assert.equal(first.status, "READY_FOR_HUMANIZER");
   assert.equal(first.bundle.results.find(result => result.taskId === "options")?.data.count, 5);
-  assert.equal(mealToolCalls, 2);
+  assert.equal(mealToolCalls, 1);
   assert.equal(first.bundle.results.find(result => result.taskId === "drink")?.data.count, 1);
 
   const detail = await orchestrator.execute({ turnId: "chef-turn-2", originalMessage: "Explícame la opción 2.", responseLength: "DETAILED",
