@@ -62,6 +62,32 @@ function strings(value: unknown) {
     : [];
 }
 
+function parseCognitiveTasks(value: unknown): Aida2CognitiveTask[] {
+  const taskTypes = new Set<Aida2CognitiveTaskType>([
+    "GENERATE_OPTIONS", "VALIDATE_FOOD", "EXPLAIN_RECIPE", "MODIFY_OPTION",
+    "ADD_ACCOMPANIMENT", "SUBSTITUTE_INGREDIENT", "REPAIR_RESPONSE",
+  ]);
+  return Array.isArray(value) ? value.flatMap((raw, index) => {
+    if (!raw || typeof raw !== "object") return [];
+    const task = raw as Record<string, unknown>;
+    if (typeof task.type !== "string" || !taskTypes.has(task.type as Aida2CognitiveTaskType)) return [];
+    const quantity = Number(task.quantity);
+    const selected = Number(task.selectedOption);
+    return [{
+      id: typeof task.id === "string" && task.id.trim() ? task.id.trim() : `task_${index + 1}`,
+      type: task.type as Aida2CognitiveTaskType,
+      target: typeof task.target === "string" && task.target.trim() ? task.target.trim() : null,
+      quantity: Number.isInteger(quantity) && quantity > 0 ? Math.min(quantity, 5) : null,
+      selectedOption: Number.isInteger(selected) && selected > 0 ? selected : null,
+      relationTarget: typeof task.relationTarget === "string" && task.relationTarget.trim() ? task.relationTarget.trim() : null,
+      requirements: strings(task.requirements),
+      exclusions: strings(task.exclusions),
+      preferences: strings(task.preferences),
+      dependsOn: strings(task.dependsOn),
+    }];
+  }) : [];
+}
+
 function parseCognition(text: string): Aida2TurnCognition | null {
   try {
     const value = JSON.parse(text) as Record<string, unknown>;
@@ -82,29 +108,7 @@ function parseCognition(text: string): Aida2TurnCognition | null {
     const count = Number(value.requestedCount);
     const option = Number(value.selectedOption);
     const exactCount = Number(contract.exactOptionCount);
-    const taskTypes = new Set<Aida2CognitiveTaskType>([
-      "GENERATE_OPTIONS", "VALIDATE_FOOD", "EXPLAIN_RECIPE", "MODIFY_OPTION",
-      "ADD_ACCOMPANIMENT", "SUBSTITUTE_INGREDIENT", "REPAIR_RESPONSE",
-    ]);
-    const tasks = Array.isArray(value.tasks) ? value.tasks.flatMap((raw, index) => {
-      if (!raw || typeof raw !== "object") return [];
-      const task = raw as Record<string, unknown>;
-      if (typeof task.type !== "string" || !taskTypes.has(task.type as Aida2CognitiveTaskType)) return [];
-      const quantity = Number(task.quantity);
-      const selected = Number(task.selectedOption);
-      return [{
-        id: typeof task.id === "string" && task.id.trim() ? task.id.trim() : `task_${index + 1}`,
-        type: task.type as Aida2CognitiveTaskType,
-        target: typeof task.target === "string" && task.target.trim() ? task.target.trim() : null,
-        quantity: Number.isInteger(quantity) && quantity > 0 ? Math.min(quantity, 5) : null,
-        selectedOption: Number.isInteger(selected) && selected > 0 ? selected : null,
-        relationTarget: typeof task.relationTarget === "string" && task.relationTarget.trim() ? task.relationTarget.trim() : null,
-        requirements: strings(task.requirements),
-        exclusions: strings(task.exclusions),
-        preferences: strings(task.preferences),
-        dependsOn: strings(task.dependsOn),
-      }];
-    }) : [];
+    const tasks = parseCognitiveTasks(value.tasks);
     return {
       dialogueAct,
       confidence: Math.max(0, Math.min(1, Number(value.confidence) || 0)),
@@ -198,10 +202,18 @@ export async function auditTaskGraphCoverage(params: {
       }, { role: "user", content: message }],
     });
     const raw = JSON.parse(response.choices[0]?.message?.content ?? "{}") as Record<string, unknown>;
-    const parsed = raw.cognition && typeof raw.cognition === "object"
-      ? parseCognition(JSON.stringify(raw.cognition))
+    const rawCognition = raw.cognition && typeof raw.cognition === "object"
+      ? raw.cognition as Record<string, unknown>
       : null;
-    const repaired = authorizeCognition(parsed ?? cognition, culinaryMemory);
+    const parsed = rawCognition ? parseCognition(JSON.stringify(rawCognition)) : null;
+    // El auditor tiene autoridad para reparar el grafo, no para redefinir el
+    // turno completo. Si devuelve únicamente `tasks`, conservamos la cognición
+    // original y adoptamos esas tareas estructuradas en vez de descartarlas.
+    const repairedTasks = parseCognitiveTasks(rawCognition?.tasks);
+    const repairedCandidate = parsed ?? (repairedTasks.length > 0
+      ? { ...cognition, tasks: repairedTasks }
+      : cognition);
+    const repaired = authorizeCognition(repairedCandidate, culinaryMemory);
     // La primera auditoría puede describir lo que faltaba antes de reparar.
     // Una segunda pasada independiente certifica únicamente el grafo reparado.
     const certificationResponse = await openai.chat.completions.create({
