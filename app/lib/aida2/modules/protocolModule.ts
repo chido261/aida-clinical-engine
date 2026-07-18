@@ -54,6 +54,7 @@ const SECTION_MAP: Record<string, string> = {
   "LINEAMIENTOS GENERALES": "generalGuidelines",
   "ALIMENTOS NO RECOMENDADOS": "restrictedFoods",
   "FRUTAS": "fruits",
+  "ENDULZANTES": "endulzantes",
   "LEGUMINOSAS": "legumes",
   "CONSTRUCCIÓN DE PLATOS": "mealConstruction",
   "PORCIONES": "portions",
