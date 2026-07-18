@@ -33,6 +33,13 @@ export type Aida2CognitiveTask = {
   dependsOn: string[];
 };
 
+export type Aida2CognitiveObligation = {
+  id: string;
+  kind: "RESULT" | "CONSTRAINT" | "PREFERENCE";
+  description: string;
+  taskId: string;
+};
+
 export type Aida2TurnCognition = {
   dialogueAct: Aida2DialogueAct;
   confidence: number;
@@ -43,6 +50,7 @@ export type Aida2TurnCognition = {
   selectedOption: number | null;
   requestedAddition: string | null;
   constraints: string[];
+  obligations: Aida2CognitiveObligation[];
   tasks: Aida2CognitiveTask[];
   referencesPreviousTurn: boolean;
   needsConversationHistory: boolean;
@@ -88,6 +96,23 @@ function parseCognitiveTasks(value: unknown): Aida2CognitiveTask[] {
   }) : [];
 }
 
+function parseObligations(value: unknown): Aida2CognitiveObligation[] {
+  const kinds = new Set<Aida2CognitiveObligation["kind"]>(["RESULT", "CONSTRAINT", "PREFERENCE"]);
+  return Array.isArray(value) ? value.flatMap(raw => {
+    if (!raw || typeof raw !== "object") return [];
+    const item = raw as Record<string, unknown>;
+    if (typeof item.id !== "string" || typeof item.description !== "string" ||
+        typeof item.taskId !== "string" || typeof item.kind !== "string" ||
+        !kinds.has(item.kind as Aida2CognitiveObligation["kind"])) return [];
+    return [{
+      id: item.id.trim(),
+      kind: item.kind as Aida2CognitiveObligation["kind"],
+      description: item.description.trim(),
+      taskId: item.taskId.trim(),
+    }];
+  }).filter(item => item.id && item.description && item.taskId) : [];
+}
+
 function parseCognition(text: string): Aida2TurnCognition | null {
   try {
     const value = JSON.parse(text) as Record<string, unknown>;
@@ -119,6 +144,7 @@ function parseCognition(text: string): Aida2TurnCognition | null {
       selectedOption: Number.isInteger(option) && option > 0 ? option : null,
       requestedAddition: typeof value.requestedAddition === "string" && value.requestedAddition.trim() ? value.requestedAddition.trim() : null,
       constraints: strings(value.constraints),
+      obligations: parseObligations(value.obligations),
       tasks,
       referencesPreviousTurn: value.referencesPreviousTurn === true,
       needsConversationHistory: value.needsConversationHistory === true,
@@ -173,7 +199,7 @@ export async function auditTaskGraphCoverage(params: {
   cognition: Aida2TurnCognition;
   culinaryMemory?: Aida2CulinaryMemory | null;
 }): Promise<Aida2TaskGraphAudit> {
-  const { openai, message, cognition, culinaryMemory } = params;
+  const { message, cognition } = params;
   if (!messageNeedsCoverageAudit(message, cognition)) {
     return {
       cognition, audited: false, complete: true,
@@ -182,133 +208,29 @@ export async function auditTaskGraphCoverage(params: {
       gapType: "NONE", requiresUserInput: false, missingUserInformation: [],
     };
   }
-  try {
-    const response = await openai.chat.completions.create({
-      model: "gpt-4.1-mini",
-      temperature: 0,
-      response_format: { type: "json_object" },
-      messages: [{
-        role: "system",
-        content: [
-          "Eres el auditor ejecutivo de AIDA. Compara el mensaje original con el grafo candidato.",
-          "Una obligación es cada resultado que el usuario espera: generar N opciones es una tarea; una restricción como 'una con aguacate' pertenece a esa tarea; validar otro alimento es otra; agregar bebida es otra.",
-          "Reconstruye el grafo completo si falta cualquier obligación. No resuelvas las tareas.",
-          "Devuelve JSON {complete, expectedTasks, missingObligations, cognition}.",
-          "cognition debe conservar todos los campos recibidos y reemplazar tasks por la lista completa.",
-          "Cada task usa id, type, target, quantity, selectedOption, relationTarget, requirements, exclusions, preferences, dependsOn.",
-          `Grafo candidato: ${JSON.stringify(cognition)}`,
-          culinaryMemory ? `Memoria culinaria: ${JSON.stringify(culinaryMemory)}` : "",
-        ].filter(Boolean).join("\n"),
-      }, { role: "user", content: message }],
-    });
-    const raw = JSON.parse(response.choices[0]?.message?.content ?? "{}") as Record<string, unknown>;
-    const rawCognition = raw.cognition && typeof raw.cognition === "object"
-      ? raw.cognition as Record<string, unknown>
-      : null;
-    const parsed = rawCognition ? parseCognition(JSON.stringify(rawCognition)) : null;
-    // El auditor tiene autoridad para reparar el grafo, no para redefinir el
-    // turno completo. Si devuelve únicamente `tasks`, conservamos la cognición
-    // original y adoptamos esas tareas estructuradas en vez de descartarlas.
-    const repairedTasks = parseCognitiveTasks(rawCognition?.tasks);
-    const repairedCandidate = parsed ?? (repairedTasks.length > 0
-      ? { ...cognition, tasks: repairedTasks }
-      : cognition);
-    const repaired = authorizeCognition(repairedCandidate, culinaryMemory);
-    // La primera auditoría puede describir lo que faltaba antes de reparar.
-    // Una segunda pasada independiente certifica únicamente el grafo reparado.
-    const certificationResponse = await openai.chat.completions.create({
-      model: "gpt-4.1-mini",
-      temperature: 0,
-      response_format: {
-        type: "json_schema",
-        json_schema: {
-          name: "task_graph_certification",
-          strict: true,
-          schema: {
-            type: "object",
-            additionalProperties: false,
-            properties: {
-              complete: { type: "boolean" },
-              obligations: {
-                type: "array",
-                items: {
-                  type: "object",
-                  additionalProperties: false,
-                  properties: {
-                    id: { type: "string" },
-                    description: { type: "string" },
-                    coveredByTaskId: { type: "string" },
-                  },
-                  required: ["id", "description", "coveredByTaskId"],
-                },
-              },
-              missingObligations: { type: "array", items: { type: "string" } },
-            },
-            required: ["complete", "obligations", "missingObligations"],
-          },
-        },
-      },
-      messages: [{
-        role: "system",
-        content: [
-          "Certifica la cobertura de un grafo de tareas ya reparado.",
-          "Compara cada solicitud, restricción y resultado esperado del mensaje con el grafo.",
-          "No reconstruyas ni ejecutes nada. missingObligations sólo debe contener faltas que aún persisten en el grafo reparado.",
-          "Una tarea puede cubrir varias obligaciones. No confundas cantidad de obligaciones con cantidad de tareas.",
-          "Ejemplo: generar 3 opciones, todas con pulpo y una con aguacate son tres obligaciones cubiertas por una sola tarea GENERATE_OPTIONS.",
-          "Devuelve exclusivamente JSON {complete, obligations:[{id,description,coveredByTaskId}], missingObligations}.",
-          `Grafo reparado: ${JSON.stringify(repaired.tasks)}`,
-        ].join("\n"),
-      }, { role: "user", content: message }],
-    });
-    const certification = JSON.parse(
-      certificationResponse.choices[0]?.message?.content ?? "{}"
-    ) as Record<string, unknown>;
-    const taskIds = new Set(repaired.tasks.map(task => task.id));
-    const obligations = Array.isArray(certification.obligations)
-      ? certification.obligations.flatMap(rawObligation => {
-          if (!rawObligation || typeof rawObligation !== "object") return [];
-          const obligation = rawObligation as Record<string, unknown>;
-          return [{
-            id: typeof obligation.id === "string" ? obligation.id : "",
-            description: typeof obligation.description === "string" ? obligation.description : "",
-            coveredByTaskId: typeof obligation.coveredByTaskId === "string" ? obligation.coveredByTaskId : "",
-          }];
-        })
-      : [];
-    const missing = strings(certification.missingObligations);
-    const invalidCoverage = obligations.filter(obligation =>
-      !obligation.id || !obligation.description || !taskIds.has(obligation.coveredByTaskId)
-    );
-    const complete = certification.complete === true &&
-      obligations.length > 0 && invalidCoverage.length === 0 && missing.length === 0;
-    const userGaps = missingUserInformation(repaired);
-    const internalGaps = [
-      ...missing,
-      ...invalidCoverage.map(item => item.description || item.id || "Obligación sin tarea válida"),
-    ];
-    return {
-      cognition: repaired,
-      audited: true,
-      complete,
-      expectedTasks: repaired.tasks.length,
-      representedTasks: repaired.tasks.length,
-      missingObligations: internalGaps,
-      gapType: userGaps.length > 0
-        ? "USER_INFORMATION_GAP"
-        : complete ? "NONE" : "INTERNAL_GRAPH_GAP",
-      requiresUserInput: userGaps.length > 0,
-      missingUserInformation: userGaps,
-    };
-  } catch {
-    return {
-      cognition, audited: true, complete: false,
-      expectedTasks: cognition.tasks.length,
-      representedTasks: cognition.tasks.length,
-      missingObligations: ["No fue posible verificar la cobertura completa del mensaje."],
-      gapType: "EXECUTION_FAILURE", requiresUserInput: false, missingUserInformation: [],
-    };
-  }
+  const taskIds = new Set(cognition.tasks.map(task => task.id));
+  const invalidCoverage = cognition.obligations.filter(obligation => !taskIds.has(obligation.taskId));
+  const duplicateTaskIds = cognition.tasks.filter((task, index, tasks) =>
+    tasks.findIndex(candidate => candidate.id === task.id) !== index
+  );
+  const userGaps = missingUserInformation(cognition);
+  const internalGaps = [
+    ...invalidCoverage.map(item => item.description),
+    ...duplicateTaskIds.map(item => `Identificador de tarea duplicado: ${item.id}.`),
+    ...(cognition.obligations.length === 0 ? ["La cognición no produjo obligaciones certificables."] : []),
+  ];
+  const complete = internalGaps.length === 0 && userGaps.length === 0;
+  return {
+    cognition,
+    audited: true,
+    complete,
+    expectedTasks: cognition.tasks.length,
+    representedTasks: cognition.tasks.length,
+    missingObligations: internalGaps,
+    gapType: userGaps.length > 0 ? "USER_INFORMATION_GAP" : complete ? "NONE" : "INTERNAL_GRAPH_GAP",
+    requiresUserInput: userGaps.length > 0,
+    missingUserInformation: userGaps,
+  };
 }
 
 function fallbackCognition(message: string): Aida2TurnCognition {
@@ -323,6 +245,7 @@ function fallbackCognition(message: string): Aida2TurnCognition {
     selectedOption: directive.selectedOption,
     requestedAddition: null,
     constraints: [],
+    obligations: [],
     tasks: [],
     referencesPreviousTurn: directive.requiresHistory,
     needsConversationHistory: directive.requiresHistory,
@@ -428,11 +351,13 @@ export async function understandTurnWithBrain(params: {
           "En preparaciones 'X de Y', foodTarget es la base real Y y preparationStyle es X cuando X sólo describe estilo o imitación. Ejemplo: atún de soya => foodTarget soya, preparationStyle atún.",
           "Formas como 'puedo comerlo', 'qué me dices de', 'conviene' pueden ser validación aunque no digan exactamente 'puedo comer'.",
           "Si el usuario reclama que pidió N opciones y recibió menos, usa REPAIR_PREVIOUS_RESPONSE y conserva objetivo y cantidad del plan activo.",
-          "Descompón todas las solicitudes del mensaje en tasks; no hay límite conceptual de dos tareas.",
+          "Descompón todas las solicitudes del mensaje en obligations y tasks; no hay límite conceptual de dos tareas.",
+          "Cada obligation contiene id, kind (RESULT, CONSTRAINT o PREFERENCE), description y taskId.",
+          "RESULT exige una salida independiente. CONSTRAINT y PREFERENCE se vinculan a la tarea que modifican; nunca crean por sí mismas otra tarea.",
           "Cada task contiene id, type, target, quantity, selectedOption, relationTarget, requirements, exclusions, preferences y dependsOn.",
           "Tipos permitidos: GENERATE_OPTIONS, VALIDATE_FOOD, EXPLAIN_RECIPE, MODIFY_OPTION, ADD_ACCOMPANIMENT, SUBSTITUTE_INGREDIENT, REPAIR_RESPONSE.",
-          "Ejemplo: '3 opciones con pulpo, una con aguacate; valida tostada; agrega bebida no agua, té o café' produce tres tasks. La primera quantity=3 y requirements=['al menos una con aguacate']; la tercera exclusions=['agua'], preferences=['té','café'] y depende de la primera.",
-          "Devuelve exclusivamente JSON con dialogueAct, confidence, explicitCurrentGoal, foodTarget, preparationStyle, requestedCount, selectedOption, requestedAddition, constraints, tasks, referencesPreviousTurn, needsConversationHistory, capabilities y responseContract.",
+          "Ejemplo: '3 opciones con pulpo, una con aguacate; valida tostada; agrega bebida no agua, té o café' produce exactamente tres tasks. 'Una con aguacate' es CONSTRAINT de la primera tarea, no una cuarta tarea. La primera quantity=3 y requirements=['al menos una con aguacate']; la tercera exclusions=['agua'], preferences=['té','café'] y depende de la primera.",
+          "Devuelve exclusivamente JSON con dialogueAct, confidence, explicitCurrentGoal, foodTarget, preparationStyle, requestedCount, selectedOption, requestedAddition, constraints, obligations, tasks, referencesPreviousTurn, needsConversationHistory, capabilities y responseContract.",
           "capabilities sólo puede contener PROTOCOL_VALIDATION, SEMANTIC_FOOD_ANALYSIS, CULINARY_PLANNING, RECIPE_RECALL, CONTEXT_REPAIR, GENERAL_COMPOSITION.",
           "responseContract contiene answerCurrentQuestionFirst, exactOptionCount, preservePreviousTarget y mustRepairPreviousResponse.",
           culinaryMemory ? `PLAN CULINARIO ACTIVO ESTRUCTURADO:\n${JSON.stringify(culinaryMemory)}` : "No existe plan culinario activo.",
