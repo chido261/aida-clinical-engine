@@ -18,7 +18,7 @@ function parse(value: string): HumanizedResponse {
 }
 
 export class OpenAiHumanizerProvider implements HumanizerProvider {
-  constructor(private readonly openai: OpenAI, private readonly model = process.env.OPENAI_HUMANIZER_MODEL ?? "gpt-5.6-sol") {}
+  constructor(private readonly openai: OpenAI, private readonly model = process.env.OPENAI_HUMANIZER_MODEL ?? "gpt-4.1-mini") {}
 
   async humanize(input: HumanizerInput): Promise<HumanizedResponse> {
     const response = await this.openai.responses.create({ model: this.model,
@@ -31,7 +31,7 @@ export class OpenAiHumanizerProvider implements HumanizerProvider {
         "No muestres códigos internos, nombres de módulos ni palabras como ALLOWED o NOT_ALLOWED.",
       ].join("\n"), input: JSON.stringify(input),
       text: { format: { type: "json_schema", name: "aida3_humanized_response", strict: true, schema: SCHEMA } },
-    });
+    }, { timeout: Number(process.env.OPENAI_HUMANIZER_TIMEOUT_MS ?? 15_000), maxRetries: 0 });
     const output = response.output_text?.trim();
     if (!output) throw new Error("AIDA3_HUMANIZER_EMPTY_OUTPUT");
     return parse(output);
