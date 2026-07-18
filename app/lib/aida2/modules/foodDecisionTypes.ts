@@ -7,6 +7,7 @@ export type FoodCategory =
   | "leguminosa"
   | "fruta"
   | "bebida"
+  | "endulzante compatible"
   | "carbohidrato de alta carga glucémica"
   | "carbohidrato saludable con validación"
   | "preparación"
@@ -49,6 +50,31 @@ export type SemanticFoodInterpretation = {
   clarificationReason: string | null;
   confidence: number;
   source: "semantic_model" | "semantic_fallback" | "web_knowledge";
+};
+
+export type FoodKnowledgeResolution = {
+  needed: boolean;
+  resolved: boolean;
+  definition: string | null;
+  likelyBaseIngredients: string[];
+  sourceUrls: string[];
+  source: "not_needed" | "web" | "unresolved";
+};
+
+export type CulinaryRecipe = {
+  title: string;
+  ingredients: Array<{ name: string; amount: string }>;
+  steps: string[];
+  verified: boolean;
+  rejectedIngredients: string[];
+};
+
+export type CulinaryPlan = {
+  requested: boolean;
+  requestedCount: number;
+  constraints: string[];
+  recipes: CulinaryRecipe[];
+  error: string | null;
 };
 
 export type MealDecisionStatus =
