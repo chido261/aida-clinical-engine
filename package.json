@@ -8,6 +8,7 @@
     "build": "prisma generate && next build",
     "start": "next start",
     "lint": "eslint",
+    "test:aida3-core": "node --import tsx scripts/aida3-core-smoke.ts",
     "db:backup": "node scripts/dbBackup.mjs",
     "db:restore": "node scripts/dbRestore.mjs",
     "db:generate": "prisma generate",
@@ -44,5 +45,6 @@
     "eslint-config-next": "16.1.6",
     "tailwindcss": "^4",
     "typescript": "^5"
+    ,"tsx": "^4.20.6"
   }
 }
