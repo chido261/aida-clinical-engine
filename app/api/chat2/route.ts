@@ -372,6 +372,7 @@ export async function POST(req: Request) {
           openai,
           userMessage: lastUserMessage,
           protocol: runProtocolModule({ protocolId }),
+          conversationHistory: recentHistory,
         })
       : null;
 
@@ -399,6 +400,7 @@ export async function POST(req: Request) {
           userMessage: lastUserMessage,
           interpretation: semanticInterpretation,
           protocol: runProtocolModule({ protocolId }),
+          conversationHistory: recentHistory,
         })
       : null;
     if (moduleResults.meal && culinaryPlan?.requested) {
