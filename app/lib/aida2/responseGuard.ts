@@ -27,6 +27,20 @@ export function enforceAida2StructuredDecision(params: {
         "No pude construir una receta que pasara todas las validaciones del protocolo. Puedo intentarlo con otra preparación o ingrediente base.";
     }
 
+    if (culinaryPlan.presentation === "choices") {
+      return [
+        "Puedes preparar estas opciones:",
+        ...culinaryPlan.recipes.map((recipe, index) => {
+          const mainIngredients = recipe.ingredients
+            .slice(0, 4)
+            .map(item => item.name)
+            .join(", ");
+          return `${index + 1}. ${recipe.title}: ${mainIngredients}.`;
+        }),
+        "Si gustas, te puedo explicar cómo elaborar una paso a paso. Dime cuál te gusta.",
+      ].join("\n\n");
+    }
+
     return culinaryPlan.recipes.map((recipe, index) => [
       `${index + 1}. ${recipe.title}`,
       "Ingredientes:",
