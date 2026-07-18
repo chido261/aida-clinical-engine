@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import {
   Aida3Brain, Aida3ExpertRegistry, Aida3TurnOrchestrator, ChefExpert, ConversationExpert, GlucoseExpert,
-  InMemoryCulinaryMemory, NutritionExpert, type BrainContext, type ChefGenerationContext,
+  InMemoryCulinaryMemory, NutritionExpert, ProtocolExpert, type BrainContext, type ChefGenerationContext,
   type CurrentTurnAnalysis, type GeneratedBeverage, type RecipeInstructions, type StoredRecipeOption,
 } from "../app/lib/aida3";
 
@@ -16,7 +16,7 @@ const meals = { async generate(context: ChefGenerationContext): Promise<StoredRe
 } };
 const beverages = { async generate(context: ChefGenerationContext): Promise<GeneratedBeverage[]> {
   calls.push(context);
-  return [{ id: "beverage-1", name: "Té verde sin azúcar", ingredients: ["té verde"] }];
+  return [{ id: "beverage-1", name: "Té verde sin azúcar", ingredients: ["agua", "té verde"] }];
 } };
 const recipes = { async explain(option: StoredRecipeOption): Promise<RecipeInstructions> {
   return { recipeId: option.id, title: option.name, steps: ["Preparar", "Cocinar", "Servir"] };
@@ -25,6 +25,7 @@ const recipes = { async explain(option: StoredRecipeOption): Promise<RecipeInstr
 const registry = new Aida3ExpertRegistry()
   .register(new ConversationExpert())
   .register(new GlucoseExpert())
+  .register(new ProtocolExpert())
   .register(new NutritionExpert())
   .register(new ChefExpert(meals, beverages, recipes, new InMemoryCulinaryMemory()));
 const orchestrator = new Aida3TurnOrchestrator(registry);
@@ -50,6 +51,12 @@ async function main() {
   assert.deepEqual(glucose.bundle.results.map(result => result.expertId), ["GLUCOSE"]);
   assert.equal(glucose.bundle.results[0].patientSummary, "Registré 110 mg/dL.");
 
+  const phase = await run({ currentMessage: "¿En qué fase estoy?", responseLength: "SHORT",
+    requests: [{ id: "phase", type: "PROTOCOL_STATUS" }] });
+  assert.equal(phase.status, "READY_FOR_HUMANIZER");
+  assert.deepEqual(phase.bundle.results.map(result => result.expertId), ["PROTOCOL"]);
+  assert.equal(phase.bundle.results[0].patientSummary, "Estás en la Fase 1.");
+
   const culinary = await run({ currentMessage: "Dame 3 opciones con pulpo, una con aguacate, valida tostada y agrega una bebida.",
     responseLength: "MEDIUM", requests: [
       { id: "meals", type: "MEAL_OPTIONS", count: 3,
@@ -68,7 +75,7 @@ async function main() {
   assert.equal(calls.length, 2);
 
   console.log("AIDA3 EXPERT CYCLE OK");
-  console.log(JSON.stringify({ greeting: greeting.bundle.results, glucose: glucose.bundle.results,
+  console.log(JSON.stringify({ greeting: greeting.bundle.results, glucose: glucose.bundle.results, phase: phase.bundle.results,
     culinary: culinary.bundle.results, chefCalls: calls.length }, null, 2));
 }
 
