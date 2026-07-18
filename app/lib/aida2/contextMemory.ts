@@ -13,6 +13,8 @@ import type {
   Aida2MealType,
   Aida2PendingAction,
 } from "@/app/lib/aida2/conversationState";
+import type { Aida2CulinaryMemory } from "@/app/lib/aida2/culinaryMemoryTypes";
+export type { Aida2CulinaryMemory } from "@/app/lib/aida2/culinaryMemoryTypes";
 
 export type Aida2FoodMemoryDecision = {
   food: string;
@@ -74,6 +76,7 @@ export type Aida2MemoryMetadata = {
   restrictedFoodsSnapshot: string[];
   lastFoodDecision: Aida2FoodMemoryDecision | null;
   pendingAction: Aida2PendingAction | null;
+  activeCulinaryPlan: Aida2CulinaryMemory | null;
   knownUserPatterns: string[];
   recentTurns: Aida2MemoryTurn[];
   lastConfirmedTopic: string | null;
@@ -233,6 +236,7 @@ function coerceMetadataVersion(
     memoryConfidence: previous.memoryConfidence ?? "MEDIUM",
     conversationContext:
       previous.conversationContext ?? buildEmptyConversationContext(),
+    activeCulinaryPlan: previous.activeCulinaryPlan ?? null,
   };
 }
 
@@ -285,6 +289,7 @@ function buildMetadata(params: {
     ),
     lastFoodDecision: coerced?.lastFoodDecision ?? null,
     pendingAction: coerced?.pendingAction ?? null,
+    activeCulinaryPlan: coerced?.activeCulinaryPlan ?? null,
     knownUserPatterns: coerced?.knownUserPatterns ?? [],
     recentTurns: coerced?.recentTurns ?? [],
     lastConfirmedTopic: coerced?.lastConfirmedTopic ?? null,
@@ -486,6 +491,12 @@ export function buildAida2MemoryPrompt(memory: Aida2ContextMemory) {
       `- Acción pendiente: ${metadata.pendingAction.type}; evitar: ${
         metadata.pendingAction.avoid?.join(", ") || "sin alimento específico"
       }; cantidad: ${metadata.pendingAction.count ?? 3}.`
+    );
+  }
+
+  if (metadata.activeCulinaryPlan) {
+    lines.push(
+      `- Plan culinario activo: ${metadata.activeCulinaryPlan.deliveredCount}/${metadata.activeCulinaryPlan.requestedCount} opciones; objetivo: ${metadata.activeCulinaryPlan.target ?? "no especificado"}; selección: ${metadata.activeCulinaryPlan.selectedOption ?? "ninguna"}.`
     );
   }
 
@@ -828,6 +839,59 @@ export async function updateAida2ContextMemoryAfterResponse(params: {
 
   if (moduleDeliveredOptions(moduleResults)) {
     metadata.pendingAction = null;
+  }
+
+  const culinaryPlan = moduleResults.meal?.culinaryPlan;
+  if (culinaryPlan?.requested && culinaryPlan.recipes.length > 0) {
+    const activePlan = metadata.activeCulinaryPlan;
+    if (workPlan.turnCognition.dialogueAct === "REPAIR_PREVIOUS_RESPONSE" && activePlan) {
+      const additions = culinaryPlan.recipes.map((recipe, index) => ({
+        index: activePlan.deliveredCount + index + 1,
+        title: recipe.title,
+        ingredients: recipe.ingredients,
+        steps: recipe.steps,
+      }));
+      metadata.activeCulinaryPlan = {
+        ...activePlan,
+        deliveredCount: activePlan.deliveredCount + additions.length,
+        options: [...activePlan.options, ...additions],
+        updatedAt: new Date().toISOString(),
+      };
+    } else if (
+      (workPlan.turnCognition.dialogueAct === "SELECT_RECIPE_OPTION" ||
+        workPlan.turnCognition.dialogueAct === "ASK_PREPARATION") && activePlan
+    ) {
+      activePlan.selectedOption = workPlan.turnCognition.selectedOption ?? activePlan.selectedOption;
+      activePlan.updatedAt = new Date().toISOString();
+    } else if (
+      workPlan.turnCognition.dialogueAct === "MODIFY_SELECTED_OPTION" &&
+      activePlan && workPlan.turnCognition.selectedOption
+    ) {
+      const selectedIndex = workPlan.turnCognition.selectedOption;
+      const replacement = culinaryPlan.recipes[0];
+      activePlan.options = activePlan.options.map(option => option.index === selectedIndex
+        ? { index: selectedIndex, title: replacement.title, ingredients: replacement.ingredients, steps: replacement.steps }
+        : option);
+      activePlan.selectedOption = selectedIndex;
+      activePlan.updatedAt = new Date().toISOString();
+    } else {
+      metadata.activeCulinaryPlan = {
+        target: workPlan.turnCognition.foodTarget ?? workPlan.foodContext.targetText,
+        requestedCount: culinaryPlan.requestedCount,
+        deliveredCount: culinaryPlan.recipes.length,
+        selectedOption: workPlan.turnCognition.selectedOption,
+        options: culinaryPlan.recipes.map((recipe, index) => ({
+          index: index + 1,
+          title: recipe.title,
+          ingredients: recipe.ingredients,
+          steps: recipe.steps,
+        })),
+        updatedAt: new Date().toISOString(),
+      };
+    }
+  } else if (workPlan.turnCognition.selectedOption && metadata.activeCulinaryPlan) {
+    metadata.activeCulinaryPlan.selectedOption = workPlan.turnCognition.selectedOption;
+    metadata.activeCulinaryPlan.updatedAt = new Date().toISOString();
   }
 
   if (userCorrection) {
