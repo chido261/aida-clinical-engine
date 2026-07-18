@@ -8,6 +8,7 @@ export type Aida2DialogueAct =
   | "ASK_PREPARATION"
   | "PAIR_FOOD_OR_DRINK"
   | "VALIDATE_PREPARATION"
+  | "REPAIR_PREVIOUS_RESPONSE"
   | "GENERAL_FOOD"
   | "NON_FOOD";
 
@@ -46,8 +47,16 @@ export function understandCurrentTurn(params: {
   const text = normalize(params.message);
   const selectedOption = optionNumber(text);
 
+  if (/\b(que paso|faltaron?|pedi|habia pedido)\b.*\b(opciones|recetas)\b/i.test(text)) {
+    return {
+      dialogueAct: "REPAIR_PREVIOUS_RESPONSE", explicitCurrentIntent: true, requiresHistory: true,
+      contextPolicy: "SELECTIVE_HISTORY", allowsCulinaryPlan: true, selectedOption: null,
+      targetHint: null, reason: "El usuario solicita reparar una respuesta culinaria incompleta.",
+    };
+  }
+
   // La intención explícita del turno actual siempre vence al contexto anterior.
-  if (/\b(puedo|podria)\s+(comer|tomar|beber)\b|\b(esta|es)\s+permitid[oa]\b|\bme\s+conviene\b/i.test(text)) {
+  if (/\b(puedo|podria)\s+(comer|tomar|beber)(?:lo|la|los|las)?\b|\b(esta|es)\s+permitid[oa]\b|\bme\s+conviene\b/i.test(text)) {
     return {
       dialogueAct: "VALIDATE_FOOD", explicitCurrentIntent: true, requiresHistory: false,
       contextPolicy: "CURRENT_TURN_ONLY", allowsCulinaryPlan: false, selectedOption: null,
