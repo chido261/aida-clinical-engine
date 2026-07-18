@@ -139,7 +139,23 @@ export type Aida2TaskGraphAudit = {
   expectedTasks: number;
   representedTasks: number;
   missingObligations: string[];
+  gapType: "NONE" | "INTERNAL_GRAPH_GAP" | "USER_INFORMATION_GAP" | "EXECUTION_FAILURE";
+  requiresUserInput: boolean;
+  missingUserInformation: string[];
 };
+
+function missingUserInformation(cognition: Aida2TurnCognition) {
+  return cognition.tasks.flatMap(task => {
+    if (["GENERATE_OPTIONS", "VALIDATE_FOOD"].includes(task.type) && !task.target) {
+      return [`Falta el alimento o preparación para ${task.type}.`];
+    }
+    if (["EXPLAIN_RECIPE", "MODIFY_OPTION", "SUBSTITUTE_INGREDIENT"].includes(task.type) &&
+        !task.selectedOption && !task.target) {
+      return [`Falta identificar la opción o preparación para ${task.type}.`];
+    }
+    return [];
+  });
+}
 
 function messageNeedsCoverageAudit(message: string, cognition: Aida2TurnCognition) {
   const normalized = message.toLowerCase();
@@ -159,6 +175,7 @@ export async function auditTaskGraphCoverage(params: {
       cognition, audited: false, complete: true,
       expectedTasks: cognition.tasks.length, representedTasks: cognition.tasks.length,
       missingObligations: [],
+      gapType: "NONE", requiresUserInput: false, missingUserInformation: [],
     };
   }
   try {
@@ -253,16 +270,23 @@ export async function auditTaskGraphCoverage(params: {
     );
     const complete = certification.complete === true &&
       obligations.length > 0 && invalidCoverage.length === 0 && missing.length === 0;
+    const userGaps = missingUserInformation(repaired);
+    const internalGaps = [
+      ...missing,
+      ...invalidCoverage.map(item => item.description || item.id || "Obligación sin tarea válida"),
+    ];
     return {
       cognition: repaired,
       audited: true,
       complete,
       expectedTasks: repaired.tasks.length,
       representedTasks: repaired.tasks.length,
-      missingObligations: [
-        ...missing,
-        ...invalidCoverage.map(item => item.description || item.id || "Obligación sin tarea válida"),
-      ],
+      missingObligations: internalGaps,
+      gapType: userGaps.length > 0
+        ? "USER_INFORMATION_GAP"
+        : complete ? "NONE" : "INTERNAL_GRAPH_GAP",
+      requiresUserInput: userGaps.length > 0,
+      missingUserInformation: userGaps,
     };
   } catch {
     return {
@@ -270,6 +294,7 @@ export async function auditTaskGraphCoverage(params: {
       expectedTasks: cognition.tasks.length,
       representedTasks: cognition.tasks.length,
       missingObligations: ["No fue posible verificar la cobertura completa del mensaje."],
+      gapType: "EXECUTION_FAILURE", requiresUserInput: false, missingUserInformation: [],
     };
   }
 }
