@@ -159,7 +159,10 @@ function buildMealSpecialistMessage(params: {
     }.`
   );
 
-  if (pendingAction && pendingAction.type !== "NONE") {
+  const pendingActionIsAuthorized =
+    workPlan.turnCognition.referencesPreviousTurn ||
+    workPlan.conversationState.shouldContinuePendingAction;
+  if (pendingActionIsAuthorized && pendingAction && pendingAction.type !== "NONE") {
     lines.push("");
     lines.push("ACCIÓN PENDIENTE QUE DEBE OBEDECER EL ESPECIALISTA:");
     lines.push(`- Tipo: ${pendingAction.type}.`);
