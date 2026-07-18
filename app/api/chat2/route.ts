@@ -5,10 +5,16 @@ export const runtime = "nodejs";
 import { NextResponse } from "next/server";
 import OpenAI from "openai";
 import { prisma } from "@/app/lib/prisma";
-import { saveReading } from "@/app/lib/aidaMemory";
+import { ensureUserState, saveReading } from "@/app/lib/aidaMemory";
 import { buildAida2WorkPlan } from "@/app/lib/aida2/brain";
 import { runAida2Modules } from "@/app/lib/aida2/moduleRunner";
-import type { ProtocolId } from "@/app/lib/aida2/modules/protocolModule";
+import {
+  runProtocolModule,
+  type ProtocolId,
+} from "@/app/lib/aida2/modules/protocolModule";
+import { interpretFoodSemantics } from "@/app/lib/aida2/modules/semanticFoodInterpreter";
+import { resolveUnknownFoodKnowledge } from "@/app/lib/aida2/modules/foodKnowledgeResolver";
+import { buildCulinaryPlan } from "@/app/lib/aida2/modules/culinaryPlanner";
 import { buildAida2ConversationStrategy } from "@/app/lib/aida2/conversationStrategy";
 import { buildAida2ComposerPrompt } from "@/app/lib/aida2/responseComposer";
 import {
@@ -17,6 +23,12 @@ import {
   loadAida2ContextMemory,
   updateAida2ContextMemoryAfterResponse,
 } from "@/app/lib/aida2/contextMemory";
+import { reviewCurrentProtocolWeekIfDue } from "@/app/lib/aida2/weeklyProtocolReview";
+import { enforceAida2StructuredDecision } from "@/app/lib/aida2/responseGuard";
+import type { SemanticFoodInterpretation } from "@/app/lib/aida2/modules/foodDecisionTypes";
+import { understandTurnWithBrain } from "@/app/lib/aida2/turnCognition";
+import { verifyTurnContract } from "@/app/lib/aida2/turnContract";
+import { runTaskGraphBrainTurn } from "@/app/lib/aida2/taskGraphOrchestrator";
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
@@ -88,6 +100,41 @@ function resolveProtocolId(
   }
 
   return "DIAGNOSTICO_7_DIAS";
+}
+
+function normalizeFood(value: string) {
+  return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase()
+    .replace(/^(?:el|la|los|las|un|una)\s+/, "").trim();
+}
+
+function buildFastProtocolInterpretation(params: {
+  message: string;
+  target: string | null;
+  preparationStyle?: string | null;
+  protocol: ReturnType<typeof runProtocolModule>;
+}): SemanticFoodInterpretation | null {
+  const { message, target, preparationStyle, protocol } = params;
+  if (!target) return null;
+  const normalizedTarget = normalizeFood(target);
+  const knownFoods = Object.values(protocol.structured.allowedFoods).flat()
+    .map(normalizeFood);
+  const appearsDirectlyInProtocol = knownFoods.some(food =>
+    food === normalizedTarget || food.endsWith(` de ${normalizedTarget}`)
+  );
+  if (!appearsDirectlyInProtocol) return null;
+  return {
+    originalText: message,
+    dishName: preparationStyle ? `${preparationStyle} de ${target}` : target,
+    semanticType: preparationStyle ? "plant_based_substitute" : "literal_food",
+    baseIngredients: [target],
+    declaredIngredients: [],
+    styleReferences: preparationStyle ? [preparationStyle] : [],
+    isCommercialProduct: false,
+    requiresClarification: false,
+    clarificationReason: null,
+    confidence: 1,
+    source: "semantic_fallback",
+  };
 }
 
 function extractNameFromMessage(message: string) {
@@ -174,6 +221,29 @@ function inferReadingMomentFromMessage(message: string) {
   return "DESCONOCIDO";
 }
 
+function inferReadingSlotFromMessage(message: string) {
+  if (/\b(ayunas|en ayunas|despert[eé]|despertar|antes de desayunar)\b/i.test(message)) {
+    return "AYUNO";
+  }
+
+  const isAfter = /\b(postcomida|post comida|despu[eé]s de|2\s*h|2\s*horas|dos horas)\b/i.test(message);
+  const isBefore = /\b(antes de|previo a|precomida)\b/i.test(message);
+
+  if (/\b(desayuno|desayunar)\b/i.test(message)) {
+    return isAfter ? "POST_DESAYUNO" : "AYUNO";
+  }
+
+  if (/\b(cena|cenar)\b/i.test(message)) {
+    return isAfter ? "POST_CENA" : isBefore ? "PRE_CENA" : null;
+  }
+
+  if (/\b(comida|comer|almuerzo|almorzar)\b/i.test(message)) {
+    return isAfter ? "POST_COMIDA" : isBefore ? "PRE_COMIDA" : null;
+  }
+
+  return null;
+}
+
 function classifyReadingEvent(glucose: number) {
   if (glucose < 70) {
     return {
@@ -218,6 +288,7 @@ async function persistGlucoseReadingFromChat2(params: {
   if (!glucose) return null;
 
   const moment = inferReadingMomentFromMessage(userMessage);
+  const readingSlot = inferReadingSlotFromMessage(userMessage);
   const classification = classifyReadingEvent(glucose);
 
   const reading = await saveReading({
@@ -227,6 +298,7 @@ async function persistGlucoseReadingFromChat2(params: {
     symptoms: [],
     eventType: classification.eventType,
     nutritionGoal: classification.nutritionGoal,
+    readingSlot,
   });
 
   await prisma.userState.update({
@@ -268,6 +340,33 @@ export async function POST(req: Request) {
 
     const userId = resolveUserId(body);
 
+    const access = await ensureUserState(userId);
+
+    if (!access.onboardingDoneAt) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "onboarding_required",
+          onboardingRequired: true,
+          message: "Completa tu formulario inicial antes de conversar con AIDA.",
+        },
+        { status: 428 }
+      );
+    }
+
+    if (access.licenseStatus === "expired") {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "plan_expired",
+          activationRequired: true,
+          message:
+            "Tu prueba de 7 días terminó. Activa la versión completa para continuar con la Fase 1.",
+        },
+        { status: 403 }
+      );
+    }
+
     let memory = await loadAida2ContextMemory({ userId });
 
     await persistNameIfMissing({
@@ -279,6 +378,8 @@ export async function POST(req: Request) {
       userId,
       userMessage: lastUserMessage,
     });
+
+    const weeklyReview = await reviewCurrentProtocolWeekIfDue({ userId });
 
     memory = await loadAida2ContextMemory({ userId });
 
@@ -293,24 +394,131 @@ export async function POST(req: Request) {
 
     const conversationState = buildConversationStateFromMemory(memory);
 
+    let turnCognition = await understandTurnWithBrain({
+      openai,
+      message: lastUserMessage,
+      recentHistory,
+      culinaryMemory: memory.metadata.activeCulinaryPlan,
+    });
+    const protocolId = resolveProtocolId(
+      memory.userState.activePhase,
+      memory.userState.activeProtocol
+    );
+
+    const protocol = runProtocolModule({ protocolId });
+    const taskGraphBrainTurn = await runTaskGraphBrainTurn({
+      openai,
+      message: lastUserMessage,
+      cognition: turnCognition,
+      culinaryMemory: memory.metadata.activeCulinaryPlan,
+      protocol,
+    });
+    turnCognition = taskGraphBrainTurn.cognition;
+    const taskGraphAudit = taskGraphBrainTurn.audit;
+    const multiTaskResult = taskGraphBrainTurn.execution;
+    const taskGraphTurn = taskGraphBrainTurn.resolution;
+
     const workPlan = buildAida2WorkPlan({
       userId,
       message: lastUserMessage,
       history,
       conversationState,
+      turnCognition,
     });
+    if (taskGraphTurn.handled) {
+      const moduleResults = runAida2Modules({
+        workPlan,
+        history,
+        userMessage: lastUserMessage,
+        protocolId,
+        semanticInterpretation: null,
+      });
+      if (moduleResults.meal && multiTaskResult.primaryCulinaryPlan) {
+        moduleResults.meal.culinaryPlan = multiTaskResult.primaryCulinaryPlan;
+      }
+      const reply = taskGraphTurn.reply;
+      await updateAida2ContextMemoryAfterResponse({
+        userId,
+        userMessage: lastUserMessage,
+        assistantReply: reply,
+        workPlan,
+        moduleResults,
+      });
+      return NextResponse.json({
+        ok: true,
+        reply,
+        aida2: true,
+        userId,
+        savedReading,
+        weeklyReview,
+        workPlan,
+        modules: moduleResults,
+        turnCognition,
+        multiTaskResult,
+        taskGraphTurn,
+        taskGraphAudit,
+      });
+    }
 
-    const protocolId = resolveProtocolId(
-      memory.userState.activePhase,
-      memory.userState.activeProtocol
-    );
+    const fastProtocolInterpretation = buildFastProtocolInterpretation({
+            message: lastUserMessage,
+            target: turnCognition.foodTarget,
+            preparationStyle: turnCognition.preparationStyle,
+            protocol,
+          });
+
+    const initialSemanticInterpretation = workPlan.foodContext.isFoodRelated
+      ? fastProtocolInterpretation ?? await interpretFoodSemantics({
+          openai,
+          userMessage: lastUserMessage,
+          protocol,
+          conversationHistory: workPlan.turnDirective.requiresHistory ? recentHistory : undefined,
+        })
+      : null;
+
+    const knowledgeResolution = initialSemanticInterpretation
+      ? await resolveUnknownFoodKnowledge({
+          openai,
+          userMessage: lastUserMessage,
+          interpretation: initialSemanticInterpretation,
+        })
+      : null;
+    const semanticInterpretation =
+      knowledgeResolution?.interpretation ?? initialSemanticInterpretation;
 
     const moduleResults = runAida2Modules({
       workPlan,
       history,
       userMessage: lastUserMessage,
       protocolId,
+      semanticInterpretation,
     });
+
+    const culinaryPlan = semanticInterpretation && workPlan.turnDirective.allowsCulinaryPlan
+      ? await buildCulinaryPlan({
+          openai,
+          userMessage: lastUserMessage,
+          interpretation: semanticInterpretation,
+          protocol,
+          conversationHistory: workPlan.turnDirective.requiresHistory ? recentHistory : undefined,
+          turnDirective: workPlan.turnDirective,
+          turnCognition,
+          culinaryMemory: memory.metadata.activeCulinaryPlan,
+        })
+      : null;
+    if (moduleResults.meal && culinaryPlan?.requested) {
+      moduleResults.meal.culinaryPlan = culinaryPlan;
+    }
+
+    const turnContract = verifyTurnContract({
+      cognition: turnCognition,
+      culinaryPlan,
+      culinaryMemory: memory.metadata.activeCulinaryPlan,
+    });
+    if (!turnContract.valid && culinaryPlan?.requested) {
+      culinaryPlan.recipes = [];
+      culinaryPlan.error = `No completé correctamente la solicitud: ${turnContract.violations.join(" ")}`;
+    }
 
     const conversationStrategy = buildAida2ConversationStrategy({
       workPlan,
@@ -325,20 +533,30 @@ export async function POST(req: Request) {
       contextModule: moduleResults.context,
       mealModule: moduleResults.meal,
       conversationStrategy,
+      semanticInterpretation,
     });
 
-    const response = await openai.chat.completions.create({
-      model: "gpt-4.1-mini",
-      temperature: 0.25,
-      messages: [
-        { role: "system", content: systemPrompt },
-        ...messages.filter((m) => m.role !== "system").slice(-8),
-      ],
-    });
+    // El plan culinario ya contiene una respuesta estructurada y verificada.
+    // Evitamos una llamada adicional que sólo sería descartada por el guard.
+    const hasDirectStructuredFoodAnswer =
+      workPlan.turnDirective.dialogueAct === "VALIDATE_FOOD" &&
+      Boolean(moduleResults.meal?.decision.foods.length);
+    const modelReply = culinaryPlan?.requested || hasDirectStructuredFoodAnswer
+      ? ""
+      : (await openai.chat.completions.create({
+          model: "gpt-4.1-mini",
+          temperature: 0.25,
+          messages: [
+            { role: "system", content: systemPrompt },
+            ...messages.filter((m) => m.role !== "system").slice(-8),
+          ],
+        })).choices[0]?.message?.content ??
+        "No pude generar una respuesta en este momento.";
 
-    const reply =
-      response.choices[0]?.message?.content ??
-      "No pude generar una respuesta en este momento.";
+    const reply = enforceAida2StructuredDecision({
+      reply: modelReply,
+      mealModule: moduleResults.meal,
+    });
 
     await updateAida2ContextMemoryAfterResponse({
       userId,
@@ -358,11 +576,19 @@ export async function POST(req: Request) {
             glucose: savedReading.glucose,
             moment: savedReading.moment,
             createdAt: savedReading.createdAt,
+            readingSlot: savedReading.readingSlot,
           }
         : null,
+      weeklyReview,
       workPlan,
       modules: moduleResults,
       conversationStrategy,
+      semanticInterpretation,
+      knowledgeResolution: knowledgeResolution?.knowledge ?? null,
+      culinaryPlan,
+      turnCognition,
+      taskGraphAudit,
+      turnContract,
     });
   } catch (error: unknown) {
     console.error("API /api/chat2 ERROR:", error);

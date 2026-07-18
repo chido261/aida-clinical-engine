@@ -7,6 +7,11 @@ import {
   isShortAcceptance,
   type Aida2ConversationState,
 } from "@/app/lib/aida2/conversationState";
+import {
+  understandCurrentTurn,
+  type Aida2TurnDirective,
+} from "@/app/lib/aida2/turnUnderstanding";
+import type { Aida2TurnCognition } from "@/app/lib/aida2/turnCognition";
 
 export type Aida2Intent =
   | "FOOD_ADVICE"
@@ -94,6 +99,7 @@ export type Aida2BrainInput = {
   message: string;
   history?: string | null;
   conversationState?: Aida2ConversationState | null;
+  turnCognition?: Aida2TurnCognition | null;
 };
 
 export type Aida2Understanding = {
@@ -176,6 +182,8 @@ export type Aida2WorkPlan = {
   purpose: string;
   personality: string;
   conversationState: Aida2ConversationState;
+  turnDirective: Aida2TurnDirective;
+  turnCognition: Aida2TurnCognition;
   understanding: Aida2Understanding;
   foodContext: Aida2FoodContext;
   modulePlan: Aida2ModulePlan;
@@ -519,30 +527,38 @@ function buildFoodContext(
   message: string,
   history: string,
   understanding: Aida2Understanding,
-  conversationState: Aida2ConversationState
+  conversationState: Aida2ConversationState,
+  turnDirective: Aida2TurnDirective
 ): Aida2FoodContext {
-  const isFoodRelated =
-    understanding.intent === "FOOD_ADVICE" || understanding.mentionsFood;
+  const isFoodRelated = turnDirective.dialogueAct !== "NON_FOOD";
 
-  const conversationMode = detectConversationMode(
-    message,
-    history,
-    conversationState
-  );
+  const conversationMode = turnDirective.requiresHistory
+    ? "FOLLOW_UP"
+    : detectConversationMode(message, history, conversationState);
 
+  const directiveQuestionTypes: Partial<Record<Aida2TurnDirective["dialogueAct"], Aida2FoodQuestionType>> = {
+    VALIDATE_FOOD: "CAN_I_EAT",
+    REQUEST_RECIPE: "RECIPE_REQUEST",
+    SELECT_RECIPE_OPTION: "HOW_TO_PREPARE",
+    MODIFY_SELECTED_OPTION: "ADD_TO_PREVIOUS_MEAL",
+    ASK_PREPARATION: "HOW_TO_PREPARE",
+    PAIR_FOOD_OR_DRINK: "WHAT_TO_PAIR",
+    VALIDATE_PREPARATION: "VALIDATE_PREPARATION",
+    REPAIR_PREVIOUS_RESPONSE: "RECIPE_REQUEST",
+  };
   const questionType = isFoodRelated
-    ? detectFoodQuestionType(message)
+    ? directiveQuestionTypes[turnDirective.dialogueAct] ?? detectFoodQuestionType(message)
     : "UNKNOWN";
 
   const needsHistory =
     isFoodRelated &&
-    (conversationMode === "FOLLOW_UP" || conversationMode === "CORRECTION");
+    (turnDirective.requiresHistory || conversationMode === "CORRECTION");
 
   const validatePreparation =
     isFoodRelated && shouldValidatePreparation(message, questionType);
 
   const targetText = isFoodRelated
-    ? extractTargetText(message) ??
+    ? turnDirective.targetHint ?? extractTargetText(message) ??
       conversationState.pendingAction?.target ??
       conversationState.lastFoodTarget
     : null;
@@ -1190,13 +1206,13 @@ export function buildAida2WorkPlan(input: Aida2BrainInput): Aida2WorkPlan {
   const message = input.message.trim();
   const history = input.history ?? "";
 
-  const conversationState =
-    input.conversationState ??
-    buildStateFromRecentText({
-      history,
-      userMessage: message,
-    }) ??
-    createEmptyAida2ConversationState();
+  // La memoria es contexto de entrada, no una orden vigente. Cada turno debe
+  // reconciliarla con el mensaje actual antes de decidir qué módulos ejecutar.
+  const conversationState = buildStateFromRecentText({
+    history,
+    userMessage: message,
+    previousState: input.conversationState ?? createEmptyAida2ConversationState(),
+  });
 
   const understanding = buildUnderstanding(
     message,
@@ -1204,13 +1220,53 @@ export function buildAida2WorkPlan(input: Aida2BrainInput): Aida2WorkPlan {
     conversationState
   );
 
+  const fallbackDirective = understandCurrentTurn({ message, conversationState });
+  const turnCognition = input.turnCognition ?? {
+    dialogueAct: fallbackDirective.dialogueAct,
+    confidence: 0.45,
+    explicitCurrentGoal: fallbackDirective.reason,
+    foodTarget: fallbackDirective.targetHint,
+    preparationStyle: null,
+    requestedCount: null,
+    selectedOption: fallbackDirective.selectedOption,
+    requestedAddition: null,
+    constraints: [],
+    obligations: [],
+    tasks: [],
+    referencesPreviousTurn: fallbackDirective.requiresHistory,
+    needsConversationHistory: fallbackDirective.requiresHistory,
+    capabilities: fallbackDirective.allowsCulinaryPlan
+      ? ["SEMANTIC_FOOD_ANALYSIS" as const, "CULINARY_PLANNING" as const]
+      : fallbackDirective.dialogueAct === "VALIDATE_FOOD"
+        ? ["PROTOCOL_VALIDATION" as const]
+        : ["GENERAL_COMPOSITION" as const],
+    responseContract: {
+      answerCurrentQuestionFirst: true,
+      exactOptionCount: null,
+      preservePreviousTarget: fallbackDirective.requiresHistory,
+      mustRepairPreviousResponse: false,
+    },
+    source: "deterministic_fallback" as const,
+  };
+  const turnDirective: Aida2TurnDirective = {
+    dialogueAct: turnCognition.dialogueAct,
+    explicitCurrentIntent: turnCognition.confidence >= 0.5,
+    requiresHistory: turnCognition.needsConversationHistory,
+    contextPolicy: turnCognition.needsConversationHistory ? "SELECTIVE_HISTORY" : "CURRENT_TURN_ONLY",
+    allowsCulinaryPlan: turnCognition.capabilities.includes("CULINARY_PLANNING"),
+    selectedOption: turnCognition.selectedOption,
+    targetHint: turnCognition.foodTarget,
+    reason: turnCognition.explicitCurrentGoal,
+  };
+
   const safety = buildSafetyPlan(understanding);
 
   const foodContext = buildFoodContext(
     message,
     history,
     understanding,
-    conversationState
+    conversationState,
+    turnDirective
   );
 
   const modulePlan = buildModulePlan(
@@ -1239,6 +1295,8 @@ export function buildAida2WorkPlan(input: Aida2BrainInput): Aida2WorkPlan {
     personality:
       "Responde como asesor cercano, profesional y práctico. Debe ser claro, breve, humano, sin sermones, sin tecnicismos innecesarios y con una acción concreta. Debe adaptar la respuesta al nivel del usuario.",
     conversationState,
+    turnDirective,
+    turnCognition,
     understanding,
     foodContext,
     modulePlan,

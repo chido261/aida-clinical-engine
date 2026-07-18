@@ -4,6 +4,7 @@ import type { Aida2WorkPlan } from "@/app/lib/aida2/brain";
 import type { Aida2ConversationStrategy } from "@/app/lib/aida2/conversationStrategy";
 import type { Aida2ContextModuleOutput } from "@/app/lib/aida2/modules/contextModule";
 import type { Aida2MealModuleOutput } from "@/app/lib/aida2/moduleRunner";
+import type { SemanticFoodInterpretation } from "@/app/lib/aida2/modules/foodDecisionTypes";
 
 export function buildAida2ComposerPrompt(params: {
   workPlan: Aida2WorkPlan;
@@ -12,6 +13,7 @@ export function buildAida2ComposerPrompt(params: {
   contextModule?: Aida2ContextModuleOutput;
   mealModule?: Aida2MealModuleOutput;
   conversationStrategy?: Aida2ConversationStrategy;
+  semanticInterpretation?: SemanticFoodInterpretation | null;
 }) {
   const {
     workPlan,
@@ -20,6 +22,7 @@ export function buildAida2ComposerPrompt(params: {
     contextModule,
     mealModule,
     conversationStrategy,
+    semanticInterpretation,
   } = params;
 
   const foodContext = workPlan.foodContext;
@@ -61,6 +64,32 @@ export function buildAida2ComposerPrompt(params: {
       `- Menciona protocolo: ${
         workPlan.understanding.mentionsProtocol ? "Sí" : "No"
       }`,
+    ].join("\n"),
+
+    "",
+    "Directiva obligatoria del turno actual:",
+    [
+      `- Acto de diálogo: ${workPlan.turnDirective.dialogueAct}`,
+      `- Intención explícita actual: ${workPlan.turnDirective.explicitCurrentIntent ? "Sí" : "No"}`,
+      `- Política de contexto: ${workPlan.turnDirective.contextPolicy}`,
+      `- Historial necesario: ${workPlan.turnDirective.requiresHistory ? "Sí" : "No"}`,
+      `- Plan culinario autorizado: ${workPlan.turnDirective.allowsCulinaryPlan ? "Sí" : "No"}`,
+      `- Opción seleccionada: ${workPlan.turnDirective.selectedOption ?? "ninguna"}`,
+      `- Razón: ${workPlan.turnDirective.reason}`,
+      "- La intención explícita del mensaje actual tiene prioridad sobre cualquier acción o tema anterior.",
+    ].join("\n"),
+
+    "",
+    "Representación cognitiva del turno:",
+    [
+      `- Objetivo explícito: ${workPlan.turnCognition.explicitCurrentGoal}`,
+      `- Alimento objetivo: ${workPlan.turnCognition.foodTarget ?? "ninguno"}`,
+      `- Estilo de preparación: ${workPlan.turnCognition.preparationStyle ?? "ninguno"}`,
+      `- Cantidad solicitada: ${workPlan.turnCognition.requestedCount ?? "no aplica"}`,
+      `- Adición solicitada: ${workPlan.turnCognition.requestedAddition ?? "ninguna"}`,
+      `- Capacidades autorizadas: ${workPlan.turnCognition.capabilities.join(", ")}`,
+      `- Debe conservar objetivo anterior: ${workPlan.turnCognition.responseContract.preservePreviousTarget ? "Sí" : "No"}`,
+      `- Debe reparar respuesta anterior: ${workPlan.turnCognition.responseContract.mustRepairPreviousResponse ? "Sí" : "No"}`,
     ].join("\n"),
 
     "",
@@ -171,8 +200,31 @@ export function buildAida2ComposerPrompt(params: {
           "",
           "VALIDACIÓN TÉCNICA DEL ESPECIALISTA:",
           mealModule.recommendation,
+          "",
+          "PLAN CULINARIO VERIFICADO:",
+          mealModule.culinaryPlan?.requested
+            ? mealModule.culinaryPlan.recipes.length > 0
+              ? mealModule.culinaryPlan.recipes.map(recipe =>
+                  `- ${recipe.title}: ${recipe.ingredients.map(item => `${item.amount} ${item.name}`).join(", ")}`
+                ).join("\n")
+              : `No disponible: ${mealModule.culinaryPlan.error ?? "sin recetas verificadas"}`
+            : "No solicitado.",
         ].join("\n")
       : "MealSpecialist no ejecutado.",
+
+    "",
+    "Interpretación semántica del platillo:",
+    semanticInterpretation
+      ? [
+          `- Platillo: ${semanticInterpretation.dishName ?? "no identificado"}`,
+          `- Tipo semántico: ${semanticInterpretation.semanticType}`,
+          `- Ingredientes base: ${semanticInterpretation.baseIngredients.join(", ") || "ninguno confirmado"}`,
+          `- Ingredientes declarados: ${semanticInterpretation.declaredIngredients.join(", ") || "ninguno adicional"}`,
+          `- Referencias de estilo o imitación (no tratarlas como ingredientes): ${semanticInterpretation.styleReferences.join(", ") || "ninguna"}`,
+          `- Producto comercial: ${semanticInterpretation.isCommercialProduct ? "Sí" : "No"}`,
+          `- Confianza: ${semanticInterpretation.confidence}`,
+        ].join("\n")
+      : "No aplica.",
 
     "",
     "Plan de seguridad:",

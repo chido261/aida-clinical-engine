@@ -5,6 +5,8 @@ import path from "path";
 
 import { buildStructuredProtocol } from "./protocolParsers";
 
+export { evaluateFoodWithProtocol } from "./protocolFoodEngine";
+
 export type ProtocolId =
   | "DIAGNOSTICO_7_DIAS"
   | "FASE_1"
@@ -44,6 +46,7 @@ const PROTOCOL_NAMES: Record<ProtocolId, string> = {
 
 const SECTION_MAP: Record<string, string> = {
   "IDENTIFICACIÓN": "identification",
+  "CONFIGURACIÓN OPERATIVA": "operationalConfiguration",
   "PROPÓSITO DEL PROTOCOLO": "purpose",
   "FILOSOFÍA DEL PROTOCOLO": "philosophy",
   "DISTRIBUCIÓN DEL PLATO": "plateDistribution",
@@ -51,6 +54,7 @@ const SECTION_MAP: Record<string, string> = {
   "LINEAMIENTOS GENERALES": "generalGuidelines",
   "ALIMENTOS NO RECOMENDADOS": "restrictedFoods",
   "FRUTAS": "fruits",
+  "ENDULZANTES": "endulzantes",
   "LEGUMINOSAS": "legumes",
   "CONSTRUCCIÓN DE PLATOS": "mealConstruction",
   "PORCIONES": "portions",

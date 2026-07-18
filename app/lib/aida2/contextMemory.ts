@@ -13,6 +13,8 @@ import type {
   Aida2MealType,
   Aida2PendingAction,
 } from "@/app/lib/aida2/conversationState";
+import type { Aida2CulinaryMemory } from "@/app/lib/aida2/culinaryMemoryTypes";
+export type { Aida2CulinaryMemory } from "@/app/lib/aida2/culinaryMemoryTypes";
 
 export type Aida2FoodMemoryDecision = {
   food: string;
@@ -57,9 +59,10 @@ export type Aida2MemoryMetadata = {
   activeProtocol: string;
   activePhase: string;
   glucoseTargets: {
+    fastingMinMgDl: number;
     fastingMaxMgDl: number;
-    postMealMinMgDl: number;
-    postMealMaxMgDl: number;
+    otherReadingMinMgDl: number;
+    otherReadingMaxMgDl: number;
   };
   allowedFoodsSnapshot: {
     proteins: string[];
@@ -73,6 +76,7 @@ export type Aida2MemoryMetadata = {
   restrictedFoodsSnapshot: string[];
   lastFoodDecision: Aida2FoodMemoryDecision | null;
   pendingAction: Aida2PendingAction | null;
+  activeCulinaryPlan: Aida2CulinaryMemory | null;
   knownUserPatterns: string[];
   recentTurns: Aida2MemoryTurn[];
   lastConfirmedTopic: string | null;
@@ -114,9 +118,10 @@ export type Aida2ContextMemory = {
 };
 
 const DEFAULT_GLUCOSE_TARGETS = {
+  fastingMinMgDl: 70,
   fastingMaxMgDl: 100,
-  postMealMinMgDl: 100,
-  postMealMaxMgDl: 140,
+  otherReadingMinMgDl: 100,
+  otherReadingMaxMgDl: 140,
 };
 
 function normalizeActivePhase(
@@ -231,6 +236,7 @@ function coerceMetadataVersion(
     memoryConfidence: previous.memoryConfidence ?? "MEDIUM",
     conversationContext:
       previous.conversationContext ?? buildEmptyConversationContext(),
+    activeCulinaryPlan: previous.activeCulinaryPlan ?? null,
   };
 }
 
@@ -246,6 +252,7 @@ function buildMetadata(params: {
   const protocol = runProtocolModule({
     protocolId: resolveProtocolId(normalizedPhase),
   });
+  const readings = protocol.structured.operational.readings;
 
   const now = new Date().toISOString();
 
@@ -253,7 +260,21 @@ function buildMetadata(params: {
     version: 2,
     activeProtocol: protocol.protocolId,
     activePhase: normalizedPhase,
-    glucoseTargets: coerced?.glucoseTargets ?? DEFAULT_GLUCOSE_TARGETS,
+    // Los rangos siempre provienen del protocolo activo. No reutilizamos una
+    // copia anterior porque podría conservar reglas obsoletas tras un cambio
+    // de protocolo o una actualización de sus lineamientos.
+    glucoseTargets: {
+      fastingMinMgDl:
+        readings.fastingTarget.min ?? DEFAULT_GLUCOSE_TARGETS.fastingMinMgDl,
+      fastingMaxMgDl:
+        readings.fastingTarget.max ?? DEFAULT_GLUCOSE_TARGETS.fastingMaxMgDl,
+      otherReadingMinMgDl:
+        readings.otherIdealRange.min ??
+        DEFAULT_GLUCOSE_TARGETS.otherReadingMinMgDl,
+      otherReadingMaxMgDl:
+        readings.otherIdealRange.max ??
+        DEFAULT_GLUCOSE_TARGETS.otherReadingMaxMgDl,
+    },
     allowedFoodsSnapshot: {
       proteins: protocol.structured.allowedFoods.proteins,
       dairy: protocol.structured.allowedFoods.dairy,
@@ -268,6 +289,7 @@ function buildMetadata(params: {
     ),
     lastFoodDecision: coerced?.lastFoodDecision ?? null,
     pendingAction: coerced?.pendingAction ?? null,
+    activeCulinaryPlan: coerced?.activeCulinaryPlan ?? null,
     knownUserPatterns: coerced?.knownUserPatterns ?? [],
     recentTurns: coerced?.recentTurns ?? [],
     lastConfirmedTopic: coerced?.lastConfirmedTopic ?? null,
@@ -282,10 +304,7 @@ function buildMetadata(params: {
 async function ensureUserState(userId: string) {
   return prisma.userState.upsert({
     where: { id: userId },
-    update: {
-      lastMsgAt: new Date(),
-      totalMsgCount: { increment: 1 },
-    },
+    update: {},
     create: {
       id: userId,
       activeProtocol: "DIAGNOSTICO_7_DIAS",
@@ -328,6 +347,8 @@ export async function loadAida2ContextMemory(params: {
 
   const normalizedPhase = normalizeActivePhase(userState.activePhase);
   const resolvedProtocolId = resolveProtocolId(normalizedPhase);
+  const canonicalGlucoseGoal =
+    "Mantener glucosa en ayunas entre 70 y 100 mg/dL y las demás lecturas entre 100 y 140 mg/dL.";
 
   const metadata = buildMetadata({
     previous: previousMetadata,
@@ -339,9 +360,7 @@ export async function loadAida2ContextMemory(params: {
     where: { userId },
     data: {
       metadataJson: JSON.stringify(metadata),
-      currentGoal:
-        context.currentGoal ??
-        "Mantener glucosa en ayunas por debajo de 100 mg/dL y postcomida entre 100 y 140 mg/dL, limitando carbohidratos de alta carga glucémica.",
+      currentGoal: canonicalGlucoseGoal,
     },
   });
 
@@ -366,9 +385,7 @@ export async function loadAida2ContextMemory(params: {
     conversation: {
       clinicalSummary: context.clinicalSummary ?? null,
       activeGlucoseTopics: context.activeGlucoseTopics ?? null,
-      currentGoal:
-        context.currentGoal ??
-        "Mantener glucosa en ayunas por debajo de 100 mg/dL y postcomida entre 100 y 140 mg/dL.",
+      currentGoal: canonicalGlucoseGoal,
       detectedPatterns: context.detectedPatterns ?? null,
       medicationContext: context.medicationContext ?? null,
       lastConcern: context.lastConcern ?? null,
@@ -406,7 +423,7 @@ export function buildAida2MemoryPrompt(memory: Aida2ContextMemory) {
     `- Medicamentos registrados: ${userState.meds ?? "ninguno registrado"}.`,
     `- Protocolo activo: ${metadata.activeProtocol}.`,
     `- Fase activa: ${metadata.activePhase}.`,
-    `- Objetivo glucémico: ayunas < ${metadata.glucoseTargets.fastingMaxMgDl} mg/dL; postcomida ${metadata.glucoseTargets.postMealMinMgDl}-${metadata.glucoseTargets.postMealMaxMgDl} mg/dL.`,
+    `- Objetivo glucémico: ayunas entre ${metadata.glucoseTargets.fastingMinMgDl} y ${metadata.glucoseTargets.fastingMaxMgDl} mg/dL; todas las demás lecturas entre ${metadata.glucoseTargets.otherReadingMinMgDl} y ${metadata.glucoseTargets.otherReadingMaxMgDl} mg/dL.`,
     `- Objetivo conversacional actual: ${conversation.currentGoal ?? "mantener estabilidad glucémica"}.`,
     `- Confianza de memoria: ${metadata.memoryConfidence}.`,
   ];
@@ -474,6 +491,12 @@ export function buildAida2MemoryPrompt(memory: Aida2ContextMemory) {
       `- Acción pendiente: ${metadata.pendingAction.type}; evitar: ${
         metadata.pendingAction.avoid?.join(", ") || "sin alimento específico"
       }; cantidad: ${metadata.pendingAction.count ?? 3}.`
+    );
+  }
+
+  if (metadata.activeCulinaryPlan) {
+    lines.push(
+      `- Plan culinario activo: ${metadata.activeCulinaryPlan.deliveredCount}/${metadata.activeCulinaryPlan.requestedCount} opciones; objetivo: ${metadata.activeCulinaryPlan.target ?? "no especificado"}; selección: ${metadata.activeCulinaryPlan.selectedOption ?? "ninguna"}.`
     );
   }
 
@@ -818,6 +841,59 @@ export async function updateAida2ContextMemoryAfterResponse(params: {
     metadata.pendingAction = null;
   }
 
+  const culinaryPlan = moduleResults.meal?.culinaryPlan;
+  if (culinaryPlan?.requested && culinaryPlan.recipes.length > 0) {
+    const activePlan = metadata.activeCulinaryPlan;
+    if (workPlan.turnCognition.dialogueAct === "REPAIR_PREVIOUS_RESPONSE" && activePlan) {
+      const additions = culinaryPlan.recipes.map((recipe, index) => ({
+        index: activePlan.deliveredCount + index + 1,
+        title: recipe.title,
+        ingredients: recipe.ingredients,
+        steps: recipe.steps,
+      }));
+      metadata.activeCulinaryPlan = {
+        ...activePlan,
+        deliveredCount: activePlan.deliveredCount + additions.length,
+        options: [...activePlan.options, ...additions],
+        updatedAt: new Date().toISOString(),
+      };
+    } else if (
+      (workPlan.turnCognition.dialogueAct === "SELECT_RECIPE_OPTION" ||
+        workPlan.turnCognition.dialogueAct === "ASK_PREPARATION") && activePlan
+    ) {
+      activePlan.selectedOption = workPlan.turnCognition.selectedOption ?? activePlan.selectedOption;
+      activePlan.updatedAt = new Date().toISOString();
+    } else if (
+      workPlan.turnCognition.dialogueAct === "MODIFY_SELECTED_OPTION" &&
+      activePlan && workPlan.turnCognition.selectedOption
+    ) {
+      const selectedIndex = workPlan.turnCognition.selectedOption;
+      const replacement = culinaryPlan.recipes[0];
+      activePlan.options = activePlan.options.map(option => option.index === selectedIndex
+        ? { index: selectedIndex, title: replacement.title, ingredients: replacement.ingredients, steps: replacement.steps }
+        : option);
+      activePlan.selectedOption = selectedIndex;
+      activePlan.updatedAt = new Date().toISOString();
+    } else {
+      metadata.activeCulinaryPlan = {
+        target: workPlan.turnCognition.foodTarget ?? workPlan.foodContext.targetText,
+        requestedCount: culinaryPlan.requestedCount,
+        deliveredCount: culinaryPlan.recipes.length,
+        selectedOption: workPlan.turnCognition.selectedOption,
+        options: culinaryPlan.recipes.map((recipe, index) => ({
+          index: index + 1,
+          title: recipe.title,
+          ingredients: recipe.ingredients,
+          steps: recipe.steps,
+        })),
+        updatedAt: new Date().toISOString(),
+      };
+    }
+  } else if (workPlan.turnCognition.selectedOption && metadata.activeCulinaryPlan) {
+    metadata.activeCulinaryPlan.selectedOption = workPlan.turnCognition.selectedOption;
+    metadata.activeCulinaryPlan.updatedAt = new Date().toISOString();
+  }
+
   if (userCorrection) {
     metadata.lastCorrectionFromUser = userCorrection;
     metadata.memoryConfidence = "LOW";
@@ -867,7 +943,7 @@ export async function updateAida2ContextMemoryAfterResponse(params: {
       activeGlucoseTopics: compact(metadata.conversationContext.lastGlucoseSituation),
       currentGoal:
         memory.conversation.currentGoal ??
-        "Mantener glucosa en ayunas por debajo de 100 mg/dL y postcomida entre 100 y 140 mg/dL.",
+        "Mantener glucosa en ayunas entre 70 y 100 mg/dL y las demás lecturas entre 100 y 140 mg/dL.",
       detectedPatterns:
         metadata.knownUserPatterns.length > 0
           ? metadata.knownUserPatterns.join(" ")
@@ -879,6 +955,14 @@ export async function updateAida2ContextMemoryAfterResponse(params: {
         metadata.pendingAction?.reason ??
         null,
       metadataJson: JSON.stringify(metadata),
+    },
+  });
+
+  await prisma.userState.update({
+    where: { id: userId },
+    data: {
+      lastMsgAt: new Date(),
+      totalMsgCount: { increment: 1 },
     },
   });
 }

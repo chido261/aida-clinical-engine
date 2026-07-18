@@ -4,6 +4,7 @@ export const runtime = "nodejs";
 
 import { NextResponse } from "next/server";
 import { prisma } from "@/app/lib/prisma";
+import { ensureUserState } from "@/app/lib/aidaMemory";
 
 type AllowedPhase = "DIAGNOSTICO" | "FASE_1" | "FASE_2";
 
@@ -33,20 +34,6 @@ const ALLOWED_PHASES: AllowedPhase[] = [
   "FASE_1",
   "FASE_2",
 ];
-
-const TEST_PROFILE = {
-  name: "David Rodriguez",
-  age: 43,
-  heightCm: 174,
-  weightKg: 90,
-  baselineA1c: 9,
-  meds:
-    "Linagliptina: 1 por la mañana. Dapagliflozina: 1 por la noche.",
-  fastingPeakMgDl: 230,
-  postMealPeakMgDl: 300,
-  diagnosis: "dm2",
-  activePhase: "DIAGNOSTICO" as AllowedPhase,
-};
 
 function getString(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
@@ -143,47 +130,7 @@ function phaseLabel(phase: AllowedPhase) {
 }
 
 async function ensureChat2User(deviceId: string) {
-  const existing = await prisma.userState.findUnique({
-    where: {
-      id: deviceId,
-    },
-  });
-
-  if (existing) {
-    return existing;
-  }
-
-  return prisma.userState.create({
-    data: {
-      id: deviceId,
-
-      name: TEST_PROFILE.name,
-      age: TEST_PROFILE.age,
-      heightCm: TEST_PROFILE.heightCm,
-      weightKg: TEST_PROFILE.weightKg,
-      diagnosis: TEST_PROFILE.diagnosis,
-      meds: TEST_PROFILE.meds,
-
-      baselineA1c: TEST_PROFILE.baselineA1c,
-      baselineAvgGlucose: TEST_PROFILE.fastingPeakMgDl,
-      baselineSetAt: new Date(),
-
-      fastingPeakMgDl: TEST_PROFILE.fastingPeakMgDl,
-      postMealPeakMgDl: TEST_PROFILE.postMealPeakMgDl,
-
-      activeProtocol: protocolFromPhase(
-        TEST_PROFILE.activePhase
-      ),
-      activePhase: TEST_PROFILE.activePhase,
-      protocolStartedAt: new Date(),
-
-      licenseStatus: "trial",
-      trialStartedAt: new Date(),
-      trialEndsAt: new Date(
-        Date.now() + 7 * 24 * 60 * 60 * 1000
-      ),
-    },
-  });
+  return ensureUserState(deviceId);
 }
 
 async function updateProfile(
@@ -256,44 +203,6 @@ async function updateProfile(
       meds: getNullableString(body.meds),
       fastingPeakMgDl,
       postMealPeakMgDl,
-    },
-  });
-}
-
-async function updatePhase(
-  deviceId: string,
-  phase: AllowedPhase
-) {
-  const currentUser = await prisma.userState.findUnique({
-    where: {
-      id: deviceId,
-    },
-    select: {
-      activePhase: true,
-    },
-  });
-
-  if (!currentUser) {
-    throw new Error("No se encontró el usuario.");
-  }
-
-  const phaseChanged = currentUser.activePhase !== phase;
-
-  return prisma.userState.update({
-    where: {
-      id: deviceId,
-    },
-    data: {
-      activePhase: phase,
-      activeProtocol: protocolFromPhase(phase),
-
-      ...(phaseChanged
-        ? {
-            protocolStartedAt: new Date(),
-            eligibleForNextProtocol: false,
-            protocolReviewReason: null,
-          }
-        : {}),
     },
   });
 }
@@ -438,23 +347,14 @@ export async function POST(req: Request) {
     }
 
     if (action === "UPDATE_PHASE") {
-      const phase = normalizePhase(body.activePhase);
-
-      if (!phase) {
-        return NextResponse.json(
-          {
-            ok: false,
-            error: "invalid_phase",
-            message: "La fase seleccionada no es válida.",
-            allowedPhases: ALLOWED_PHASES,
-          },
-          {
-            status: 400,
-          }
-        );
-      }
-
-      await updatePhase(deviceId, phase);
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "phase_transition_managed_by_aida",
+          message: "La fase se actualiza automáticamente según la licencia y el protocolo.",
+        },
+        { status: 403 }
+      );
     }
 
     const account = await buildAccount(deviceId);
@@ -463,11 +363,9 @@ export async function POST(req: Request) {
       ok: true,
       account,
       message:
-        action === "UPDATE_PHASE"
-          ? "La fase fue actualizada correctamente."
-          : action === "UPDATE_PROFILE"
-            ? "El perfil fue actualizado correctamente."
-            : null,
+        action === "UPDATE_PROFILE"
+          ? "El perfil fue actualizado correctamente."
+          : null,
     });
   } catch (error: unknown) {
     console.error(

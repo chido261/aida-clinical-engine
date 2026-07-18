@@ -19,11 +19,11 @@ type OnboardingBody = {
   wakeTime?: unknown;
 };
 
-function jsonOK(payload: any) {
+function jsonOK(payload: unknown) {
   return NextResponse.json(payload);
 }
 
-function jsonERR(payload: any, status: number) {
+function jsonERR(payload: unknown, status: number) {
   return NextResponse.json(payload, { status });
 }
 
@@ -98,7 +98,7 @@ export async function POST(req: Request) {
       );
     }
 
-    await ensureUserState(deviceId);
+    const existingUserState = await ensureUserState(deviceId);
 
     const userState = await prisma.userState.update({
       where: {
@@ -115,6 +115,10 @@ export async function POST(req: Request) {
         postMealPeakMgDl,
         wakeTime,
         onboardingDoneAt: new Date(),
+        activeProtocol: "DIAGNOSTICO_7_DIAS",
+        activePhase: "DIAGNOSTICO",
+        protocolVersion: "1.0",
+        protocolStartedAt: existingUserState.protocolStartedAt ?? new Date(),
       },
     });
 
@@ -129,13 +133,13 @@ export async function POST(req: Request) {
         fullEndsAt: userState.fullEndsAt,
       },
     });
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error("API /api/onboarding ERROR:", err);
 
     return jsonERR(
       {
         ok: false,
-        error: err?.message ?? "Error desconocido",
+        error: err instanceof Error ? err.message : "Error desconocido",
       },
       500
     );

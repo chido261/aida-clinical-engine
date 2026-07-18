@@ -1,9 +1,25 @@
 // app/lib/aida2/specialists/mealSpecialist.ts
 
 import {
+  evaluateFoodWithProtocol,
   runProtocolModule,
   type ProtocolId,
 } from "../modules/protocolModule";
+import { PREPARATION_NAMES } from "../modules/preparationAnalyzer";
+import type {
+  FoodCategory,
+  FoodValidation,
+  MealSpecialistDecision,
+  SemanticFoodInterpretation,
+} from "../modules/foodDecisionTypes";
+
+export type {
+  FoodCategory,
+  FoodValidation,
+  MealDecisionStatus,
+  MealFoodDecision,
+  MealSpecialistDecision,
+} from "../modules/foodDecisionTypes";
 
 export type MealType = "desayuno" | "comida" | "cena" | "snack";
 
@@ -11,77 +27,7 @@ export type MealRequest = {
   mealType: MealType;
   userMessage?: string;
   protocolId?: ProtocolId;
-};
-
-type AllowedFoods = {
-  proteins: string[];
-  dairy: string[];
-  healthyFats: string[];
-  vegetables: string[];
-  legumes: string[];
-  fruits: string[];
-  beverages: string[];
-};
-
-type ProtocolSections = Record<string, string>;
-
-export type FoodCategory =
-  | "proteína"
-  | "grasa saludable"
-  | "vegetal bajo en carga glucémica"
-  | "leguminosa"
-  | "fruta"
-  | "bebida"
-  | "carbohidrato de alta carga glucémica"
-  | "carbohidrato saludable con validación"
-  | "preparación"
-  | "preparación compatible condicionada"
-  | "desconocido";
-
-export type FoodValidation = {
-  food: string;
-  canonicalFood: string;
-  category: FoodCategory;
-  isCompatible: boolean;
-  reason: string;
-  source:
-    | "protocol_reference"
-    | "protocol_conditional"
-    | "clinical_classification"
-    | "restricted"
-    | "preparation"
-    | "ingredient_based_preparation"
-    | "unknown";
-};
-
-export type MealDecisionStatus =
-  | "ALLOWED"
-  | "ALLOWED_WITH_VALIDATION"
-  | "NOT_ALLOWED"
-  | "NEEDS_INGREDIENTS"
-  | "UNKNOWN";
-
-export type MealFoodDecision = {
-  food: string;
-  canonicalFood: string;
-  category: FoodCategory;
-  status: MealDecisionStatus;
-  reason: string;
-  source: FoodValidation["source"];
-};
-
-export type MealSpecialistDecision = {
-  protocolId: ProtocolId;
-  foods: MealFoodDecision[];
-  conditionalFoods: string[];
-  requestedConditionalFoodList: boolean;
-  shouldMeasureGlucose: boolean;
-  shouldBuildRecipes: boolean;
-  shouldExplainValidation: boolean;
-  hasAllowedFoods: boolean;
-  hasConditionalFoods: boolean;
-  hasNotAllowedFoods: boolean;
-  hasUnknownFoods: boolean;
+  semanticInterpretation?: SemanticFoodInterpretation | null;
 };
 
 export type MealRecommendationResult = {
@@ -109,69 +55,6 @@ type SpecialistInstruction = {
   avoid: string[];
   shouldContinuePendingAction: boolean;
 };
-
-const COMMON_FOOD_TERMS = [
-  "pan blanco", "pan integral", "pan de trigo", "pan común", "pan comun",
-  "tostada", "tostadas", "tortilla de maíz", "tortilla de maiz",
-  "tortilla de harina", "arroz", "arroz integral", "pasta", "avena",
-  "cereal", "cereales", "granola", "galleta", "galletas", "papa",
-  "papas", "camote", "azúcar", "azucar", "refresco", "refrescos",
-  "jugo", "jugos", "postre", "postres", "miel",
-];
-
-
-const CONDITIONAL_PREPARATION_NAMES = [
-  "pan", "tortilla", "tortillas", "pizza", "galleta", "galletas", "base",
-];
-
-const COMPATIBLE_PREPARATION_INGREDIENTS = [
-  "harina de almendra", "almendra", "almendras", "linaza", "chía", "chia",
-  "huevo", "huevos", "clara", "claras", "queso", "brócoli", "brocoli",
-  "coliflor", "calabaza", "nopal", "espinaca", "pollo", "atún", "atun",
-  "sardina", "pulpo", "aceite de oliva", "aceite de aguacate", "aguacate",
-  "leche sin azúcar", "leche sin azucar", "yogur natural sin azúcar",
-  "yogurt natural sin azúcar", "kéfir natural", "kefir natural",
-];
-
-const INCOMPATIBLE_PREPARATION_INGREDIENTS = [
-  "harina de trigo", "trigo", "harina blanca", "harina integral",
-  "harina de maíz", "harina de maiz", "maíz", "maiz", "maseca", "avena",
-  "harina de avena", "arroz", "harina de arroz", "papa", "camote",
-  "azúcar", "azucar", "miel", "piloncillo", "jarabe", "fécula",
-  "fecula", "maicena",
-];
-
-const FLEXIBLE_PROTEINS = [
-  "huevo", "huevos", "pollo", "res", "carne", "bistec", "cerdo", "pavo",
-  "pescado", "atún", "atun", "sardina", "sardinas", "salmón", "salmon",
-  "tilapia", "mojarra", "camarón", "camaron", "camarones", "pulpo",
-  "mariscos", "tofu", "tempeh", "queso", "yogur", "yogurt", "kéfir",
-  "kefir",
-];
-
-const FLEXIBLE_FATS = [
-  "aguacate", "aceite de oliva", "aceite de aguacate", "aceitunas",
-  "almendras", "almendra", "nueces", "pistaches", "cacahuate",
-  "cacahuates", "chía", "chia", "linaza", "semillas",
-];
-
-const FLEXIBLE_VEGETABLES = [
-  "lechuga", "espinaca", "acelga", "arúgula", "arugula", "brócoli",
-  "brocoli", "coliflor", "pepino", "calabaza", "ejotes", "champiñones",
-  "champinon", "champiñón", "setas", "jitomate", "tomate", "tomate verde",
-  "apio", "espárragos", "esparragos", "nopal", "pimiento", "pimientos",
-  "chile", "cebolla", "ajo", "rábano", "rabano",
-];
-
-const FLEXIBLE_LEGUMES = [
-  "frijol", "frijoles", "garbanzo", "garbanzos", "lenteja", "lentejas",
-  "haba", "habas", "soya", "alubias",
-];
-
-const FLEXIBLE_FRUITS = [
-  "fresa", "fresas", "arándanos", "arandanos", "frambuesas", "zarzamoras",
-  "moras", "manzana verde", "toronja",
-];
 
 const DEFAULT_FATS = ["Aguacate", "Aceite de oliva extra virgen"];
 
@@ -279,8 +162,6 @@ export function generateMealRecommendation(
   const protocol = runProtocolModule({
     protocolId: request.protocolId,
   });
-  const foods = protocol.structured.allowedFoods;
-  const conditionalFoods = extractConditionalFoods(protocol.sections);
   const rawMessage = request.userMessage ?? "";
   const currentUserMessage = extractCurrentUserMessage(rawMessage);
   const instruction = parseSpecialistInstruction(rawMessage);
@@ -293,27 +174,28 @@ export function generateMealRecommendation(
   const requestedCount =
     instruction.count ?? extractRequestedCount(currentUserMessage) ?? (shouldBuildOptions ? 3 : 1);
 
-  const messageForValidation = shouldBuildOptions
-    ? removeAvoidedFoodPhrases(currentUserMessage, avoidFoods)
-    : currentUserMessage;
-
-  const validations = validateMentionedFoods({
-    userMessage: messageForValidation,
-    foods,
-    restrictedFoodsText: protocol.sections.restrictedFoods,
-    conditionalFoods,
-    ignoreFoods: avoidFoods,
-    protocolId: protocol.protocolId,
+  const contextualUserMessage = restorePreparationContext({
+    rawMessage,
+    currentUserMessage,
   });
+  const messageForValidation = shouldBuildOptions
+    ? removeAvoidedFoodPhrases(contextualUserMessage, avoidFoods)
+    : contextualUserMessage;
 
-  const incompatibleFoods = validations.filter(item =>
-    !item.isCompatible && item.category !== "preparación"
-  );
-
-  const compatibleFoods = validations.filter(item => item.isCompatible);
+  const evaluation = evaluateFoodWithProtocol({
+    protocol,
+    userMessage: messageForValidation ?? "",
+    shouldBuildRecipes: shouldBuildOptions,
+    ignoreFoods: avoidFoods,
+    requestedConditionalFoodList: isConditionalFoodListRequest(currentUserMessage),
+    semanticInterpretation: request.semanticInterpretation,
+  });
+  const { validations, incompatibleFoods, compatibleFoods, conditionalFoods } = evaluation;
   const canBuildDespiteIncompatible =
     shouldBuildOptions &&
-    (instruction.pendingActionType === "BUILD_ALTERNATIVES" || avoidFoods.length > 0);
+    (instruction.pendingActionType === "BUILD_ALTERNATIVES" ||
+      avoidFoods.length > 0 ||
+      requestsCompatiblePreparationAlternatives(currentUserMessage));
 
   const mealBases =
     shouldBuildOptions && (incompatibleFoods.length === 0 || canBuildDespiteIncompatible)
@@ -322,16 +204,11 @@ export function generateMealRecommendation(
           requestedCount,
           validations: compatibleFoods,
           avoidFoods,
+          requestedText: currentUserMessage,
         })
       : [];
 
-  const decision = buildStructuredMealDecision({
-    protocolId: protocol.protocolId,
-    validations,
-    conditionalFoods,
-    currentUserMessage,
-    shouldBuildOptions,
-  });
+  const decision = evaluation.decision;
 
   return {
     success: true,
@@ -356,87 +233,14 @@ export function generateMealRecommendation(
   };
 }
 
-function buildStructuredMealDecision(params: {
-  protocolId: ProtocolId;
-  validations: FoodValidation[];
-  conditionalFoods: string[];
-  currentUserMessage: string | undefined;
-  shouldBuildOptions: boolean;
-}): MealSpecialistDecision {
-  const {
-    protocolId,
-    validations,
-    conditionalFoods,
-    currentUserMessage,
-    shouldBuildOptions,
-  } = params;
+function requestsCompatiblePreparationAlternatives(
+  userMessage: string | undefined
+) {
+  if (!userMessage) return false;
 
-  const foods = validations.map(toMealFoodDecision);
-
-  const hasAllowedFoods = foods.some(item => item.status === "ALLOWED");
-  const hasConditionalFoods = foods.some(
-    item => item.status === "ALLOWED_WITH_VALIDATION"
+  return /\b(?:opciones?|recetas?|alternativas?)\b[\s\S]*\b(?:tortillas?|pan|pizza|galletas?|bases?)\b[\s\S]*\b(?:pueda|permitid[ao]s?|compatibles?|alternativas?)\b/i.test(
+    userMessage
   );
-  const hasNotAllowedFoods = foods.some(
-    item => item.status === "NOT_ALLOWED"
-  );
-  const hasUnknownFoods = foods.some(item => item.status === "UNKNOWN");
-
-  return {
-    protocolId,
-    foods,
-    conditionalFoods,
-    requestedConditionalFoodList:
-      isConditionalFoodListRequest(currentUserMessage),
-    shouldMeasureGlucose: hasConditionalFoods,
-    shouldBuildRecipes: shouldBuildOptions,
-    shouldExplainValidation: hasConditionalFoods,
-    hasAllowedFoods,
-    hasConditionalFoods,
-    hasNotAllowedFoods,
-    hasUnknownFoods,
-  };
-}
-
-function toMealFoodDecision(
-  validation: FoodValidation
-): MealFoodDecision {
-  return {
-    food: validation.food,
-    canonicalFood: validation.canonicalFood,
-    category: validation.category,
-    status: resolveMealDecisionStatus(validation),
-    reason: validation.reason,
-    source: validation.source,
-  };
-}
-
-function resolveMealDecisionStatus(
-  validation: FoodValidation
-): MealDecisionStatus {
-  if (
-    validation.source === "protocol_conditional" ||
-    validation.category === "carbohidrato saludable con validación"
-  ) {
-    return "ALLOWED_WITH_VALIDATION";
-  }
-
-  if (
-    validation.source === "preparation" ||
-    validation.category === "preparación"
-  ) {
-    return "NEEDS_INGREDIENTS";
-  }
-
-  if (validation.source === "unknown" || validation.category === "desconocido") {
-    return "UNKNOWN";
-  }
-
-  if (!validation.isCompatible || validation.source === "restricted") {
-    return "NOT_ALLOWED";
-  }
-
-  return "ALLOWED";
 }
 
 function shouldBuildCompatibleOptions(
@@ -444,12 +248,18 @@ function shouldBuildCompatibleOptions(
   instruction: SpecialistInstruction
 ) {
   if (isConditionalFoodListRequest(currentUserMessage)) return false;
+  if (
+    instruction.expectedAction === "VALIDATE_FOOD" ||
+    instruction.expectedAction === "VALIDATE_PREPARATION"
+  ) return false;
   if (instruction.expectedAction === "BUILD_OPTIONS") return true;
+  if (isRecipeRequest(currentUserMessage)) return true;
+  if (!instruction.shouldContinuePendingAction) return false;
   if (instruction.pendingActionType === "BUILD_ALTERNATIVES") return true;
   if (instruction.pendingActionType === "BUILD_RECIPES") return true;
   if (instruction.pendingActionType === "CONTINUE_PREVIOUS") return true;
 
-  return isRecipeRequest(currentUserMessage);
+  return false;
 }
 
 function buildProtocolGuidance(params: {
@@ -514,9 +324,10 @@ function buildProtocolGuidance(params: {
   if (validations.length > 0) {
     lines.push("", "ALIMENTOS, INGREDIENTES O PREPARACIONES DETECTADAS:");
     validations.forEach(item => {
-      lines.push(
-        `- ${item.food}: ${item.category}; ${item.isCompatible ? "compatible" : "no recomendado"}; ${item.reason}`
-      );
+      const label = item.source === "unknown"
+        ? "clasificación pendiente"
+        : item.isCompatible ? "compatible" : "no recomendado";
+      lines.push(`- ${item.food}: ${item.category}; ${label}; ${item.reason}`);
     });
   }
 
@@ -578,8 +389,27 @@ function buildCompatibleOptions(params: {
   requestedCount: number;
   validations: FoodValidation[];
   avoidFoods: string[];
+  requestedText?: string;
 }) {
-  const { mealType, requestedCount, validations, avoidFoods } = params;
+  const { mealType, requestedCount, validations, avoidFoods, requestedText } = params;
+
+  if (/\btortillas?\b/i.test(requestedText ?? "")) {
+    const tortillaOptions = [
+      "Tortilla de linaza preparada con linaza molida, huevo, agua y especias.",
+      "Tortilla de nopal preparada con nopal, huevo y linaza, sin harina de maíz ni trigo.",
+      "Tortilla de coliflor preparada con coliflor, huevo y queso natural, sin harinas ni almidones.",
+    ];
+
+    return Array.from({ length: requestedCount }, (_, index) => ({
+      title: tortillaOptions[index % tortillaOptions.length],
+      proteins: [],
+      vegetables: [],
+      fats: [],
+      legumes: [],
+      fruits: [],
+    }));
+  }
+
   const requestedProteins = getFoodsByCategory(validations, "proteína");
   const requestedVegetables = getFoodsByCategory(validations, "vegetal bajo en carga glucémica");
   const requestedFats = getFoodsByCategory(validations, "grasa saludable");
@@ -682,354 +512,6 @@ function addRequestedDetails(params: {
   return `${recipe.replace(/\.$/, "")}, ${details.join(" y ")}.`;
 }
 
-function validateMentionedFoods(params: {
-  userMessage: string | undefined;
-  foods: AllowedFoods;
-  restrictedFoodsText?: string;
-  conditionalFoods: string[];
-  ignoreFoods?: string[];
-  protocolId: ProtocolId;
-}) {
-  const {
-    userMessage,
-    foods,
-    restrictedFoodsText,
-    conditionalFoods,
-    ignoreFoods = [],
-    protocolId,
-  } = params;
-
-  if (!userMessage) return [];
-
-  const ignored = normalizeFoodList(ignoreFoods);
-  const restrictedFoods = normalizeFoodList(
-    extractFoodList(restrictedFoodsText ?? "")
-  );
-  const protocolTerms = normalizeFoodList([
-    ...flattenAllowedFoods(foods),
-    ...conditionalFoods,
-    ...restrictedFoods,
-  ]);
-  const candidates = extractFoodCandidates(userMessage, protocolTerms).filter(
-    candidate => !containsFood(candidate, ignored)
-  );
-
-  return removeDuplicatedValidations(
-    candidates.map(candidate =>
-      validateFood({
-        candidate,
-        userMessage,
-        foods,
-        restrictedFoods,
-        conditionalFoods,
-        protocolId,
-      })
-    )
-  );
-}
-
-function validateFood(params: {
-  candidate: string;
-  userMessage: string;
-  foods: AllowedFoods;
-  restrictedFoods: string[];
-  conditionalFoods: string[];
-  protocolId: ProtocolId;
-}): FoodValidation {
-  const {
-    candidate,
-    userMessage,
-    foods,
-    restrictedFoods,
-    conditionalFoods,
-    protocolId,
-  } = params;
-
-  const phaseConditionalFood = validateProtocolConditionalFood({
-    candidate,
-    conditionalFoods,
-    protocolId,
-  });
-
-  if (phaseConditionalFood) return phaseConditionalFood;
-
-  const conditionalPreparation = validateConditionalPreparation({ candidate, userMessage });
-  if (conditionalPreparation) return conditionalPreparation;
-
-  const normalizedCandidate = normalizeText(candidate);
-  const restrictedMatch = restrictedFoods.find(food => {
-    const normalizedFood = normalizeText(food);
-
-    return (
-      normalizedCandidate === normalizedFood ||
-      normalizedCandidate.includes(normalizedFood) ||
-      normalizedFood.includes(normalizedCandidate)
-    );
-  });
-
-  if (restrictedMatch) {
-    return {
-      food: lowerFirst(candidate),
-      canonicalFood: restrictedMatch,
-      category: "carbohidrato de alta carga glucémica",
-      isCompatible: false,
-      reason: "eleva la carga glucémica y se restringe en esta fase",
-      source: "restricted",
-    };
-  }
-
-  const protocolMatch = findInAllowedFoods({ candidate, foods });
-  if (protocolMatch) return protocolMatch;
-
-  // La clasificación final debe provenir del protocolo activo.
-  // Las listas auxiliares solo ayudan a detectar términos, no a decidir permisos.
-
-  return {
-    food: lowerFirst(candidate),
-    canonicalFood: candidate,
-    category: "desconocido",
-    isCompatible: false,
-    reason: "el protocolo activo no ofrece una clasificación explícita para este alimento",
-    source: "unknown",
-  };
-}
-
-function validateProtocolConditionalFood(params: {
-  candidate: string;
-  conditionalFoods: string[];
-  protocolId: ProtocolId;
-}): FoodValidation | null {
-  const { candidate, conditionalFoods, protocolId } = params;
-  const normalizedCandidate = normalizeText(candidate);
-  const match = conditionalFoods.find(food => {
-    const normalizedFood = normalizeText(food);
-
-    return (
-      normalizedCandidate === normalizedFood ||
-      normalizedCandidate.includes(normalizedFood) ||
-      normalizedFood.includes(normalizedCandidate)
-    );
-  });
-
-  if (!match) return null;
-
-  return {
-    food: lowerFirst(candidate),
-    canonicalFood: match,
-    category: "carbohidrato saludable con validación",
-    isCompatible: true,
-    reason:
-      protocolId === "FASE_2"
-        ? "el protocolo lo permite en porción controlada y pide medir glucosa 2 horas después"
-        : "el protocolo lo permite únicamente bajo sus reglas de validación",
-    source: "protocol_conditional",
-  };
-}
-
-function compatible(food: string, canonicalFood: string, category: FoodCategory, reason: string): FoodValidation {
-  return {
-    food: lowerFirst(food),
-    canonicalFood,
-    category,
-    isCompatible: true,
-    reason,
-    source: "clinical_classification",
-  };
-}
-
-function validateConditionalPreparation(params: {
-  candidate: string;
-  userMessage: string;
-}): FoodValidation | null {
-  const { candidate, userMessage } = params;
-  const normalizedCandidate = normalizeText(candidate);
-  const normalizedMessage = normalizeText(userMessage);
-  const mentionsConditionalName = CONDITIONAL_PREPARATION_NAMES.some(item =>
-    normalizedCandidate.includes(normalizeText(item)) || normalizedMessage.includes(normalizeText(item))
-  );
-
-  if (!mentionsConditionalName) return null;
-
-  const incompatibleIngredients = INCOMPATIBLE_PREPARATION_INGREDIENTS.filter(ingredient =>
-    normalizedMessage.includes(normalizeText(ingredient))
-  );
-
-  if (incompatibleIngredients.length > 0) {
-    return {
-      food: lowerFirst(candidate),
-      canonicalFood: candidate,
-      category: "carbohidrato de alta carga glucémica",
-      isCompatible: false,
-      reason: `contiene ingrediente(s) no compatibles: ${formatList(incompatibleIngredients)}`,
-      source: "restricted",
-    };
-  }
-
-  const compatibleIngredients = COMPATIBLE_PREPARATION_INGREDIENTS.filter(ingredient =>
-    normalizedMessage.includes(normalizeText(ingredient))
-  );
-
-  if (compatibleIngredients.length > 0) {
-    return {
-      food: lowerFirst(candidate),
-      canonicalFood: candidate,
-      category: "preparación compatible condicionada",
-      isCompatible: true,
-      reason: `fue descrita con ingredientes compatibles: ${formatList(compatibleIngredients)}`,
-      source: "ingredient_based_preparation",
-    };
-  }
-
-  return {
-    food: lowerFirst(candidate),
-    canonicalFood: candidate,
-    category: "preparación",
-    isCompatible: true,
-    reason: "requiere validar ingredientes antes de decidir",
-    source: "preparation",
-  };
-}
-
-function findInAllowedFoods(params: {
-  candidate: string;
-  foods: AllowedFoods;
-}): FoodValidation | null {
-  const { candidate, foods } = params;
-  const groups: Array<{ category: FoodCategory; foods: string[]; reason: string }> = [
-    { category: "proteína", foods: [...foods.proteins, ...foods.dairy], reason: "aparece como proteína o lácteo natural compatible" },
-    { category: "grasa saludable", foods: foods.healthyFats, reason: "aparece como grasa saludable de referencia" },
-    { category: "vegetal bajo en carga glucémica", foods: foods.vegetables, reason: "aparece como vegetal sin almidón de referencia" },
-    { category: "leguminosa", foods: foods.legumes, reason: "aparece como leguminosa compatible dentro del plato" },
-    { category: "fruta", foods: foods.fruits, reason: "aparece como fruta permitida por el protocolo" },
-    { category: "bebida", foods: foods.beverages, reason: "aparece como bebida compatible" },
-  ];
-
-  const normalizedCandidate = normalizeText(candidate);
-
-  for (const group of groups) {
-    const match = group.foods.find(food =>
-      normalizedCandidate === normalizeText(food) ||
-      normalizedCandidate.includes(normalizeText(food)) ||
-      normalizeText(food).includes(normalizedCandidate)
-    );
-
-    if (match) {
-      return {
-        food: lowerFirst(candidate),
-        canonicalFood: match,
-        category: group.category,
-        isCompatible: true,
-        reason: group.reason,
-        source: "protocol_reference",
-      };
-    }
-  }
-
-  return null;
-}
-
-function flattenAllowedFoods(foods: AllowedFoods) {
-  return [
-    ...foods.proteins,
-    ...foods.dairy,
-    ...foods.healthyFats,
-    ...foods.vegetables,
-    ...foods.legumes,
-    ...foods.fruits,
-    ...foods.beverages,
-  ];
-}
-
-function extractConditionalFoods(sections: ProtocolSections) {
-  const sources = Object.values(sections).filter(Boolean);
-  const foods: string[] = [];
-
-  sources.forEach(section => {
-    const headingMatches = [
-      /##\s*PERMITIDOS CON VALIDACI[ÓO]N\s*([\s\S]*?)(?=\n##\s|$)/gi,
-      /PERMITIDOS CON VALIDACI[ÓO]N:\s*([\s\S]*?)(?=\n(?:EVITAR|NO RECOMENDADOS|##|#)[:\s]|$)/gi,
-    ];
-
-    headingMatches.forEach(pattern => {
-      let match: RegExpExecArray | null;
-
-      while ((match = pattern.exec(section)) !== null) {
-        foods.push(...extractFoodList(match[1] ?? ""));
-      }
-    });
-  });
-
-  return normalizeFoodList(foods);
-}
-
-function extractFoodCandidates(userMessage: string, protocolTerms: string[] = []) {
-  const normalizedMessage = normalizeText(userMessage);
-  const candidates = new Set<string>();
-  const knownTerms = [
-    ...protocolTerms,
-    ...COMMON_FOOD_TERMS,
-    ...CONDITIONAL_PREPARATION_NAMES,
-    ...COMPATIBLE_PREPARATION_INGREDIENTS,
-    ...INCOMPATIBLE_PREPARATION_INGREDIENTS,
-    ...FLEXIBLE_PROTEINS,
-    ...FLEXIBLE_FATS,
-    ...FLEXIBLE_VEGETABLES,
-    ...FLEXIBLE_LEGUMES,
-    ...FLEXIBLE_FRUITS,
-  ];
-
-  knownTerms
-    .filter(term => normalizedMessage.includes(normalizeText(term)))
-    .sort((a, b) => normalizeText(b).length - normalizeText(a).length)
-    .forEach(term => {
-      const normalizedTerm = normalizeText(term);
-      const overlapsWithExisting = Array.from(candidates).some(existing => {
-        const normalizedExisting = normalizeText(existing);
-
-        return (
-          normalizedExisting.includes(normalizedTerm) ||
-          normalizedTerm.includes(normalizedExisting)
-        );
-      });
-
-      if (!overlapsWithExisting) {
-        candidates.add(term);
-      }
-    });
-
-  [
-    /recetas? (?:con|de|para) ([a-záéíóúñ\s]+)/i,
-    /ideas? (?:con|de|para) ([a-záéíóúñ\s]+)/i,
-    /opciones? (?:con|de|para) ([a-záéíóúñ\s]+)/i,
-    /puedo (?:comer|tomar|beber|desayunar|cenar|agregar) ([a-záéíóúñ\s]+)/i,
-    /quiero (?:comer|tomar|beber|desayunar|cenar|agregar) ([a-záéíóúñ\s]+)/i,
-    /tengo (?:antojo|ganas) de ([a-záéíóúñ\s]+)/i,
-    /se me antoja ([a-záéíóúñ\s]+)/i,
-    /lleva ([a-záéíóúñ\s]+)/i,
-    /tiene ([a-záéíóúñ\s]+)/i,
-    /hech[ao] con ([a-záéíóúñ\s]+)/i,
-    /con ([a-záéíóúñ\s]+)/i,
-  ].forEach(pattern => {
-    const match = normalizedMessage.match(pattern);
-    if (match?.[1]) cleanExtractedFoods(match[1]).forEach(food => candidates.add(food));
-  });
-
-  return Array.from(candidates).map(item => item.trim()).filter(Boolean);
-}
-
-function cleanExtractedFoods(value: string) {
-  return value
-    .replace(/[¿?¡!.,]/g, "")
-    .split(/\b(?:con|y|o|u|,)\b/g)
-    .map(item =>
-      item
-        .replace(/\b(un|una|dos|tres|el|la|los|las|a|al|algún|algun|alguna|platillo|platillos|comida|cena|desayuno|poco|poquito|de|para|mi|opcion|opciones|receta|recetas|idea|ideas|hecho|hecha|lleva|tiene|contiene|sin)\b/g, "")
-        .trim()
-    )
-    .filter(Boolean)
-    .map(item => item.split(/\s+/).slice(0, 4).join(" "));
-}
-
 function parseSpecialistInstruction(userMessage: string): SpecialistInstruction {
   return {
     expectedAction: extractLineValue(userMessage, "Acción esperada"),
@@ -1080,7 +562,12 @@ function extractAvoidFromInstruction(text: string) {
 function extractAvoidedFoods(text: string | undefined) {
   if (!text) return [];
   const match = normalizeText(text).match(/\bsin\s+([a-záéíóúñ\s]+)/i);
-  return match?.[1] ? cleanExtractedFoods(match[1]) : [];
+  return match?.[1]
+    ? match[1]
+        .split(/\b(?:con|y|o|u)\b|,/g)
+        .map(item => item.trim())
+        .filter(Boolean)
+    : [];
 }
 
 function removeAvoidedFoodPhrases(text: string | undefined, avoidFoods: string[]) {
@@ -1101,6 +588,77 @@ function extractCurrentUserMessage(userMessage: string | undefined) {
   );
 
   return match?.[1]?.trim() ?? userMessage;
+}
+
+function restorePreparationContext(params: {
+  rawMessage: string;
+  currentUserMessage: string | undefined;
+}) {
+  const { rawMessage, currentUserMessage } = params;
+  if (!currentUserMessage) return currentUserMessage;
+
+  const isConfirmationFollowUp =
+    /\b(?:entonces|finalmente|en resumen|s[ií]\s+puedo|puedo\s+comer)\b/i.test(
+      currentUserMessage
+    );
+  const describesIngredients =
+    /\b(?:preparo|prepar[eé]|hago|hice|hech[ao]s?|ingredientes?|lleva|contiene)\b/i.test(
+      currentUserMessage
+    );
+  const namesPreparation = PREPARATION_NAMES.some(name =>
+    normalizeText(currentUserMessage).includes(normalizeText(name))
+  );
+
+  const substitution = currentUserMessage.match(
+    /\bsustituy[oa]?\s+(?:la|el)?\s*(.+?)\s+por\s+(.+?)[?.!]*$/i
+  );
+
+  if (substitution?.[1] && substitution[2]) {
+    const previousPreparation = [...rawMessage.matchAll(/^USER:\s*(.+)$/gim)]
+      .map(match => match[1]?.trim())
+      .filter((message): message is string => Boolean(message))
+      .filter(message => PREPARATION_NAMES.some(name =>
+        normalizeText(message).includes(normalizeText(name))
+      ))
+      .at(-1);
+
+    if (previousPreparation) {
+      const replaced = previousPreparation.replace(
+        new RegExp(escapeRegExp(substitution[1].trim()), "i"),
+        substitution[2].trim()
+      );
+
+      if (replaced !== previousPreparation) return replaced;
+    }
+  }
+
+  if (describesIngredients && !namesPreparation) {
+    const lastTarget = rawMessage.match(
+      /- Último alimento consultado:\s*(.+?)\.(?:\n|$)/i
+    )?.[1]?.trim();
+
+    if (lastTarget && !/^ninguno|sin /i.test(lastTarget)) {
+      return `${lastTarget}. ${currentUserMessage}`;
+    }
+  }
+
+  if (!isConfirmationFollowUp || describesIngredients) {
+    return currentUserMessage;
+  }
+
+  const ingredientMessages = [...rawMessage.matchAll(/^USER:\s*(.+)$/gim)]
+    .map(match => match[1]?.trim())
+    .filter((message): message is string => Boolean(message))
+    .filter(message =>
+      /\b(?:preparo|prepar[eé]|hago|hice|hech[ao]s?|ingredientes?|lleva|contiene)\b/i.test(
+        message
+      )
+    );
+  const latestIngredientMessage = ingredientMessages.at(-1);
+
+  return latestIngredientMessage
+    ? `${currentUserMessage}. ${latestIngredientMessage}`
+    : currentUserMessage;
 }
 
 function isConditionalFoodListRequest(userMessage: string | undefined) {
@@ -1137,35 +695,6 @@ function getFoodsByCategory(validations: FoodValidation[], category: FoodCategor
   );
 }
 
-function matchesList(normalizedCandidate: string, list: string[]) {
-  return list.some(item => {
-    const normalizedItem = normalizeText(item);
-    return normalizedCandidate === normalizedItem ||
-      normalizedCandidate.includes(normalizedItem) ||
-      normalizedItem.includes(normalizedCandidate);
-  });
-}
-
-function extractFoodList(value: string) {
-  return value
-    .split("\n")
-    .map(line => line.trim())
-    .filter(line => line.startsWith("-"))
-    .map(line => line.replace(/^-\s*/, "").replace(/\(.*?\)/g, "").trim())
-    .filter(Boolean);
-}
-
-function removeDuplicatedValidations(validations: FoodValidation[]) {
-  const seen = new Set<string>();
-
-  return validations.filter(item => {
-    const key = `${item.category}:${normalizeText(item.canonicalFood)}`;
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  });
-}
-
 function removeDuplicatedBases(bases: MealBase[]) {
   const seen = new Set<string>();
 
@@ -1200,82 +729,6 @@ function containsFood(value: string, foods: string[]) {
     return normalizedFood.length > 0 &&
       (normalizedValue.includes(normalizedFood) || normalizedFood.includes(normalizedValue));
   });
-}
-
-function canonicalizeProtein(value: string) {
-  const normalized = normalizeText(value);
-  if (normalized.includes("atun")) return "Atún";
-  if (normalized.includes("sardina")) return "Sardina";
-  if (normalized.includes("pulpo")) return "Pulpo";
-  if (normalized.includes("huevo")) return "Huevo entero";
-  if (normalized.includes("pollo")) return "Pechuga de pollo";
-  if (normalized.includes("pescado")) return "Filete de pescado blanco";
-  if (normalized.includes("camaron")) return "Camarón";
-  if (normalized.includes("salmon")) return "Salmón";
-  if (normalized.includes("tilapia")) return "Tilapia";
-  if (normalized.includes("res") || normalized.includes("bistec")) return "Bistec de res";
-  if (normalized.includes("cerdo")) return "Lomo de cerdo";
-  if (normalized.includes("pavo")) return "Pavo";
-  if (normalized.includes("queso")) return "Queso panela";
-  if (normalized.includes("yogur") || normalized.includes("yogurt")) return "Yogur griego natural sin azúcar";
-  if (normalized.includes("kefir")) return "Kéfir natural";
-  return capitalize(value);
-}
-
-function canonicalizeFat(value: string) {
-  const normalized = normalizeText(value);
-  if (normalized.includes("aguacate")) return "Aguacate";
-  if (normalized.includes("oliva")) return "Aceite de oliva extra virgen";
-  if (normalized.includes("almendra")) return "Almendras";
-  if (normalized.includes("nuez") || normalized.includes("nueces")) return "Nueces";
-  if (normalized.includes("pistache")) return "Pistaches";
-  if (normalized.includes("cacahuate")) return "Cacahuate natural";
-  if (normalized.includes("chia")) return "Chía";
-  if (normalized.includes("linaza")) return "Linaza";
-  return capitalize(value);
-}
-
-function canonicalizeVegetable(value: string) {
-  const normalized = normalizeText(value);
-  if (normalized.includes("brocoli")) return "Brócoli";
-  if (normalized.includes("esparrago")) return "Espárragos";
-  if (normalized.includes("champinon")) return "Champiñones";
-  if (normalized.includes("jitomate")) return "Jitomate";
-  if (normalized.includes("tomate")) return "Tomate verde";
-  if (normalized.includes("lechuga")) return "Lechuga";
-  if (normalized.includes("espinaca")) return "Espinaca";
-  if (normalized.includes("pepino")) return "Pepino";
-  if (normalized.includes("calabaza")) return "Calabaza";
-  if (normalized.includes("ejote")) return "Ejotes";
-  if (normalized.includes("nopal")) return "Nopal";
-  if (normalized.includes("pimiento")) return "Pimiento";
-  if (normalized.includes("cebolla")) return "Cebolla";
-  if (normalized.includes("ajo")) return "Ajo";
-  if (normalized.includes("coliflor")) return "Coliflor";
-  return capitalize(value);
-}
-
-function canonicalizeLegume(value: string) {
-  const normalized = normalizeText(value);
-  if (normalized.includes("frijol")) return "Frijol negro";
-  if (normalized.includes("garbanzo")) return "Garbanzo";
-  if (normalized.includes("lenteja")) return "Lenteja";
-  if (normalized.includes("haba")) return "Haba";
-  if (normalized.includes("soya")) return "Soya";
-  if (normalized.includes("alubia")) return "Alubias";
-  return capitalize(value);
-}
-
-function canonicalizeFruit(value: string) {
-  const normalized = normalizeText(value);
-  if (normalized.includes("fresa")) return "Fresas";
-  if (normalized.includes("arandano")) return "Arándanos";
-  if (normalized.includes("frambuesa")) return "Frambuesas";
-  if (normalized.includes("zarzamora")) return "Zarzamoras";
-  if (normalized.includes("mora")) return "Moras";
-  if (normalized.includes("manzana")) return "Manzana verde";
-  if (normalized.includes("toronja")) return "Toronja";
-  return capitalize(value);
 }
 
 function clampCount(value: number) {

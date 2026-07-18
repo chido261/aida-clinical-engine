@@ -10,6 +10,7 @@ import {
   buildReturnWelcome,
 } from "@/app/lib/aida/welcomeContextBuilder";
 import { loadAida2ContextMemory } from "@/app/lib/aida2/contextMemory";
+import { ensureUserState } from "@/app/lib/aidaMemory";
 
 type Body = {
   deviceId?: string;
@@ -36,8 +37,18 @@ function buildFallbackWelcome(params: {
   contextSummary: string | null;
   lastMainTopic: string | null;
   nextSuggestedFollowUp: string | null;
+  firstContact: boolean;
 }) {
-  const { name, contextSummary, lastMainTopic, nextSuggestedFollowUp } = params;
+  const { name, contextSummary, lastMainTopic, nextSuggestedFollowUp, firstContact } = params;
+
+  if (firstContact) {
+    return [
+      name ? `Hola ${name}, soy AIDA 👋` : "Hola, soy AIDA 👋",
+      "Soy tu asistente de confianza para el control glucémico. Me especializo en acompañar a personas con prediabetes y diabetes tipo 2, incluso si utilizan insulina.",
+      "También puedo brindar apoyo educativo en diabetes tipo 1, LADA o diabetes durante el embarazo, pero estos casos necesitan seguimiento cercano de un profesional de salud.",
+      "Durante estos primeros 7 días te ayudaré a observar cómo responde tu glucosa a la alimentación. ¿Comenzamos?",
+    ].join("\n\n");
+  }
 
   const lines = [name ? `Hola ${name} 👋` : "Hola, soy AIDA2 👋"];
 
@@ -84,6 +95,17 @@ export async function POST(req: Request) {
   try {
     const body = (await req.json()) as Body;
     const userId = resolveUserId(body);
+    const access = await ensureUserState(userId);
+
+    if (access.licenseStatus === "expired") {
+      return NextResponse.json({
+        ok: true,
+        welcome:
+          "Tu prueba de 7 días terminó. Ya comprobaste cómo puede responder tu glucosa cuando cambias la alimentación. Activa la versión completa para continuar con la Fase 1 y conservar el acompañamiento de AIDA.",
+        userId,
+        activationRequired: true,
+      });
+    }
 
     const [memory, userState, lastReading] = await Promise.all([
       loadAida2ContextMemory({ userId }),
@@ -100,6 +122,8 @@ export async function POST(req: Request) {
           currentNutritionGoal: true,
           activeProtocol: true,
           activePhase: true,
+          onboardingDoneAt: true,
+          totalMsgCount: true,
         },
       }),
       prisma.reading.findFirst({
@@ -160,6 +184,9 @@ export async function POST(req: Request) {
       contextSummary: context.contextSummary,
       lastMainTopic: context.lastMainTopic,
       nextSuggestedFollowUp: context.nextSuggestedFollowUp,
+      firstContact: Boolean(userState?.onboardingDoneAt) &&
+        (userState?.totalMsgCount ?? 0) === 0 &&
+        !lastReading,
     });
 
     const welcome =

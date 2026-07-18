@@ -16,12 +16,15 @@ import {
 } from "@/app/lib/aida2/specialists/mealSpecialist";
 
 import type { ProtocolId } from "@/app/lib/aida2/modules/protocolModule";
+import type { SemanticFoodInterpretation } from "@/app/lib/aida2/modules/foodDecisionTypes";
+import type { CulinaryPlan } from "@/app/lib/aida2/modules/foodDecisionTypes";
 
 export type Aida2ModuleRunnerInput = {
   workPlan: Aida2WorkPlan;
   history: string;
   userMessage: string;
   protocolId?: ProtocolId;
+  semanticInterpretation?: SemanticFoodInterpretation | null;
 };
 
 export type Aida2MealModuleOutput = {
@@ -29,6 +32,8 @@ export type Aida2MealModuleOutput = {
   mealType: MealType;
   recommendation: string;
   decision: MealSpecialistDecision;
+  culinaryPlan?: CulinaryPlan;
+  semanticInterpretation?: SemanticFoodInterpretation | null;
 };
 
 export type Aida2ModuleResults = {
@@ -154,7 +159,10 @@ function buildMealSpecialistMessage(params: {
     }.`
   );
 
-  if (pendingAction && pendingAction.type !== "NONE") {
+  const pendingActionIsAuthorized =
+    workPlan.turnCognition.referencesPreviousTurn ||
+    workPlan.conversationState.shouldContinuePendingAction;
+  if (pendingActionIsAuthorized && pendingAction && pendingAction.type !== "NONE") {
     lines.push("");
     lines.push("ACCIÓN PENDIENTE QUE DEBE OBEDECER EL ESPECIALISTA:");
     lines.push(`- Tipo: ${pendingAction.type}.`);
@@ -236,6 +244,7 @@ export function runAida2Modules(
     history,
     userMessage,
     protocolId,
+    semanticInterpretation,
   } = input;
 
   const executionPlan = buildAida2ExecutionPlan(workPlan);
@@ -263,6 +272,7 @@ export function runAida2Modules(
     const mealResult = generateMealRecommendation({
       mealType,
       protocolId,
+      semanticInterpretation,
       userMessage: buildMealSpecialistMessage({
         workPlan,
         history,
@@ -276,6 +286,7 @@ export function runAida2Modules(
       mealType,
       recommendation: mealResult.recommendation,
       decision: mealResult.decision,
+      semanticInterpretation,
     };
   }
 

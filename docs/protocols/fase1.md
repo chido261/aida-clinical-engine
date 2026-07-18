@@ -2,6 +2,40 @@
 
 ---
 
+# CONFIGURACIÓN OPERATIVA
+
+```json
+{
+  "version": "1.0",
+  "phase": "FASE_1",
+  "durationDays": null,
+  "expiresWhenComplete": false,
+  "readings": {
+    "timezone": "America/Mexico_City",
+    "postMealMinutes": 120,
+    "slots": ["AYUNO", "POST_DESAYUNO", "PRE_COMIDA", "POST_COMIDA", "PRE_CENA", "POST_CENA"],
+    "fastingTarget": { "min": 70, "max": 100 },
+    "otherSafeRange": { "min": 70, "max": 140 },
+    "otherIdealRange": { "min": 100, "max": 140 },
+    "hypoglycemiaBelow": 70,
+    "severeHypoglycemiaBelow": 54
+  },
+  "weeklyReview": {
+    "enabled": true,
+    "weekStartsOn": "MONDAY",
+    "reviewDay": "SUNDAY",
+    "expectedReadings": 42,
+    "minimumCompletionPercent": 80,
+    "minimumControlledPercent": 80,
+    "requiresNoHypoglycemia": true,
+    "consecutivePassingWeeksForAdvance": 2,
+    "requiresMedicationReductionPercent": 50
+  }
+}
+```
+
+---
+
 ## IDENTIFICACIÓN
 
 Nombre: Fase 1 - Vencer los Antojos
@@ -33,7 +67,7 @@ Busca sostenerlo, profundizarlo y convertirlo en una estrategia práctica de con
 
 ## Objetivo 1
 
-Mantener o mejorar la glucosa en ayunas por debajo de 100 mg/dL.
+Mantener la glucosa en ayunas entre 70 y 100 mg/dL.
 
 ---
 
@@ -153,7 +187,7 @@ El usuario puede permanecer en Fase 1 hasta cumplir criterios clínicos y conduc
 
 Puede avanzar cuando:
 
-1. Su glucosa en ayunas se mantenga habitualmente por debajo de 100 mg/dL.
+1. Su glucosa en ayunas se mantenga habitualmente entre 70 y 100 mg/dL.
 
 2. Su glucosa postcomida se mantenga habitualmente entre 100 y 140 mg/dL.
 

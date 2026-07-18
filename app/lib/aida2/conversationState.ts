@@ -84,7 +84,6 @@ export function buildStateFromRecentText(params: {
 
   const state = cloneState(previousState ?? createEmptyAida2ConversationState());
 
-  const text = normalize(userMessage);
   const combined = `${history}\n${userMessage}`;
 
   const mealType =
@@ -324,6 +323,7 @@ export function extractFoodTargetFromText(text: string): string | null {
 
     if (match?.[1]) {
       const cleaned = cleanFoodTarget(match[1]);
+      if (/^(?:la|el)?\s*\d+$/i.test(cleaned)) continue;
       return cleaned || null;
     }
   }

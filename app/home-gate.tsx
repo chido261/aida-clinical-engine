@@ -61,7 +61,7 @@ export default function HomeGate() {
             // ignore localStorage errors
           }
 
-          router.replace("/chat");
+          router.replace("/chat2");
           return;
         }
 

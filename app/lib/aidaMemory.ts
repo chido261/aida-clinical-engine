@@ -45,6 +45,7 @@ export async function saveReading(params: {
   eventType?: string | null;
   nutritionGoal?: string | null;
   relatedMealId?: number | null;
+  readingSlot?: string | null;
 }) {
   const {
     userId,
@@ -65,6 +66,7 @@ export async function saveReading(params: {
       eventType: eventType ?? null,
       nutritionGoal: nutritionGoal ?? null,
       relatedMealId: relatedMealId ?? null,
+      readingSlot: params.readingSlot ?? null,
     },
   });
 }
@@ -326,8 +328,8 @@ export async function ensureUserState(userId: string) {
           licenseStatus: "active",
           fullStartedAt: now,
           fullEndsAt: addDaysExact(now, FULL_DAYS),
-          activeProtocol: "PROTOCOL_1",
-          activePhase: "FASE_1",
+          activeProtocol: "DIAGNOSTICO_7_DIAS",
+          activePhase: "DIAGNOSTICO",
           protocolStartedAt: now,
         },
       });
@@ -350,8 +352,8 @@ export async function ensureUserState(userId: string) {
         trialStartedAt: now,
         trialEndsAt: addDaysExact(now, TRIAL_DAYS),
         licenseStatus: "trial",
-        activeProtocol: "PROTOCOL_1",
-        activePhase: "FASE_1",
+        activeProtocol: "DIAGNOSTICO_7_DIAS",
+        activePhase: "DIAGNOSTICO",
         protocolStartedAt: now,
       },
     });

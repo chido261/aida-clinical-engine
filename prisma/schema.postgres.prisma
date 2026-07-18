@@ -29,11 +29,14 @@ model UserState {
   baselineSetAt      DateTime?
 
   // protocolo / fase actual
-  activeProtocol          String   @default("PROTOCOL_1")
-  activePhase             String   @default("FASE_1")
+  activeProtocol          String   @default("DIAGNOSTICO_7_DIAS")
+  activePhase             String   @default("DIAGNOSTICO")
+  protocolVersion         String   @default("1.0")
   protocolStartedAt       DateTime?
   eligibleForNextProtocol Boolean  @default(false)
   protocolReviewReason    String?
+  medicationReductionPercent Float @default(0)
+  medicationReductionConfirmedAt DateTime?
 
   // rate limit / uso diario
   dailyMsgDate  String?
@@ -89,6 +92,7 @@ model Reading {
   userId    String
   glucose   Int
   moment    String
+  readingSlot String?
 
   symptoms  String?
   createdAt DateTime @default(now())
@@ -101,8 +105,35 @@ model Reading {
   @@index([userId])
   @@index([createdAt])
   @@index([moment])
+  @@index([readingSlot])
   @@index([eventType])
   @@index([nutritionGoal])
+}
+
+model WeeklyProtocolReview {
+  id                    Int      @id @default(autoincrement())
+  userId                String
+  protocol              String
+  protocolVersion       String
+  phase                 String
+  weekStart             DateTime
+  weekEnd               DateTime
+  expectedReadings      Int
+  recordedReadings      Int
+  controlledReadings    Int
+  completionPercent     Float
+  controlledPercent     Float
+  fastingAverage        Float?
+  otherAverage          Float?
+  minimumGlucose        Int?
+  maximumGlucose        Int?
+  hypoglycemiaCount     Int      @default(0)
+  passed                Boolean  @default(false)
+  reviewedAt            DateTime @default(now())
+
+  @@unique([userId, phase, weekStart])
+  @@index([userId, reviewedAt])
+  @@index([phase, passed])
 }
 
 model ClinicalEvent {
