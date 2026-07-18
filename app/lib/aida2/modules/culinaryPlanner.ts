@@ -119,7 +119,11 @@ function buildArchetypeFallback(params: {
   const base = interpretation.baseIngredients[0];
   if (!base) return null;
 
-  if (interpretation.semanticType === "plant_based_substitute") {
+  const isPlantBasedSubstitute =
+    interpretation.semanticType === "plant_based_substitute" ||
+    (constraints.includes("vegano") && interpretation.styleReferences.length > 0);
+
+  if (isPlantBasedSubstitute) {
     const vegan = constraints.includes("vegano");
     return verifyRecipe({
       title: interpretation.dishName ?? `Preparación vegetal de ${base}`,
@@ -141,6 +145,18 @@ function buildArchetypeFallback(params: {
   }
 
   return null;
+}
+
+function ingredientSignature(recipe: CulinaryRecipe) {
+  return new Set(recipe.ingredients.map(item => canonicalizeCulinaryIngredient(item.name)));
+}
+
+function recipesAreTooSimilar(left: CulinaryRecipe, right: CulinaryRecipe) {
+  const leftSet = ingredientSignature(left);
+  const rightSet = ingredientSignature(right);
+  const intersection = [...leftSet].filter(item => rightSet.has(item)).length;
+  const union = new Set([...leftSet, ...rightSet]).size;
+  return union > 0 && intersection / union >= 0.75;
 }
 
 export async function buildCulinaryPlan(params: {
@@ -171,6 +187,17 @@ export async function buildCulinaryPlan(params: {
   try {
     const recipes: CulinaryRecipe[] = [];
     const rejected = new Set<string>();
+
+    // Si el usuario ya declaró una base y un estilo inequívocos (por ejemplo,
+    // "atún de soya, vegano"), el arquetipo es más fiable y rápido que pedir al
+    // modelo que redescubra esa misma composición. El modelo sólo completa las
+    // opciones restantes.
+    const groundedFallback = buildArchetypeFallback({
+      interpretation,
+      protocol,
+      constraints,
+    });
+    if (groundedFallback?.verified) recipes.push(groundedFallback);
 
     for (let attempt = 0; attempt < 3 && recipes.length < requestedCount; attempt += 1) {
       const remaining = requestedCount - recipes.length;
@@ -204,7 +231,10 @@ export async function buildCulinaryPlan(params: {
         recipe.rejectedIngredients.forEach(ingredient => rejected.add(ingredient));
         if (
           recipe.verified &&
-          !recipes.some(existing => normalize(existing.title) === normalize(recipe.title))
+          !recipes.some(existing =>
+            normalize(existing.title) === normalize(recipe.title) ||
+            recipesAreTooSimilar(existing, recipe)
+          )
         ) recipes.push(recipe);
       });
 
@@ -216,7 +246,10 @@ export async function buildCulinaryPlan(params: {
         });
         if (
           fallback?.verified &&
-          !recipes.some(existing => normalize(existing.title) === normalize(fallback.title))
+          !recipes.some(existing =>
+            normalize(existing.title) === normalize(fallback.title) ||
+            recipesAreTooSimilar(existing, fallback)
+          )
         ) recipes.push(fallback);
       }
     }
