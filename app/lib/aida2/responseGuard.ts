@@ -35,14 +35,14 @@ export function enforceAida2StructuredDecision(params: {
             .slice(0, 4)
             .map(item => item.name)
             .join(", ");
-          return `${index + 1}. ${recipe.title}: ${mainIngredients}.`;
+          return `${index + 1 + culinaryPlan.optionNumberOffset}. ${recipe.title}: ${mainIngredients}.`;
         }),
         "Si gustas, te puedo explicar cómo elaborar una paso a paso. Dime cuál te gusta.",
       ].join("\n\n");
     }
 
     return culinaryPlan.recipes.map((recipe, index) => [
-      `${index + 1}. ${recipe.title}`,
+      `${index + 1 + culinaryPlan.optionNumberOffset}. ${recipe.title}`,
       "Ingredientes:",
       ...recipe.ingredients.map(item => `- ${item.amount} de ${item.name}`),
       "Preparación:",
