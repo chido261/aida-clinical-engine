@@ -7,7 +7,40 @@ export type StoredRecipeOption = {
   id: string;
   name: string;
   ingredients: string[];
+  description: string;
 };
+
+export type ChefGenerationContext = {
+  protocolId: string;
+  approvedFoods: string[];
+  conditionalFoods: string[];
+  count: number;
+  constraints: Record<string, unknown>;
+};
+
+export type GeneratedBeverage = {
+  id: string;
+  name: string;
+  ingredients: string[];
+};
+
+export type RecipeInstructions = {
+  recipeId: string;
+  title: string;
+  steps: string[];
+};
+
+export interface MealOptionsTool {
+  generate(context: ChefGenerationContext): Promise<StoredRecipeOption[]>;
+}
+
+export interface BeverageOptionsTool {
+  generate(context: ChefGenerationContext): Promise<GeneratedBeverage[]>;
+}
+
+export interface RecipeStepsTool {
+  explain(recipe: StoredRecipeOption): Promise<RecipeInstructions>;
+}
 
 export type RecipeDetailRequest = {
   recipeIds: string[];
