@@ -7,6 +7,10 @@ import {
   isShortAcceptance,
   type Aida2ConversationState,
 } from "@/app/lib/aida2/conversationState";
+import {
+  understandCurrentTurn,
+  type Aida2TurnDirective,
+} from "@/app/lib/aida2/turnUnderstanding";
 
 export type Aida2Intent =
   | "FOOD_ADVICE"
@@ -176,6 +180,7 @@ export type Aida2WorkPlan = {
   purpose: string;
   personality: string;
   conversationState: Aida2ConversationState;
+  turnDirective: Aida2TurnDirective;
   understanding: Aida2Understanding;
   foodContext: Aida2FoodContext;
   modulePlan: Aida2ModulePlan;
@@ -519,30 +524,38 @@ function buildFoodContext(
   message: string,
   history: string,
   understanding: Aida2Understanding,
-  conversationState: Aida2ConversationState
+  conversationState: Aida2ConversationState,
+  turnDirective: Aida2TurnDirective
 ): Aida2FoodContext {
   const isFoodRelated =
     understanding.intent === "FOOD_ADVICE" || understanding.mentionsFood;
 
-  const conversationMode = detectConversationMode(
-    message,
-    history,
-    conversationState
-  );
+  const conversationMode = turnDirective.requiresHistory
+    ? "FOLLOW_UP"
+    : detectConversationMode(message, history, conversationState);
 
+  const directiveQuestionTypes: Partial<Record<Aida2TurnDirective["dialogueAct"], Aida2FoodQuestionType>> = {
+    VALIDATE_FOOD: "CAN_I_EAT",
+    REQUEST_RECIPE: "RECIPE_REQUEST",
+    SELECT_RECIPE_OPTION: "HOW_TO_PREPARE",
+    MODIFY_SELECTED_OPTION: "ADD_TO_PREVIOUS_MEAL",
+    ASK_PREPARATION: "HOW_TO_PREPARE",
+    PAIR_FOOD_OR_DRINK: "WHAT_TO_PAIR",
+    VALIDATE_PREPARATION: "VALIDATE_PREPARATION",
+  };
   const questionType = isFoodRelated
-    ? detectFoodQuestionType(message)
+    ? directiveQuestionTypes[turnDirective.dialogueAct] ?? detectFoodQuestionType(message)
     : "UNKNOWN";
 
   const needsHistory =
     isFoodRelated &&
-    (conversationMode === "FOLLOW_UP" || conversationMode === "CORRECTION");
+    (turnDirective.requiresHistory || conversationMode === "CORRECTION");
 
   const validatePreparation =
     isFoodRelated && shouldValidatePreparation(message, questionType);
 
   const targetText = isFoodRelated
-    ? extractTargetText(message) ??
+    ? turnDirective.targetHint ?? extractTargetText(message) ??
       conversationState.pendingAction?.target ??
       conversationState.lastFoodTarget
     : null;
@@ -1190,13 +1203,13 @@ export function buildAida2WorkPlan(input: Aida2BrainInput): Aida2WorkPlan {
   const message = input.message.trim();
   const history = input.history ?? "";
 
-  const conversationState =
-    input.conversationState ??
-    buildStateFromRecentText({
-      history,
-      userMessage: message,
-    }) ??
-    createEmptyAida2ConversationState();
+  // La memoria es contexto de entrada, no una orden vigente. Cada turno debe
+  // reconciliarla con el mensaje actual antes de decidir qué módulos ejecutar.
+  const conversationState = buildStateFromRecentText({
+    history,
+    userMessage: message,
+    previousState: input.conversationState ?? createEmptyAida2ConversationState(),
+  });
 
   const understanding = buildUnderstanding(
     message,
@@ -1204,13 +1217,19 @@ export function buildAida2WorkPlan(input: Aida2BrainInput): Aida2WorkPlan {
     conversationState
   );
 
+  const turnDirective = understandCurrentTurn({
+    message,
+    conversationState,
+  });
+
   const safety = buildSafetyPlan(understanding);
 
   const foodContext = buildFoodContext(
     message,
     history,
     understanding,
-    conversationState
+    conversationState,
+    turnDirective
   );
 
   const modulePlan = buildModulePlan(
@@ -1239,6 +1258,7 @@ export function buildAida2WorkPlan(input: Aida2BrainInput): Aida2WorkPlan {
     personality:
       "Responde como asesor cercano, profesional y práctico. Debe ser claro, breve, humano, sin sermones, sin tecnicismos innecesarios y con una acción concreta. Debe adaptar la respuesta al nivel del usuario.",
     conversationState,
+    turnDirective,
     understanding,
     foodContext,
     modulePlan,
