@@ -61,7 +61,7 @@ export async function POST(request: Request) {
       const diagnostics = execution.outcome.bundle.results
         .filter(result => result.status === "FAILED" || result.status === "BLOCKED")
         .map(result => ({ taskId: result.taskId, expertId: result.expertId,
-          status: result.status, errorCode: result.errorCode }));
+          status: result.status, errorCode: result.errorCode, data: result.data }));
       console.error("AIDA3_TURN_FAILED", { turnId: execution.plan.turnId, diagnostics });
       return NextResponse.json({ ok: false, error: "Chat3 no pudo completar todos los módulos.",
         ...(process.env.NODE_ENV === "production" ? {} : { diagnostics, tasks: execution.plan.tasks,
