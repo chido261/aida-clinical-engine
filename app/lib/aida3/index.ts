@@ -12,6 +12,7 @@ export * from "./experts/nutrition";
 export * from "./experts/chef";
 export * from "./experts/conversation";
 export * from "./experts/glucose";
+export * from "./experts/protocol";
 export * from "./semantics";
 export * from "./humanizer";
 export * from "./engine";
