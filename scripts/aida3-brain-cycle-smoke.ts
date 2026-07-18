@@ -15,6 +15,11 @@ const glucose: CurrentTurnAnalysis = { currentMessage: "Tengo 110 de glucosa", r
 const glucosePlan = brain.compile({ turnId: "brain-glucose", message: glucose.currentMessage, analysis: glucose, context }).plan;
 assert.deepEqual(glucosePlan.tasks.map(task => task.expertId), ["GLUCOSE"]);
 
+const phase: CurrentTurnAnalysis = { currentMessage: "¿En qué fase estoy?", responseLength: "SHORT",
+  requests: [{ id: "phase", type: "PROTOCOL_STATUS" }] };
+const phasePlan = brain.compile({ turnId: "brain-phase", message: phase.currentMessage, analysis: phase, context }).plan;
+assert.deepEqual(phasePlan.tasks.map(task => task.expertId), ["PROTOCOL"]);
+
 const culinary: CurrentTurnAnalysis = { currentMessage: "Dame 3 opciones con pulpo; una con aguacate, valida tostada y agrega té.",
   responseLength: "MEDIUM", requests: [
     { id: "meals", type: "MEAL_OPTIONS", count: 3,
@@ -34,4 +39,5 @@ assert.deepEqual(culinaryPlan.tasks.find(task => task.id === "meals")?.input.req
 assert.deepEqual(culinaryPlan.tasks.find(task => task.id === "meals")?.input.validateOnly,
   [{ name: "tostada", canonicalName: "tostadas", category: "CARBOHYDRATE" }]);
 console.log("AIDA3 BRAIN CYCLE OK");
-console.log(JSON.stringify({ greeting: greetingPlan.tasks, glucose: glucosePlan.tasks, culinary: culinaryPlan.tasks }, null, 2));
+console.log(JSON.stringify({ greeting: greetingPlan.tasks, glucose: glucosePlan.tasks, phase: phasePlan.tasks,
+  culinary: culinaryPlan.tasks }, null, 2));
