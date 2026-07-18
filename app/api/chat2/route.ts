@@ -28,6 +28,7 @@ import { enforceAida2StructuredDecision } from "@/app/lib/aida2/responseGuard";
 import type { SemanticFoodInterpretation } from "@/app/lib/aida2/modules/foodDecisionTypes";
 import { understandTurnWithBrain } from "@/app/lib/aida2/turnCognition";
 import { verifyTurnContract } from "@/app/lib/aida2/turnContract";
+import { executeMultiTaskGraph } from "@/app/lib/aida2/multiTaskExecutor";
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
@@ -414,6 +415,46 @@ export async function POST(req: Request) {
     );
 
     const protocol = runProtocolModule({ protocolId });
+
+    const multiTaskResult = await executeMultiTaskGraph({
+      openai,
+      cognition: turnCognition,
+      protocol,
+    });
+    if (multiTaskResult.handled) {
+      const moduleResults = runAida2Modules({
+        workPlan,
+        history,
+        userMessage: lastUserMessage,
+        protocolId,
+        semanticInterpretation: null,
+      });
+      if (moduleResults.meal && multiTaskResult.primaryCulinaryPlan) {
+        moduleResults.meal.culinaryPlan = multiTaskResult.primaryCulinaryPlan;
+      }
+      const reply = multiTaskResult.valid
+        ? multiTaskResult.reply
+        : `No completé correctamente todas tus solicitudes: ${multiTaskResult.violations.join(" ")}`;
+      await updateAida2ContextMemoryAfterResponse({
+        userId,
+        userMessage: lastUserMessage,
+        assistantReply: reply,
+        workPlan,
+        moduleResults,
+      });
+      return NextResponse.json({
+        ok: true,
+        reply,
+        aida2: true,
+        userId,
+        savedReading,
+        weeklyReview,
+        workPlan,
+        modules: moduleResults,
+        turnCognition,
+        multiTaskResult,
+      });
+    }
 
     const fastProtocolInterpretation = buildFastProtocolInterpretation({
             message: lastUserMessage,
