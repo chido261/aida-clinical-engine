@@ -23,7 +23,7 @@ function json(text: string | undefined, errorCode: string) {
 }
 
 export class OpenAiChefTools {
-  constructor(private readonly openai: OpenAI, private readonly model = process.env.OPENAI_CHEF_MODEL ?? "gpt-5.6-sol") {}
+  constructor(private readonly openai: OpenAI, private readonly model = process.env.OPENAI_CHEF_MODEL ?? "gpt-4.1-mini") {}
 
   async generateMeals(context: ChefGenerationContext): Promise<StoredRecipeOption[]> {
     const response = await this.openai.responses.create({ model: this.model,
@@ -32,7 +32,7 @@ export class OpenAiChefTools {
         "Nunca uses rejectedFoods. Cumple atLeastOneIncludes. No tomes decisiones clínicas.",
         "Usa ids option-1, option-2, etc."].join("\n"), input: JSON.stringify(context),
       text: { format: { type: "json_schema", name: "aida3_meal_options", strict: true, schema: MEALS_SCHEMA } },
-    });
+    }, { timeout: Number(process.env.OPENAI_CHEF_TIMEOUT_MS ?? 25_000), maxRetries: 0 });
     return (json(response.output_text, "AIDA3_CHEF_INVALID_MEALS") as { options: StoredRecipeOption[] }).options;
   }
 
@@ -43,7 +43,7 @@ export class OpenAiChefTools {
         "No agregues azúcar. Usa ids beverage-1, beverage-2, etc. No tomes otras decisiones clínicas."].join("\n"),
       input: JSON.stringify(context),
       text: { format: { type: "json_schema", name: "aida3_beverage_options", strict: true, schema: BEVERAGES_SCHEMA } },
-    });
+    }, { timeout: Number(process.env.OPENAI_CHEF_TIMEOUT_MS ?? 25_000), maxRetries: 0 });
     return (json(response.output_text, "AIDA3_CHEF_INVALID_BEVERAGES") as { beverages: GeneratedBeverage[] }).beverages;
   }
 
@@ -52,7 +52,7 @@ export class OpenAiChefTools {
       instructions: "Explica únicamente la receta recibida, con pasos claros y breves. No cambies nombre, id ni ingredientes.",
       input: JSON.stringify(recipe),
       text: { format: { type: "json_schema", name: "aida3_recipe_steps", strict: true, schema: RECIPE_SCHEMA } },
-    });
+    }, { timeout: Number(process.env.OPENAI_CHEF_TIMEOUT_MS ?? 25_000), maxRetries: 0 });
     return json(response.output_text, "AIDA3_CHEF_INVALID_RECIPE") as RecipeInstructions;
   }
 }
