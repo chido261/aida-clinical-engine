@@ -26,6 +26,8 @@ import {
 import { reviewCurrentProtocolWeekIfDue } from "@/app/lib/aida2/weeklyProtocolReview";
 import { enforceAida2StructuredDecision } from "@/app/lib/aida2/responseGuard";
 import type { SemanticFoodInterpretation } from "@/app/lib/aida2/modules/foodDecisionTypes";
+import { understandTurnWithBrain } from "@/app/lib/aida2/turnCognition";
+import { verifyTurnContract } from "@/app/lib/aida2/turnContract";
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
@@ -107,9 +109,10 @@ function normalizeFood(value: string) {
 function buildFastProtocolInterpretation(params: {
   message: string;
   target: string | null;
+  preparationStyle?: string | null;
   protocol: ReturnType<typeof runProtocolModule>;
 }): SemanticFoodInterpretation | null {
-  const { message, target, protocol } = params;
+  const { message, target, preparationStyle, protocol } = params;
   if (!target) return null;
   const normalizedTarget = normalizeFood(target);
   const knownFoods = Object.values(protocol.structured.allowedFoods).flat()
@@ -120,11 +123,11 @@ function buildFastProtocolInterpretation(params: {
   if (!appearsDirectlyInProtocol) return null;
   return {
     originalText: message,
-    dishName: target,
-    semanticType: "literal_food",
+    dishName: preparationStyle ? `${preparationStyle} de ${target}` : target,
+    semanticType: preparationStyle ? "plant_based_substitute" : "literal_food",
     baseIngredients: [target],
     declaredIngredients: [],
-    styleReferences: [],
+    styleReferences: preparationStyle ? [preparationStyle] : [],
     isCommercialProduct: false,
     requiresClarification: false,
     clarificationReason: null,
@@ -390,11 +393,19 @@ export async function POST(req: Request) {
 
     const conversationState = buildConversationStateFromMemory(memory);
 
+    const turnCognition = await understandTurnWithBrain({
+      openai,
+      message: lastUserMessage,
+      recentHistory,
+      culinaryMemory: memory.metadata.activeCulinaryPlan,
+    });
+
     const workPlan = buildAida2WorkPlan({
       userId,
       message: lastUserMessage,
       history,
       conversationState,
+      turnCognition,
     });
 
     const protocolId = resolveProtocolId(
@@ -404,14 +415,12 @@ export async function POST(req: Request) {
 
     const protocol = runProtocolModule({ protocolId });
 
-    const fastProtocolInterpretation =
-      workPlan.turnDirective.dialogueAct === "VALIDATE_FOOD"
-        ? buildFastProtocolInterpretation({
+    const fastProtocolInterpretation = buildFastProtocolInterpretation({
             message: lastUserMessage,
-            target: workPlan.turnDirective.targetHint,
+            target: turnCognition.foodTarget,
+            preparationStyle: turnCognition.preparationStyle,
             protocol,
-          })
-        : null;
+          });
 
     const initialSemanticInterpretation = workPlan.foodContext.isFoodRelated
       ? fastProtocolInterpretation ?? await interpretFoodSemantics({
@@ -448,10 +457,22 @@ export async function POST(req: Request) {
           protocol,
           conversationHistory: workPlan.turnDirective.requiresHistory ? recentHistory : undefined,
           turnDirective: workPlan.turnDirective,
+          turnCognition,
+          culinaryMemory: memory.metadata.activeCulinaryPlan,
         })
       : null;
     if (moduleResults.meal && culinaryPlan?.requested) {
       moduleResults.meal.culinaryPlan = culinaryPlan;
+    }
+
+    const turnContract = verifyTurnContract({
+      cognition: turnCognition,
+      culinaryPlan,
+      culinaryMemory: memory.metadata.activeCulinaryPlan,
+    });
+    if (!turnContract.valid && culinaryPlan?.requested) {
+      culinaryPlan.recipes = [];
+      culinaryPlan.error = `No completé correctamente la solicitud: ${turnContract.violations.join(" ")}`;
     }
 
     const conversationStrategy = buildAida2ConversationStrategy({
@@ -520,6 +541,8 @@ export async function POST(req: Request) {
       semanticInterpretation,
       knowledgeResolution: knowledgeResolution?.knowledge ?? null,
       culinaryPlan,
+      turnCognition,
+      turnContract,
     });
   } catch (error: unknown) {
     console.error("API /api/chat2 ERROR:", error);
