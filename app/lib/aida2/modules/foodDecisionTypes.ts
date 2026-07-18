@@ -75,6 +75,7 @@ export type CulinaryPlan = {
   presentation: "choices" | "full_recipe";
   constraints: string[];
   recipes: CulinaryRecipe[];
+  rejectedIngredients: string[];
   error: string | null;
 };
 
