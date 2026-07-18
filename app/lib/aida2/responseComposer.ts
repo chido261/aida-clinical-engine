@@ -80,6 +80,19 @@ export function buildAida2ComposerPrompt(params: {
     ].join("\n"),
 
     "",
+    "Representación cognitiva del turno:",
+    [
+      `- Objetivo explícito: ${workPlan.turnCognition.explicitCurrentGoal}`,
+      `- Alimento objetivo: ${workPlan.turnCognition.foodTarget ?? "ninguno"}`,
+      `- Estilo de preparación: ${workPlan.turnCognition.preparationStyle ?? "ninguno"}`,
+      `- Cantidad solicitada: ${workPlan.turnCognition.requestedCount ?? "no aplica"}`,
+      `- Adición solicitada: ${workPlan.turnCognition.requestedAddition ?? "ninguna"}`,
+      `- Capacidades autorizadas: ${workPlan.turnCognition.capabilities.join(", ")}`,
+      `- Debe conservar objetivo anterior: ${workPlan.turnCognition.responseContract.preservePreviousTarget ? "Sí" : "No"}`,
+      `- Debe reparar respuesta anterior: ${workPlan.turnCognition.responseContract.mustRepairPreviousResponse ? "Sí" : "No"}`,
+    ].join("\n"),
+
+    "",
     "FoodContext definido por Cerebro:",
     foodContext.isFoodRelated
       ? [
