@@ -185,8 +185,6 @@ export async function auditTaskGraphCoverage(params: {
       ? parseCognition(JSON.stringify(raw.cognition))
       : null;
     const repaired = authorizeCognition(parsed ?? cognition, culinaryMemory);
-    const initialExpected = Math.max(Number(raw.expectedTasks) || 0, repaired.tasks.length);
-
     // La primera auditoría puede describir lo que faltaba antes de reparar.
     // Una segunda pasada independiente certifica únicamente el grafo reparado.
     const certificationResponse = await openai.chat.completions.create({
@@ -199,7 +197,9 @@ export async function auditTaskGraphCoverage(params: {
           "Certifica la cobertura de un grafo de tareas ya reparado.",
           "Compara cada solicitud, restricción y resultado esperado del mensaje con el grafo.",
           "No reconstruyas ni ejecutes nada. missingObligations sólo debe contener faltas que aún persisten en el grafo reparado.",
-          "Devuelve exclusivamente JSON {complete, expectedTasks, representedTasks, missingObligations}.",
+          "Una tarea puede cubrir varias obligaciones. No confundas cantidad de obligaciones con cantidad de tareas.",
+          "Ejemplo: generar 3 opciones, todas con pulpo y una con aguacate son tres obligaciones cubiertas por una sola tarea GENERATE_OPTIONS.",
+          "Devuelve exclusivamente JSON {complete, obligations:[{id,description,coveredByTaskId}], missingObligations}.",
           `Grafo reparado: ${JSON.stringify(repaired.tasks)}`,
         ].join("\n"),
       }, { role: "user", content: message }],
@@ -207,18 +207,34 @@ export async function auditTaskGraphCoverage(params: {
     const certification = JSON.parse(
       certificationResponse.choices[0]?.message?.content ?? "{}"
     ) as Record<string, unknown>;
-    const expected = Math.max(Number(certification.expectedTasks) || initialExpected, initialExpected);
-    const represented = Number(certification.representedTasks) || repaired.tasks.length;
+    const taskIds = new Set(repaired.tasks.map(task => task.id));
+    const obligations = Array.isArray(certification.obligations)
+      ? certification.obligations.flatMap(rawObligation => {
+          if (!rawObligation || typeof rawObligation !== "object") return [];
+          const obligation = rawObligation as Record<string, unknown>;
+          return [{
+            id: typeof obligation.id === "string" ? obligation.id : "",
+            description: typeof obligation.description === "string" ? obligation.description : "",
+            coveredByTaskId: typeof obligation.coveredByTaskId === "string" ? obligation.coveredByTaskId : "",
+          }];
+        })
+      : [];
     const missing = strings(certification.missingObligations);
+    const invalidCoverage = obligations.filter(obligation =>
+      !obligation.id || !obligation.description || !taskIds.has(obligation.coveredByTaskId)
+    );
     const complete = certification.complete === true &&
-      represented >= expected && repaired.tasks.length >= expected && missing.length === 0;
+      obligations.length > 0 && invalidCoverage.length === 0 && missing.length === 0;
     return {
       cognition: repaired,
       audited: true,
       complete,
-      expectedTasks: expected,
-      representedTasks: represented,
-      missingObligations: missing,
+      expectedTasks: repaired.tasks.length,
+      representedTasks: repaired.tasks.length,
+      missingObligations: [
+        ...missing,
+        ...invalidCoverage.map(item => item.description || item.id || "Obligación sin tarea válida"),
+      ],
     };
   } catch {
     return {
