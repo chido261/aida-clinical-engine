@@ -7,7 +7,7 @@ import { prisma } from "@/app/lib/prisma";
 import {
   Aida3Brain, Aida3BrainTurnEngine, Aida3DeterministicResponseAssembler, Aida3ExpertRegistry,
   Aida3TurnOrchestrator, ChefExpert, ConversationExpert, GlucoseExpert, NutritionExpert,
-  OpenAiChefTools, OpenAiCurrentTurnAnalyzer,
+  OpenAiChefTools, OpenAiCurrentTurnAnalyzer, ProtocolExpert,
   type ProtocolId,
 } from "@/app/lib/aida3";
 import { PrismaCulinaryMemory } from "@/app/lib/aida3/infrastructure/prismaCulinaryMemory";
@@ -21,6 +21,7 @@ const culinary = new OpenAiChefTools(openai);
 const registry = new Aida3ExpertRegistry()
   .register(new ConversationExpert())
   .register(new GlucoseExpert())
+  .register(new ProtocolExpert())
   .register(new NutritionExpert())
   .register(new ChefExpert({ generate: context => culinary.generateMeals(context) },
     { generate: context => culinary.generateBeverages(context) },
