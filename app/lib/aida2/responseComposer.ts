@@ -67,6 +67,19 @@ export function buildAida2ComposerPrompt(params: {
     ].join("\n"),
 
     "",
+    "Directiva obligatoria del turno actual:",
+    [
+      `- Acto de diálogo: ${workPlan.turnDirective.dialogueAct}`,
+      `- Intención explícita actual: ${workPlan.turnDirective.explicitCurrentIntent ? "Sí" : "No"}`,
+      `- Política de contexto: ${workPlan.turnDirective.contextPolicy}`,
+      `- Historial necesario: ${workPlan.turnDirective.requiresHistory ? "Sí" : "No"}`,
+      `- Plan culinario autorizado: ${workPlan.turnDirective.allowsCulinaryPlan ? "Sí" : "No"}`,
+      `- Opción seleccionada: ${workPlan.turnDirective.selectedOption ?? "ninguna"}`,
+      `- Razón: ${workPlan.turnDirective.reason}`,
+      "- La intención explícita del mensaje actual tiene prioridad sobre cualquier acción o tema anterior.",
+    ].join("\n"),
+
+    "",
     "FoodContext definido por Cerebro:",
     foodContext.isFoodRelated
       ? [
