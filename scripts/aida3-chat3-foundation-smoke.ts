@@ -16,9 +16,10 @@ const fakeOpenAi = { responses: { create: async (input: Record<string, unknown>)
 async function main() {
   const tools = new OpenAiChefTools(fakeOpenAi as never, "test-model");
   const context = { protocolId: "FASE_1", approvedFoods: ["pulpo"], conditionalFoods: [], count: 4,
-    constraints: { atLeastOneIncludes: [], rejectedFoods: ["tostadas"] } };
+    constraints: { requiredEveryOption: ["pulpo"], requiredAtLeastOne: [], rejectedFoods: ["tostadas"], exclude: [] } };
   const meals = await tools.generateMeals(context);
-  const beverages = await tools.generateBeverages({ ...context, count: 1, constraints: { exclude: ["agua"] } });
+  const beverages = await tools.generateBeverages({ ...context, count: 1,
+    constraints: { requiredEveryOption: [], requiredAtLeastOne: [], rejectedFoods: [], exclude: ["agua"] } });
   const recipe = await tools.explain(meals[1]!);
   assert.equal(meals.length, 4);
   assert.equal(beverages[0]?.name, "Té verde sin azúcar");
