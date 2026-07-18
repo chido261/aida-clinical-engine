@@ -36,6 +36,7 @@ function requestsFullRecipe(message: string) {
 
 function canonicalizeCulinaryIngredient(value: string) {
   const clean = normalize(value)
+    .replace(/^proteina\s+de\s+/, "")
     .replace(/\b(cocid[oa]s?|hidratad[oa]s?|texturizad[oa]s?|molid[oa]s?|rallad[oa]s?|picad[oa]s?|finamente|escurrid[oa]s?|natural(?:es)?|vegan[oa]s?|sin azucar)\b/g, " ")
     .replace(/\s+/g, " ")
     .trim();
@@ -109,6 +110,39 @@ function verifyRecipe(recipe: Omit<CulinaryRecipe, "verified" | "rejectedIngredi
   };
 }
 
+function buildArchetypeFallback(params: {
+  interpretation: SemanticFoodInterpretation;
+  protocol: ProtocolModuleOutput;
+  constraints: string[];
+}) {
+  const { interpretation, protocol, constraints } = params;
+  const base = interpretation.baseIngredients[0];
+  if (!base) return null;
+
+  if (interpretation.semanticType === "plant_based_substitute") {
+    const vegan = constraints.includes("vegano");
+    return verifyRecipe({
+      title: interpretation.dishName ?? `Preparación vegetal de ${base}`,
+      ingredients: [
+        { name: base, amount: "1 taza" },
+        { name: "apio picado", amount: "1/4 de taza" },
+        { name: "cebolla picada", amount: "2 cucharadas" },
+        { name: "aguacate", amount: "1/2 pieza" },
+        { name: "jugo de limón", amount: "1 cucharada" },
+        { name: "sal y pimienta", amount: "al gusto" },
+      ],
+      steps: [
+        `Prepara ${base} hasta que tenga una textura suave pero firme.`,
+        "Machaca el aguacate y mézclalo con el limón para formar el aderezo.",
+        "Incorpora el apio, la cebolla y la base vegetal.",
+        `Sazona y mezcla hasta obtener una preparación ${vegan ? "completamente vegetal" : "uniforme"}.`,
+      ],
+    }, protocol);
+  }
+
+  return null;
+}
+
 export async function buildCulinaryPlan(params: {
   openai: OpenAI;
   userMessage: string;
@@ -118,7 +152,7 @@ export async function buildCulinaryPlan(params: {
 }): Promise<CulinaryPlan> {
   const { openai, userMessage, interpretation, protocol, conversationHistory } = params;
   if (!requestsCulinaryPlan(userMessage)) {
-    return { requested: false, requestedCount: 0, presentation: "choices", constraints: [], recipes: [], error: null };
+    return { requested: false, requestedCount: 0, presentation: "choices", constraints: [], recipes: [], rejectedIngredients: [], error: null };
   }
 
   const requestedCount = requestedRecipeCount(userMessage);
@@ -173,6 +207,18 @@ export async function buildCulinaryPlan(params: {
           !recipes.some(existing => normalize(existing.title) === normalize(recipe.title))
         ) recipes.push(recipe);
       });
+
+      if (recipes.length < requestedCount) {
+        const fallback = buildArchetypeFallback({
+          interpretation,
+          protocol,
+          constraints,
+        });
+        if (
+          fallback?.verified &&
+          !recipes.some(existing => normalize(existing.title) === normalize(fallback.title))
+        ) recipes.push(fallback);
+      }
     }
 
     return {
@@ -181,6 +227,7 @@ export async function buildCulinaryPlan(params: {
       presentation,
       constraints,
       recipes: recipes.slice(0, requestedCount),
+      rejectedIngredients: [...rejected],
       error: recipes.length >= requestedCount ? null : "No fue posible verificar suficientes recetas compatibles.",
     };
   } catch {
@@ -190,6 +237,7 @@ export async function buildCulinaryPlan(params: {
       presentation,
       constraints,
       recipes: [],
+      rejectedIngredients: [],
       error: "No fue posible construir recetas verificadas en este momento.",
     };
   }
