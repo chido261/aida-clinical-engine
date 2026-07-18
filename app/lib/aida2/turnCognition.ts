@@ -185,15 +185,39 @@ export async function auditTaskGraphCoverage(params: {
       ? parseCognition(JSON.stringify(raw.cognition))
       : null;
     const repaired = authorizeCognition(parsed ?? cognition, culinaryMemory);
-    const expected = Math.max(Number(raw.expectedTasks) || 0, repaired.tasks.length);
-    const missing = strings(raw.missingObligations);
-    const complete = raw.complete === true && repaired.tasks.length >= expected && missing.length === 0;
+    const initialExpected = Math.max(Number(raw.expectedTasks) || 0, repaired.tasks.length);
+
+    // La primera auditoría puede describir lo que faltaba antes de reparar.
+    // Una segunda pasada independiente certifica únicamente el grafo reparado.
+    const certificationResponse = await openai.chat.completions.create({
+      model: "gpt-4.1-mini",
+      temperature: 0,
+      response_format: { type: "json_object" },
+      messages: [{
+        role: "system",
+        content: [
+          "Certifica la cobertura de un grafo de tareas ya reparado.",
+          "Compara cada solicitud, restricción y resultado esperado del mensaje con el grafo.",
+          "No reconstruyas ni ejecutes nada. missingObligations sólo debe contener faltas que aún persisten en el grafo reparado.",
+          "Devuelve exclusivamente JSON {complete, expectedTasks, representedTasks, missingObligations}.",
+          `Grafo reparado: ${JSON.stringify(repaired.tasks)}`,
+        ].join("\n"),
+      }, { role: "user", content: message }],
+    });
+    const certification = JSON.parse(
+      certificationResponse.choices[0]?.message?.content ?? "{}"
+    ) as Record<string, unknown>;
+    const expected = Math.max(Number(certification.expectedTasks) || initialExpected, initialExpected);
+    const represented = Number(certification.representedTasks) || repaired.tasks.length;
+    const missing = strings(certification.missingObligations);
+    const complete = certification.complete === true &&
+      represented >= expected && repaired.tasks.length >= expected && missing.length === 0;
     return {
       cognition: repaired,
       audited: true,
       complete,
       expectedTasks: expected,
-      representedTasks: repaired.tasks.length,
+      representedTasks: represented,
       missingObligations: missing,
     };
   } catch {
