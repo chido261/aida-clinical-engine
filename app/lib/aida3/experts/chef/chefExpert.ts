@@ -9,6 +9,7 @@ import {
 import { validateRecipeDetailRequest } from "./recipeDetailPolicy";
 
 type NutritionFood = { canonicalFood?: string; food?: string; status?: string };
+type FoodReference = { name?: string; canonicalName?: string };
 
 function positiveCount(value: unknown) {
   return typeof value === "number" && Number.isInteger(value) && value > 0 ? value : null;
@@ -24,6 +25,20 @@ function nutritionFoods(context: Aida3ExpertContext) {
   };
 }
 
+function foodNames(value: unknown) {
+  if (!Array.isArray(value)) return [];
+  return value.map(item => {
+    if (typeof item === "string") return item;
+    if (!item || typeof item !== "object") return "";
+    const food = item as FoodReference;
+    return food.canonicalName ?? food.name ?? "";
+  }).map(item => item.trim()).filter(Boolean);
+}
+
+function normalized(value: string) {
+  return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+}
+
 export class ChefExpert implements Aida3Expert {
   readonly id = CHEF_EXPERT_ID;
   constructor(private readonly meals: MealOptionsTool, private readonly beverages: BeverageOptionsTool,
@@ -36,26 +51,33 @@ export class ChefExpert implements Aida3Expert {
     return this.failed(context, "UNSUPPORTED_CHEF_ACTION");
   }
 
-  private generationContext(context: Aida3ExpertContext): ChefGenerationContext | null {
+  private mealGenerationContext(context: Aida3ExpertContext): ChefGenerationContext | null {
     const count = positiveCount(context.task.input.count);
     const protocolId = context.task.input.protocolId;
     if (!count || typeof protocolId !== "string" || context.dependencyResults.length === 0) return null;
     const decisions = nutritionFoods(context);
-    return { protocolId, approvedFoods: decisions.approved, conditionalFoods: decisions.conditional,
-      count, constraints: { ...context.task.input, rejectedFoods: decisions.rejected } };
+    const requiredEveryOption = foodNames(context.task.input.requiredEveryOption);
+    const requiredAtLeastOne = foodNames(context.task.input.requiredAtLeastOne);
+    const approved = new Set([...decisions.approved, ...decisions.conditional].map(normalized));
+    if ([...requiredEveryOption, ...requiredAtLeastOne].some(food => !approved.has(normalized(food)))) return null;
+    return { protocolId, approvedFoods: decisions.approved, conditionalFoods: decisions.conditional, count,
+      constraints: { requiredEveryOption, requiredAtLeastOne, rejectedFoods: decisions.rejected, exclude: [] } };
+  }
+
+  private beverageGenerationContext(context: Aida3ExpertContext): ChefGenerationContext | null {
+    const count = positiveCount(context.task.input.count);
+    const protocolId = context.task.input.protocolId;
+    if (!count || typeof protocolId !== "string") return null;
+    const exclude = Array.isArray(context.task.input.exclude) ? context.task.input.exclude.map(String) : [];
+    return { protocolId, approvedFoods: [], conditionalFoods: [], count,
+      constraints: { requiredEveryOption: [], requiredAtLeastOne: [], rejectedFoods: [], exclude } };
   }
 
   private async generateMeals(context: Aida3ExpertContext): Promise<Aida3ExpertResult> {
-    const input = this.generationContext(context);
+    const input = this.mealGenerationContext(context);
     if (!input) return this.failed(context, "NUTRITION_DECISION_OR_COUNT_REQUIRED");
-    let options: StoredRecipeOption[] = [];
-    let violations: string[] = [];
-    for (let attempt = 1; attempt <= 2; attempt += 1) {
-      options = await this.meals.generate({ ...input, constraints: { ...input.constraints,
-        ...(violations.length ? { validationFeedback: violations } : {}) } });
-      violations = this.optionViolations(options, input.count, input.constraints.atLeastOneIncludes);
-      if (violations.length === 0) break;
-    }
+    const options = await this.meals.generate(input);
+    const violations = this.optionViolations(options, input);
     if (violations.length > 0) {
       return this.failed(context, "INVALID_MEAL_OPTIONS_TOOL_OUTPUT", {
         violations, requestedCount: input.count, receivedCount: options.length,
@@ -67,12 +89,13 @@ export class ChefExpert implements Aida3Expert {
   }
 
   private async generateBeverages(context: Aida3ExpertContext): Promise<Aida3ExpertResult> {
-    const input = this.generationContext(context);
-    if (!input) return this.failed(context, "NUTRITION_DECISION_OR_COUNT_REQUIRED");
+    const input = this.beverageGenerationContext(context);
+    if (!input) return this.failed(context, "INVALID_BEVERAGE_REQUEST");
     const options = await this.beverages.generate(input);
-    const excluded = Array.isArray(input.constraints.exclude) ? input.constraints.exclude.map(String).map(value => value.toLowerCase()) : [];
+    const excluded = input.constraints.exclude.map(normalized);
     if (options.length !== input.count || new Set(options.map(option => option.id)).size !== options.length ||
-      options.some(option => excluded.includes(option.name.toLowerCase()))) {
+      options.some(option => excluded.some(value => normalized(option.name).includes(value)) ||
+        option.ingredients.some(ingredient => excluded.some(value => normalized(ingredient).includes(value))))) {
       return this.failed(context, "INVALID_BEVERAGE_TOOL_OUTPUT");
     }
     return this.completed(context, "BEVERAGES_GENERATED", { beverages: options, count: options.length }, `${options.length} bebidas preparadas`);
@@ -95,18 +118,27 @@ export class ChefExpert implements Aida3Expert {
     return this.completed(context, "RECIPE_EXPLAINED", { recipe: option, instructions }, instructions.title);
   }
 
-  private optionViolations(options: StoredRecipeOption[], count: number, required: unknown) {
+  private optionViolations(options: StoredRecipeOption[], input: ChefGenerationContext) {
     const violations: string[] = [];
-    if (options.length !== count) violations.push(`COUNT_MISMATCH:expected=${count}:received=${options.length}`);
+    if (options.length !== input.count) violations.push(`COUNT_MISMATCH:expected=${input.count}:received=${options.length}`);
     if (new Set(options.map(option => option.id)).size !== options.length) violations.push("DUPLICATE_OPTION_IDS");
     if (options.some(option => !option.id.trim() || !option.name.trim() || option.ingredients.length === 0)) {
       violations.push("INCOMPLETE_OPTION");
     }
-    if (Array.isArray(required)) for (const value of required) {
-      const wanted = String(value).normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+    for (const value of input.constraints.requiredEveryOption) {
+      const wanted = normalized(value);
+      const missing = options.some(option => !option.ingredients.some(ingredient => normalized(ingredient).includes(wanted)));
+      if (missing) violations.push(`REQUIRED_EVERY_OPTION_MISSING:${value}`);
+    }
+    for (const value of input.constraints.requiredAtLeastOne) {
+      const wanted = normalized(value);
       const found = options.some(option => option.ingredients.some(ingredient =>
-        ingredient.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().includes(wanted)));
-      if (!found) violations.push(`REQUIRED_INGREDIENT_MISSING:${String(value)}`);
+        normalized(ingredient).includes(wanted)));
+      if (!found) violations.push(`REQUIRED_AT_LEAST_ONE_MISSING:${value}`);
+    }
+    for (const value of input.constraints.rejectedFoods) if (options.some(option =>
+      option.ingredients.some(ingredient => normalized(ingredient).includes(normalized(value))))) {
+      violations.push(`REJECTED_INGREDIENT_USED:${value}`);
     }
     return violations;
   }
