@@ -30,6 +30,13 @@ export function resolveTaskGraphTurn(params: {
     outcome = { status: "COMPLETED", content: execution.reply };
   } else if (execution.handled) {
     outcome = { status: "EXECUTION_FAILED", violations: execution.violations };
+  } else if (audit.audited) {
+    outcome = {
+      status: "EXECUTION_FAILED",
+      violations: [
+        "El grafo compuesto no quedó ejecutable después de su reparación interna.",
+      ],
+    };
   } else {
     outcome = { status: "NOT_APPLICABLE" };
   }
