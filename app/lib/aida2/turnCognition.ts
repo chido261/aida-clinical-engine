@@ -11,6 +11,28 @@ export type Aida2Capability =
   | "CONTEXT_REPAIR"
   | "GENERAL_COMPOSITION";
 
+export type Aida2CognitiveTaskType =
+  | "GENERATE_OPTIONS"
+  | "VALIDATE_FOOD"
+  | "EXPLAIN_RECIPE"
+  | "MODIFY_OPTION"
+  | "ADD_ACCOMPANIMENT"
+  | "SUBSTITUTE_INGREDIENT"
+  | "REPAIR_RESPONSE";
+
+export type Aida2CognitiveTask = {
+  id: string;
+  type: Aida2CognitiveTaskType;
+  target: string | null;
+  quantity: number | null;
+  selectedOption: number | null;
+  relationTarget: string | null;
+  requirements: string[];
+  exclusions: string[];
+  preferences: string[];
+  dependsOn: string[];
+};
+
 export type Aida2TurnCognition = {
   dialogueAct: Aida2DialogueAct;
   confidence: number;
@@ -21,6 +43,7 @@ export type Aida2TurnCognition = {
   selectedOption: number | null;
   requestedAddition: string | null;
   constraints: string[];
+  tasks: Aida2CognitiveTask[];
   referencesPreviousTurn: boolean;
   needsConversationHistory: boolean;
   capabilities: Aida2Capability[];
@@ -59,6 +82,29 @@ function parseCognition(text: string): Aida2TurnCognition | null {
     const count = Number(value.requestedCount);
     const option = Number(value.selectedOption);
     const exactCount = Number(contract.exactOptionCount);
+    const taskTypes = new Set<Aida2CognitiveTaskType>([
+      "GENERATE_OPTIONS", "VALIDATE_FOOD", "EXPLAIN_RECIPE", "MODIFY_OPTION",
+      "ADD_ACCOMPANIMENT", "SUBSTITUTE_INGREDIENT", "REPAIR_RESPONSE",
+    ]);
+    const tasks = Array.isArray(value.tasks) ? value.tasks.flatMap((raw, index) => {
+      if (!raw || typeof raw !== "object") return [];
+      const task = raw as Record<string, unknown>;
+      if (typeof task.type !== "string" || !taskTypes.has(task.type as Aida2CognitiveTaskType)) return [];
+      const quantity = Number(task.quantity);
+      const selected = Number(task.selectedOption);
+      return [{
+        id: typeof task.id === "string" && task.id.trim() ? task.id.trim() : `task_${index + 1}`,
+        type: task.type as Aida2CognitiveTaskType,
+        target: typeof task.target === "string" && task.target.trim() ? task.target.trim() : null,
+        quantity: Number.isInteger(quantity) && quantity > 0 ? Math.min(quantity, 5) : null,
+        selectedOption: Number.isInteger(selected) && selected > 0 ? selected : null,
+        relationTarget: typeof task.relationTarget === "string" && task.relationTarget.trim() ? task.relationTarget.trim() : null,
+        requirements: strings(task.requirements),
+        exclusions: strings(task.exclusions),
+        preferences: strings(task.preferences),
+        dependsOn: strings(task.dependsOn),
+      }];
+    }) : [];
     return {
       dialogueAct,
       confidence: Math.max(0, Math.min(1, Number(value.confidence) || 0)),
@@ -69,6 +115,7 @@ function parseCognition(text: string): Aida2TurnCognition | null {
       selectedOption: Number.isInteger(option) && option > 0 ? option : null,
       requestedAddition: typeof value.requestedAddition === "string" && value.requestedAddition.trim() ? value.requestedAddition.trim() : null,
       constraints: strings(value.constraints),
+      tasks,
       referencesPreviousTurn: value.referencesPreviousTurn === true,
       needsConversationHistory: value.needsConversationHistory === true,
       capabilities: strings(value.capabilities).filter((item): item is Aida2Capability => capabilities.has(item as Aida2Capability)),
@@ -97,6 +144,7 @@ function fallbackCognition(message: string): Aida2TurnCognition {
     selectedOption: directive.selectedOption,
     requestedAddition: null,
     constraints: [],
+    tasks: [],
     referencesPreviousTurn: directive.requiresHistory,
     needsConversationHistory: directive.requiresHistory,
     capabilities: directive.allowsCulinaryPlan
@@ -137,6 +185,29 @@ function authorizeCognition(
   const count = cognition.dialogueAct === "REPAIR_PREVIOUS_RESPONSE"
     ? culinaryMemory?.requestedCount ?? cognition.requestedCount
     : cognition.requestedCount;
+  const fallbackTaskType: Partial<Record<Aida2TurnCognition["dialogueAct"], Aida2CognitiveTaskType>> = {
+    VALIDATE_FOOD: "VALIDATE_FOOD",
+    REQUEST_RECIPE: "GENERATE_OPTIONS",
+    SELECT_RECIPE_OPTION: "EXPLAIN_RECIPE",
+    MODIFY_SELECTED_OPTION: "MODIFY_OPTION",
+    ASK_PREPARATION: "EXPLAIN_RECIPE",
+    PAIR_FOOD_OR_DRINK: "ADD_ACCOMPANIMENT",
+    REPAIR_PREVIOUS_RESPONSE: "REPAIR_RESPONSE",
+  };
+  const tasks = cognition.tasks.length > 0 ? cognition.tasks : fallbackTaskType[cognition.dialogueAct]
+    ? [{
+        id: "task_1",
+        type: fallbackTaskType[cognition.dialogueAct]!,
+        target: cognition.foodTarget,
+        quantity: cognition.requestedCount,
+        selectedOption: cognition.selectedOption,
+        relationTarget: null,
+        requirements: cognition.constraints,
+        exclusions: [],
+        preferences: cognition.requestedAddition ? [cognition.requestedAddition] : [],
+        dependsOn: [],
+      }]
+    : [];
   return {
     ...cognition,
     foodTarget: cognition.foodTarget ?? (contextual ? culinaryMemory?.target ?? null : null),
@@ -144,6 +215,7 @@ function authorizeCognition(
     referencesPreviousTurn: contextual,
     needsConversationHistory: contextual,
     capabilities: capabilityMap[cognition.dialogueAct],
+    tasks,
     responseContract: {
       ...cognition.responseContract,
       exactOptionCount: cognition.dialogueAct === "REQUEST_RECIPE"
@@ -177,7 +249,11 @@ export async function understandTurnWithBrain(params: {
           "En preparaciones 'X de Y', foodTarget es la base real Y y preparationStyle es X cuando X sólo describe estilo o imitación. Ejemplo: atún de soya => foodTarget soya, preparationStyle atún.",
           "Formas como 'puedo comerlo', 'qué me dices de', 'conviene' pueden ser validación aunque no digan exactamente 'puedo comer'.",
           "Si el usuario reclama que pidió N opciones y recibió menos, usa REPAIR_PREVIOUS_RESPONSE y conserva objetivo y cantidad del plan activo.",
-          "Devuelve exclusivamente JSON con dialogueAct, confidence, explicitCurrentGoal, foodTarget, preparationStyle, requestedCount, selectedOption, requestedAddition, constraints, referencesPreviousTurn, needsConversationHistory, capabilities y responseContract.",
+          "Descompón todas las solicitudes del mensaje en tasks; no hay límite conceptual de dos tareas.",
+          "Cada task contiene id, type, target, quantity, selectedOption, relationTarget, requirements, exclusions, preferences y dependsOn.",
+          "Tipos permitidos: GENERATE_OPTIONS, VALIDATE_FOOD, EXPLAIN_RECIPE, MODIFY_OPTION, ADD_ACCOMPANIMENT, SUBSTITUTE_INGREDIENT, REPAIR_RESPONSE.",
+          "Ejemplo: '3 opciones con pulpo, una con aguacate; valida tostada; agrega bebida no agua, té o café' produce tres tasks. La primera quantity=3 y requirements=['al menos una con aguacate']; la tercera exclusions=['agua'], preferences=['té','café'] y depende de la primera.",
+          "Devuelve exclusivamente JSON con dialogueAct, confidence, explicitCurrentGoal, foodTarget, preparationStyle, requestedCount, selectedOption, requestedAddition, constraints, tasks, referencesPreviousTurn, needsConversationHistory, capabilities y responseContract.",
           "capabilities sólo puede contener PROTOCOL_VALIDATION, SEMANTIC_FOOD_ANALYSIS, CULINARY_PLANNING, RECIPE_RECALL, CONTEXT_REPAIR, GENERAL_COMPOSITION.",
           "responseContract contiene answerCurrentQuestionFirst, exactOptionCount, preservePreviousTarget y mustRepairPreviousResponse.",
           culinaryMemory ? `PLAN CULINARIO ACTIVO ESTRUCTURADO:\n${JSON.stringify(culinaryMemory)}` : "No existe plan culinario activo.",
