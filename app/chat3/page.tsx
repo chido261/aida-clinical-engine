@@ -54,9 +54,11 @@ export default function Chat3Page() {
       const response = await fetch("/api/chat3", { method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ deviceId, messages: nextMessages.slice(-12) }), signal: controller.signal });
       const data = await response.json() as { ok?: boolean; reply?: string; error?: string;
-        diagnostics?: Array<{ taskId: string; expertId: string; errorCode: string | null }> };
+        diagnostics?: Array<{ taskId: string; expertId: string; errorCode: string | null;
+          data?: { violations?: string[] } }> };
       if (!response.ok || !data.ok || !data.reply) {
-        const details = data.diagnostics?.map(item => `${item.taskId}/${item.expertId}: ${item.errorCode}`).join("; ");
+        const details = data.diagnostics?.map(item => `${item.taskId}/${item.expertId}: ${item.errorCode}${
+          item.data?.violations?.length ? ` [${item.data.violations.join(", ")}]` : ""}`).join("; ");
         throw new Error([data.error || "Chat3 no pudo responder.", details].filter(Boolean).join(" "));
       }
       setMessages(current => [...current, { role: "assistant", content: data.reply! }]);
