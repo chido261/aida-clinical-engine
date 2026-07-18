@@ -3,6 +3,7 @@ import type { StoredRecipeOption } from "./contracts";
 export interface CulinaryMemory {
   saveOptions(conversationId: string, options: StoredRecipeOption[]): Promise<void>;
   getOption(conversationId: string, recipeId: string): Promise<StoredRecipeOption | null>;
+  listOptions(conversationId: string): Promise<StoredRecipeOption[]>;
 }
 
 export class InMemoryCulinaryMemory implements CulinaryMemory {
@@ -17,5 +18,9 @@ export class InMemoryCulinaryMemory implements CulinaryMemory {
   async getOption(conversationId: string, recipeId: string) {
     const option = this.conversations.get(conversationId)?.get(recipeId);
     return option ? structuredClone(option) : null;
+  }
+
+  async listOptions(conversationId: string) {
+    return [...(this.conversations.get(conversationId)?.values() ?? [])].map(option => structuredClone(option));
   }
 }
