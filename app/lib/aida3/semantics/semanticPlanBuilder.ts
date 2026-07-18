@@ -38,15 +38,20 @@ export function buildTurnPlan(params: {
   understanding: SemanticTurnUnderstanding;
 }): Aida3TurnPlan {
   assertUnderstanding(params.understanding);
+  const nutritionTaskIds = params.understanding.requests
+    .filter(request => request.kind === "FOOD_VALIDATION")
+    .map(request => request.id);
   const tasks: Aida3Task[] = params.understanding.requests.map(request => {
     const route = ROUTES[request.kind];
+    const requiresNutrition = request.kind === "MEAL_OPTIONS" || request.kind === "BEVERAGE_OPTIONS";
+    const dependsOn = [...new Set([...request.dependsOn, ...(requiresNutrition ? nutritionTaskIds : [])])];
     return {
       id: request.id,
       expertId: route.expertId,
       action: route.action,
       subject: request.subject || null,
       input: taskInput(request, params.protocolId),
-      dependsOn: [...request.dependsOn],
+      dependsOn,
       required: request.required,
     };
   });
