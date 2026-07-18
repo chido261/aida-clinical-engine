@@ -79,6 +79,9 @@ export class ChefExpert implements Aida3Expert {
       decision: "RECIPE_NOT_IN_MEMORY", patientSummary: "Necesito que elijas una opción disponible de esta conversación.",
       data: {}, missingUserFields: ["selectedRecipeId"], errorCode: null };
     const instructions = await this.recipes.explain(option);
+    if (instructions.recipeId !== option.id || instructions.title !== option.name || instructions.steps.length === 0) {
+      return this.failed(context, "INVALID_RECIPE_TOOL_OUTPUT");
+    }
     return this.completed(context, "RECIPE_EXPLAINED", { recipe: option, instructions }, instructions.title);
   }
 
