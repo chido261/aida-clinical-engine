@@ -52,9 +52,12 @@ export function normalizeFoodText(value: string) {
 function matches(candidate: string, term: string) {
   const left = normalizeFoodText(candidate);
   const right = normalizeFoodText(term);
+  const singular = (value: string) => value.endsWith("s") ? value.slice(0, -1) : value;
   return left === right ||
+    singular(left) === singular(right) ||
     ` ${left} `.includes(` ${right} `) ||
-    (left.split(" ").length === 1 && ` ${right} `.includes(` ${left} `));
+    (left.split(" ").length === 1 &&
+      right.split(" ").some(word => singular(word) === singular(left)));
 }
 
 function compatible(
@@ -91,13 +94,31 @@ export function classifyFood(params: {
     { category: "leguminosa", foods: allowedFoods.legumes, reason: "aparece como leguminosa permitida por el protocolo" },
     { category: "fruta", foods: allowedFoods.fruits, reason: "aparece como fruta permitida por el protocolo" },
     { category: "bebida", foods: allowedFoods.beverages, reason: "aparece como bebida compatible" },
+    { category: "endulzante compatible", foods: allowedFoods.sweeteners, reason: "aparece como endulzante permitido por el protocolo" },
   ];
 
-  for (const group of protocolGroups) {
-    const match = group.foods.find(food => matches(candidate, food));
-    if (match) {
-      return compatible(candidate, match, group.category, group.reason, "protocol_reference");
-    }
+  const protocolMatches = protocolGroups.flatMap(group =>
+    group.foods
+      .filter(food => matches(candidate, food))
+      .map(food => ({ ...group, food }))
+  ).sort((left, right) => {
+    const candidateText = normalizeFoodText(candidate);
+    const leftText = normalizeFoodText(left.food);
+    const rightText = normalizeFoodText(right.food);
+    const leftExact = leftText === candidateText ? 1 : 0;
+    const rightExact = rightText === candidateText ? 1 : 0;
+    if (leftExact !== rightExact) return rightExact - leftExact;
+    return leftText.split(" ").length - rightText.split(" ").length;
+  });
+  const protocolMatch = protocolMatches[0];
+  if (protocolMatch) {
+    return compatible(
+      candidate,
+      protocolMatch.food,
+      protocolMatch.category,
+      protocolMatch.reason,
+      "protocol_reference"
+    );
   }
 
   for (const group of CLINICAL_GROUPS) {
