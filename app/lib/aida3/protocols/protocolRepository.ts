@@ -1,7 +1,12 @@
 import fs from "node:fs";
 import path from "node:path";
 import type { ProtocolDocument, ProtocolId, ProtocolPhase } from "./contracts";
-import { parseFoodCatalog, parseOperationalConfig, parseProtocolSections } from "./markdownProtocolParser";
+import {
+  parseFoodCatalog,
+  parseOperationalConfig,
+  parsePolicyCatalog,
+  parseProtocolSections,
+} from "./markdownProtocolParser";
 
 const PROTOCOLS: Record<ProtocolId, { name: string; file: string; phase: ProtocolPhase }> = {
   DIAGNOSTICO_7_DIAS: { name: "Fase Diagnóstico 7 días", file: "docs/protocols/diagnostico_7_dias.md", phase: "DIAGNOSTICO" },
@@ -27,6 +32,7 @@ export class ProtocolRepository {
       sections: Object.freeze({ ...sections }),
       operational: parseOperationalConfig(operationalText, definition.phase),
       foods: Object.freeze(parseFoodCatalog(sections)),
+      policies: Object.freeze(parsePolicyCatalog(sections)),
     });
     this.cache.set(protocolId, protocol);
     return protocol;
