@@ -174,6 +174,15 @@ export function buildAida2ComposerPrompt(params: {
           "",
           "VALIDACIÓN TÉCNICA DEL ESPECIALISTA:",
           mealModule.recommendation,
+          "",
+          "PLAN CULINARIO VERIFICADO:",
+          mealModule.culinaryPlan?.requested
+            ? mealModule.culinaryPlan.recipes.length > 0
+              ? mealModule.culinaryPlan.recipes.map(recipe =>
+                  `- ${recipe.title}: ${recipe.ingredients.map(item => `${item.amount} ${item.name}`).join(", ")}`
+                ).join("\n")
+              : `No disponible: ${mealModule.culinaryPlan.error ?? "sin recetas verificadas"}`
+            : "No solicitado.",
         ].join("\n")
       : "MealSpecialist no ejecutado.",
 
