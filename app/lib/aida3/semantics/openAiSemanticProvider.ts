@@ -50,7 +50,7 @@ function parseRequests(value: unknown): { responseLength: SemanticTurnUnderstand
 }
 
 export class OpenAiSemanticProvider implements SemanticUnderstandingProvider {
-  constructor(private readonly openai: OpenAI, private readonly model = process.env.OPENAI_SEMANTIC_MODEL ?? "gpt-5.6-sol") {}
+  constructor(private readonly openai: OpenAI, private readonly model = process.env.OPENAI_SEMANTIC_MODEL ?? "gpt-4.1-mini") {}
 
   async understand(params: { message: string; relevantContext: Record<string, unknown> }): Promise<SemanticTurnUnderstanding> {
     const response = await this.openai.responses.create({
@@ -65,7 +65,7 @@ export class OpenAiSemanticProvider implements SemanticUnderstandingProvider {
       ].join("\n"),
       input: JSON.stringify({ message: params.message, relevantContext: params.relevantContext }),
       text: { format: { type: "json_schema", name: "aida3_semantic_turn", strict: true, schema: OUTPUT_SCHEMA } },
-    });
+    }, { timeout: Number(process.env.OPENAI_SEMANTIC_TIMEOUT_MS ?? 20_000), maxRetries: 0 });
     const output = response.output_text?.trim();
     if (!output) throw new Error("AIDA3_SEMANTIC_EMPTY_OUTPUT");
     let parsed: unknown;
