@@ -9,3 +9,4 @@ export * from "./protocols/contracts";
 export * from "./protocols/markdownProtocolParser";
 export * from "./protocols/protocolRepository";
 export * from "./experts/nutrition";
+export * from "./semantics";
