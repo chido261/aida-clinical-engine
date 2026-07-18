@@ -205,7 +205,6 @@ export function generateMealRecommendation(
           validations: compatibleFoods,
           avoidFoods,
           requestedText: currentUserMessage,
-          semanticInterpretation: request.semanticInterpretation,
         })
       : [];
 
@@ -325,9 +324,10 @@ function buildProtocolGuidance(params: {
   if (validations.length > 0) {
     lines.push("", "ALIMENTOS, INGREDIENTES O PREPARACIONES DETECTADAS:");
     validations.forEach(item => {
-      lines.push(
-        `- ${item.food}: ${item.category}; ${item.isCompatible ? "compatible" : "no recomendado"}; ${item.reason}`
-      );
+      const label = item.source === "unknown"
+        ? "clasificación pendiente"
+        : item.isCompatible ? "compatible" : "no recomendado";
+      lines.push(`- ${item.food}: ${item.category}; ${label}; ${item.reason}`);
     });
   }
 
@@ -390,30 +390,8 @@ function buildCompatibleOptions(params: {
   validations: FoodValidation[];
   avoidFoods: string[];
   requestedText?: string;
-  semanticInterpretation?: SemanticFoodInterpretation | null;
 }) {
-  const { mealType, requestedCount, validations, avoidFoods, requestedText, semanticInterpretation } = params;
-
-  if (
-    semanticInterpretation?.dishName &&
-    semanticInterpretation.confidence >= 0.65 &&
-    semanticInterpretation.semanticType !== "literal_food"
-  ) {
-    const dish = capitalize(semanticInterpretation.dishName);
-    const semanticOptions = [
-      `${dish} con pepino, jitomate, aguacate y limón.`,
-      `${dish} con nopal, pimiento y aceite de oliva extra virgen.`,
-      `${dish} con calabaza, espinaca y champiñones.`,
-    ];
-    return Array.from({ length: requestedCount }, (_, index) => ({
-      title: semanticOptions[index % semanticOptions.length],
-      proteins: [],
-      vegetables: [],
-      fats: [],
-      legumes: [],
-      fruits: [],
-    })).filter(option => !containsFood(option.title, avoidFoods));
-  }
+  const { mealType, requestedCount, validations, avoidFoods, requestedText } = params;
 
   if (/\btortillas?\b/i.test(requestedText ?? "")) {
     const tortillaOptions = [
