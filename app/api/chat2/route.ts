@@ -29,6 +29,7 @@ import type { SemanticFoodInterpretation } from "@/app/lib/aida2/modules/foodDec
 import { auditTaskGraphCoverage, understandTurnWithBrain } from "@/app/lib/aida2/turnCognition";
 import { verifyTurnContract } from "@/app/lib/aida2/turnContract";
 import { executeMultiTaskGraph } from "@/app/lib/aida2/multiTaskExecutor";
+import { resolveTaskGraphTurn } from "@/app/lib/aida2/taskGraphOrchestrator";
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
@@ -428,17 +429,11 @@ export async function POST(req: Request) {
       cognition: turnCognition,
       protocol,
     });
-    if (taskGraphAudit.audited && !taskGraphAudit.complete) {
-      return NextResponse.json({
-        ok: true,
-        reply: "Identifiqué varias solicitudes, pero todavía no pude comprobar que todas estén representadas. Prefiero no darte una respuesta parcial; inténtalo nuevamente para reconstruir el plan completo.",
-        aida2: true,
-        userId,
-        turnCognition,
-        taskGraphAudit,
-      });
-    }
-    if (multiTaskResult.handled) {
+    const taskGraphTurn = resolveTaskGraphTurn({
+      audit: taskGraphAudit,
+      execution: multiTaskResult,
+    });
+    if (taskGraphTurn.handled) {
       const moduleResults = runAida2Modules({
         workPlan,
         history,
@@ -449,9 +444,7 @@ export async function POST(req: Request) {
       if (moduleResults.meal && multiTaskResult.primaryCulinaryPlan) {
         moduleResults.meal.culinaryPlan = multiTaskResult.primaryCulinaryPlan;
       }
-      const reply = multiTaskResult.valid
-        ? multiTaskResult.reply
-        : `No completé correctamente todas tus solicitudes: ${multiTaskResult.violations.join(" ")}`;
+      const reply = taskGraphTurn.reply;
       await updateAida2ContextMemoryAfterResponse({
         userId,
         userMessage: lastUserMessage,
@@ -470,6 +463,7 @@ export async function POST(req: Request) {
         modules: moduleResults,
         turnCognition,
         multiTaskResult,
+        taskGraphTurn,
         taskGraphAudit,
       });
     }
