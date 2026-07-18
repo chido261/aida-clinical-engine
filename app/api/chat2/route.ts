@@ -13,6 +13,8 @@ import {
   type ProtocolId,
 } from "@/app/lib/aida2/modules/protocolModule";
 import { interpretFoodSemantics } from "@/app/lib/aida2/modules/semanticFoodInterpreter";
+import { resolveUnknownFoodKnowledge } from "@/app/lib/aida2/modules/foodKnowledgeResolver";
+import { buildCulinaryPlan } from "@/app/lib/aida2/modules/culinaryPlanner";
 import { buildAida2ConversationStrategy } from "@/app/lib/aida2/conversationStrategy";
 import { buildAida2ComposerPrompt } from "@/app/lib/aida2/responseComposer";
 import {
@@ -365,13 +367,23 @@ export async function POST(req: Request) {
       memory.userState.activeProtocol
     );
 
-    const semanticInterpretation = workPlan.foodContext.isFoodRelated
+    const initialSemanticInterpretation = workPlan.foodContext.isFoodRelated
       ? await interpretFoodSemantics({
           openai,
           userMessage: lastUserMessage,
           protocol: runProtocolModule({ protocolId }),
         })
       : null;
+
+    const knowledgeResolution = initialSemanticInterpretation
+      ? await resolveUnknownFoodKnowledge({
+          openai,
+          userMessage: lastUserMessage,
+          interpretation: initialSemanticInterpretation,
+        })
+      : null;
+    const semanticInterpretation =
+      knowledgeResolution?.interpretation ?? initialSemanticInterpretation;
 
     const moduleResults = runAida2Modules({
       workPlan,
@@ -380,6 +392,18 @@ export async function POST(req: Request) {
       protocolId,
       semanticInterpretation,
     });
+
+    const culinaryPlan = semanticInterpretation && workPlan.foodContext.isFoodRelated
+      ? await buildCulinaryPlan({
+          openai,
+          userMessage: lastUserMessage,
+          interpretation: semanticInterpretation,
+          protocol: runProtocolModule({ protocolId }),
+        })
+      : null;
+    if (moduleResults.meal && culinaryPlan?.requested) {
+      moduleResults.meal.culinaryPlan = culinaryPlan;
+    }
 
     const conversationStrategy = buildAida2ConversationStrategy({
       workPlan,
@@ -397,18 +421,19 @@ export async function POST(req: Request) {
       semanticInterpretation,
     });
 
-    const response = await openai.chat.completions.create({
-      model: "gpt-4.1-mini",
-      temperature: 0.25,
-      messages: [
-        { role: "system", content: systemPrompt },
-        ...messages.filter((m) => m.role !== "system").slice(-8),
-      ],
-    });
-
-    const modelReply =
-      response.choices[0]?.message?.content ??
-      "No pude generar una respuesta en este momento.";
+    // El plan culinario ya contiene una respuesta estructurada y verificada.
+    // Evitamos una llamada adicional que sólo sería descartada por el guard.
+    const modelReply = culinaryPlan?.requested
+      ? ""
+      : (await openai.chat.completions.create({
+          model: "gpt-4.1-mini",
+          temperature: 0.25,
+          messages: [
+            { role: "system", content: systemPrompt },
+            ...messages.filter((m) => m.role !== "system").slice(-8),
+          ],
+        })).choices[0]?.message?.content ??
+        "No pude generar una respuesta en este momento.";
 
     const reply = enforceAida2StructuredDecision({
       reply: modelReply,
@@ -440,6 +465,9 @@ export async function POST(req: Request) {
       workPlan,
       modules: moduleResults,
       conversationStrategy,
+      semanticInterpretation,
+      knowledgeResolution: knowledgeResolution?.knowledge ?? null,
+      culinaryPlan,
     });
   } catch (error: unknown) {
     console.error("API /api/chat2 ERROR:", error);
