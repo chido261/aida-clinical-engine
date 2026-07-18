@@ -190,7 +190,35 @@ export async function auditTaskGraphCoverage(params: {
     const certificationResponse = await openai.chat.completions.create({
       model: "gpt-4.1-mini",
       temperature: 0,
-      response_format: { type: "json_object" },
+      response_format: {
+        type: "json_schema",
+        json_schema: {
+          name: "task_graph_certification",
+          strict: true,
+          schema: {
+            type: "object",
+            additionalProperties: false,
+            properties: {
+              complete: { type: "boolean" },
+              obligations: {
+                type: "array",
+                items: {
+                  type: "object",
+                  additionalProperties: false,
+                  properties: {
+                    id: { type: "string" },
+                    description: { type: "string" },
+                    coveredByTaskId: { type: "string" },
+                  },
+                  required: ["id", "description", "coveredByTaskId"],
+                },
+              },
+              missingObligations: { type: "array", items: { type: "string" } },
+            },
+            required: ["complete", "obligations", "missingObligations"],
+          },
+        },
+      },
       messages: [{
         role: "system",
         content: [
