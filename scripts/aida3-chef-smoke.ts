@@ -4,11 +4,16 @@ import {
   type BeverageOptionsTool, type MealOptionsTool, type RecipeStepsTool, type Aida3TurnPlan,
 } from "../app/lib/aida3";
 
-const meals: MealOptionsTool = { generate: async input => Array.from({ length: input.count }, (_, index) => ({
+let mealToolCalls = 0;
+const meals: MealOptionsTool = { generate: async input => {
+  mealToolCalls += 1;
+  const count = mealToolCalls === 1 ? input.count - 1 : input.count;
+  return Array.from({ length: count }, (_, index) => ({
   id: `option-${index + 1}`, name: `Pulpo opción ${index + 1}`,
   ingredients: index === 0 ? ["pulpo", "aguacate", "jitomate"] : ["pulpo", "espárragos"],
   description: `Opción compatible ${index + 1}`,
-})) };
+  }));
+} };
 const beverages: BeverageOptionsTool = { generate: async input => Array.from({ length: input.count }, (_, index) => ({
   id: `beverage-${index + 1}`, name: "Té verde sin azúcar", ingredients: ["té verde"],
 })) };
@@ -34,6 +39,7 @@ async function main() {
   const first = await orchestrator.execute(firstTurn);
   assert.equal(first.status, "READY_FOR_HUMANIZER");
   assert.equal(first.bundle.results.find(result => result.taskId === "options")?.data.count, 5);
+  assert.equal(mealToolCalls, 2);
   assert.equal(first.bundle.results.find(result => result.taskId === "drink")?.data.count, 1);
 
   const detail = await orchestrator.execute({ turnId: "chef-turn-2", originalMessage: "Explícame la opción 2.", responseLength: "DETAILED",
