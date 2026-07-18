@@ -48,9 +48,19 @@ export class ChefExpert implements Aida3Expert {
   private async generateMeals(context: Aida3ExpertContext): Promise<Aida3ExpertResult> {
     const input = this.generationContext(context);
     if (!input) return this.failed(context, "NUTRITION_DECISION_OR_COUNT_REQUIRED");
-    const options = await this.meals.generate(input);
-    if (!this.validOptions(options, input.count, input.constraints.atLeastOneIncludes)) {
-      return this.failed(context, "INVALID_MEAL_OPTIONS_TOOL_OUTPUT");
+    let options: StoredRecipeOption[] = [];
+    let violations: string[] = [];
+    for (let attempt = 1; attempt <= 2; attempt += 1) {
+      options = await this.meals.generate({ ...input, constraints: { ...input.constraints,
+        ...(violations.length ? { validationFeedback: violations } : {}) } });
+      violations = this.optionViolations(options, input.count, input.constraints.atLeastOneIncludes);
+      if (violations.length === 0) break;
+    }
+    if (violations.length > 0) {
+      return this.failed(context, "INVALID_MEAL_OPTIONS_TOOL_OUTPUT", {
+        violations, requestedCount: input.count, receivedCount: options.length,
+        receivedOptions: options.map(option => ({ id: option.id, name: option.name, ingredients: option.ingredients })),
+      });
     }
     await this.memory.saveOptions(this.conversationId(context), options);
     return this.completed(context, "OPTIONS_GENERATED", { options, count: options.length }, `${options.length} opciones preparadas`);
@@ -85,11 +95,20 @@ export class ChefExpert implements Aida3Expert {
     return this.completed(context, "RECIPE_EXPLAINED", { recipe: option, instructions }, instructions.title);
   }
 
-  private validOptions(options: StoredRecipeOption[], count: number, required: unknown) {
-    if (options.length !== count || new Set(options.map(option => option.id)).size !== count) return false;
-    if (!Array.isArray(required) || required.length === 0) return true;
-    return required.every(value => options.some(option => option.ingredients.some(ingredient =>
-      ingredient.toLowerCase().includes(String(value).toLowerCase()))));
+  private optionViolations(options: StoredRecipeOption[], count: number, required: unknown) {
+    const violations: string[] = [];
+    if (options.length !== count) violations.push(`COUNT_MISMATCH:expected=${count}:received=${options.length}`);
+    if (new Set(options.map(option => option.id)).size !== options.length) violations.push("DUPLICATE_OPTION_IDS");
+    if (options.some(option => !option.id.trim() || !option.name.trim() || option.ingredients.length === 0)) {
+      violations.push("INCOMPLETE_OPTION");
+    }
+    if (Array.isArray(required)) for (const value of required) {
+      const wanted = String(value).normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+      const found = options.some(option => option.ingredients.some(ingredient =>
+        ingredient.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().includes(wanted)));
+      if (!found) violations.push(`REQUIRED_INGREDIENT_MISSING:${String(value)}`);
+    }
+    return violations;
   }
 
   private conversationId(context: Aida3ExpertContext) {
@@ -102,8 +121,8 @@ export class ChefExpert implements Aida3Expert {
       decision, patientSummary: summary, data, missingUserFields: [], errorCode: null };
   }
 
-  private failed(context: Aida3ExpertContext, errorCode: string): Aida3ExpertResult {
+  private failed(context: Aida3ExpertContext, errorCode: string, data: Record<string, unknown> = {}): Aida3ExpertResult {
     return { taskId: context.task.id, expertId: this.id, status: "FAILED", subject: context.task.subject,
-      decision: null, patientSummary: null, data: {}, missingUserFields: [], errorCode };
+      decision: null, patientSummary: null, data, missingUserFields: [], errorCode };
   }
 }
