@@ -30,6 +30,7 @@ export class OpenAiChefTools {
       instructions: ["Eres la herramienta de opciones del chef de AIDA.",
         "Genera exactamente count opciones distintas usando sólo approvedFoods y conditionalFoods.",
         "Nunca uses rejectedFoods. Cumple atLeastOneIncludes. No tomes decisiones clínicas.",
+        "Si recibes validationFeedback, corrige cada violación indicada antes de responder.",
         "Usa ids option-1, option-2, etc."].join("\n"), input: JSON.stringify(context),
       text: { format: { type: "json_schema", name: "aida3_meal_options", strict: true, schema: MEALS_SCHEMA } },
     }, { timeout: Number(process.env.OPENAI_CHEF_TIMEOUT_MS ?? 25_000), maxRetries: 0 });
