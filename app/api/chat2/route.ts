@@ -26,7 +26,7 @@ import {
 import { reviewCurrentProtocolWeekIfDue } from "@/app/lib/aida2/weeklyProtocolReview";
 import { enforceAida2StructuredDecision } from "@/app/lib/aida2/responseGuard";
 import type { SemanticFoodInterpretation } from "@/app/lib/aida2/modules/foodDecisionTypes";
-import { understandTurnWithBrain } from "@/app/lib/aida2/turnCognition";
+import { auditTaskGraphCoverage, understandTurnWithBrain } from "@/app/lib/aida2/turnCognition";
 import { verifyTurnContract } from "@/app/lib/aida2/turnContract";
 import { executeMultiTaskGraph } from "@/app/lib/aida2/multiTaskExecutor";
 
@@ -394,12 +394,19 @@ export async function POST(req: Request) {
 
     const conversationState = buildConversationStateFromMemory(memory);
 
-    const turnCognition = await understandTurnWithBrain({
+    let turnCognition = await understandTurnWithBrain({
       openai,
       message: lastUserMessage,
       recentHistory,
       culinaryMemory: memory.metadata.activeCulinaryPlan,
     });
+    const taskGraphAudit = await auditTaskGraphCoverage({
+      openai,
+      message: lastUserMessage,
+      cognition: turnCognition,
+      culinaryMemory: memory.metadata.activeCulinaryPlan,
+    });
+    turnCognition = taskGraphAudit.cognition;
 
     const workPlan = buildAida2WorkPlan({
       userId,
@@ -421,6 +428,16 @@ export async function POST(req: Request) {
       cognition: turnCognition,
       protocol,
     });
+    if (taskGraphAudit.audited && !taskGraphAudit.complete) {
+      return NextResponse.json({
+        ok: true,
+        reply: "Identifiqué varias solicitudes, pero todavía no pude comprobar que todas estén representadas. Prefiero no darte una respuesta parcial; inténtalo nuevamente para reconstruir el plan completo.",
+        aida2: true,
+        userId,
+        turnCognition,
+        taskGraphAudit,
+      });
+    }
     if (multiTaskResult.handled) {
       const moduleResults = runAida2Modules({
         workPlan,
@@ -453,6 +470,7 @@ export async function POST(req: Request) {
         modules: moduleResults,
         turnCognition,
         multiTaskResult,
+        taskGraphAudit,
       });
     }
 
@@ -583,6 +601,7 @@ export async function POST(req: Request) {
       knowledgeResolution: knowledgeResolution?.knowledge ?? null,
       culinaryPlan,
       turnCognition,
+      taskGraphAudit,
       turnContract,
     });
   } catch (error: unknown) {
