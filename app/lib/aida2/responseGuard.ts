@@ -123,22 +123,6 @@ export function enforceAida2StructuredDecision(params: {
   const allowedFoods = mealModule.decision.foods.filter(
     food => food.status === "ALLOWED"
   );
-  const replyContradictsAllowedDecision =
-    allowedFoods.length > 0 &&
-    /\b(no se recomienda|no es compatible|mejor evita|no puedes|no lo incluyas)\b/i.test(reply);
-  if (replyContradictsAllowedDecision) {
-    const subject = mealModule.semanticInterpretation?.dishName ??
-      formatFoods(allowedFoods.map(food => food.food));
-    const reasons = [...new Set(allowedFoods.map(food => food.reason))];
-    return [
-      `Sí, ${subject} es compatible con ${phaseLabel(mealModule.decision.protocolId)}.`,
-      `La decisión se basa en ${formatFoods(allowedFoods.map(food => food.canonicalFood))}: ${reasons.join("; ")}.`,
-      mealModule.semanticInterpretation?.isCommercialProduct
-        ? "Si es un producto comercial, revisa también su lista completa de ingredientes."
-        : null,
-    ].filter(Boolean).join("\n\n");
-  }
-
   const ingredientBasedPreparations = mealModule.decision.foods.filter(
     (food) => food.source === "ingredient_based_preparation" && food.status === "ALLOWED"
   );
@@ -155,6 +139,33 @@ export function enforceAida2StructuredDecision(params: {
       )}.`,
       `${capitalizeSentence(reasons.join("; "))}. La decisión se basa en sus ingredientes y no en el nombre de la preparación.`,
     ].join("\n\n");
+  }
+
+  if (!reply.trim() && confirmedFoods.length > 0) {
+    const subject = mealModule.semanticInterpretation?.dishName ??
+      formatFoods(confirmedFoods.map(food => food.canonicalFood));
+    const reasons = [...new Set(confirmedFoods.map(food => food.reason))];
+    const needsValidation = confirmedFoods.some(food => food.status === "ALLOWED_WITH_VALIDATION");
+    return [
+      `Sí, ${subject} ${needsValidation ? "puede incluirse con la validación indicada" : "es compatible"} con ${phaseLabel(mealModule.decision.protocolId)}.`,
+      reasons.length > 0 ? `La razón es que ${reasons.join("; ")}.` : null,
+      needsValidation ? "Mide tu glucosa 2 horas después del primer bocado para validar esa porción." : null,
+    ].filter(Boolean).join("\n\n");
+  }
+  const replyContradictsAllowedDecision =
+    allowedFoods.length > 0 &&
+    /\b(no se recomienda|no es compatible|mejor evita|no puedes|no lo incluyas)\b/i.test(reply);
+  if (replyContradictsAllowedDecision) {
+    const subject = mealModule.semanticInterpretation?.dishName ??
+      formatFoods(allowedFoods.map(food => food.food));
+    const reasons = [...new Set(allowedFoods.map(food => food.reason))];
+    return [
+      `Sí, ${subject} es compatible con ${phaseLabel(mealModule.decision.protocolId)}.`,
+      `La decisión se basa en ${formatFoods(allowedFoods.map(food => food.canonicalFood))}: ${reasons.join("; ")}.`,
+      mealModule.semanticInterpretation?.isCommercialProduct
+        ? "Si es un producto comercial, revisa también su lista completa de ingredientes."
+        : null,
+    ].filter(Boolean).join("\n\n");
   }
 
   if (
