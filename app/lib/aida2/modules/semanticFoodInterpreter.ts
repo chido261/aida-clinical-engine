@@ -53,8 +53,9 @@ export async function interpretFoodSemantics(params: {
   openai: OpenAI;
   userMessage: string;
   protocol: ProtocolModuleOutput;
+  conversationHistory?: string;
 }): Promise<SemanticFoodInterpretation> {
-  const { openai, userMessage, protocol } = params;
+  const { openai, userMessage, protocol, conversationHistory } = params;
   const allowed = protocol.structured.allowedFoods;
   const protocolVocabulary = Object.values(allowed).flat().slice(0, 160).join(", ");
 
@@ -75,7 +76,10 @@ export async function interpretFoodSemantics(params: {
             "requiresClarification sólo debe ser true cuando falta información que realmente podría cambiar la evaluación; una receta solicitada puede construirse usando ingredientes compatibles.",
             "Devuelve JSON con dishName, semanticType, baseIngredients, declaredIngredients, styleReferences, isCommercialProduct, requiresClarification, clarificationReason y confidence (0 a 1).",
             `Vocabulario del protocolo para reconocer equivalencias, no para decidir: ${protocolVocabulary}`,
-          ].join("\n"),
+            conversationHistory
+              ? `Usa este historial únicamente para resolver referencias como “esa”, “la opción 2” o “la anterior”:\n${conversationHistory}`
+              : "",
+          ].filter(Boolean).join("\n"),
         },
         { role: "user", content: userMessage },
       ],
