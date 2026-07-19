@@ -52,12 +52,12 @@ export async function POST(request: Request) {
     const userId = body.deviceId?.trim() || "chat3-local";
     const [user, options] = await Promise.all([
       prisma.userState.upsert({ where: { id: userId }, create: { id: userId }, update: {},
-        select: { activePhase: true, activeProtocol: true } }),
+        select: { name: true, activePhase: true, activeProtocol: true } }),
       culinaryMemory.listOptions(userId),
     ]);
     const execution = await engine.execute({ turnId: randomUUID(), message,
-      context: { conversationId: userId, protocolId: protocolId(user.activePhase, user.activeProtocol),
-        recentConversation,
+      context: { conversationId: userId, patientName: user.name?.trim() || null,
+        protocolId: protocolId(user.activePhase, user.activeProtocol), recentConversation,
         availableRecipes: options.map(option => ({ id: option.id, name: option.name })) } });
     if (execution.response.source === "FAILURE") {
       const diagnostics = execution.outcome.bundle.results
