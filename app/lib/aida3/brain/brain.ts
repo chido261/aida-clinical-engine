@@ -43,7 +43,8 @@ export class Aida3Brain {
     for (const request of params.analysis.requests) {
       if (request.type === "FOOD_VALIDATION") continue;
       if (request.type === "GREETING") tasks.push({ id: request.id, expertId: "CONVERSATION", action: "GREET",
-        subject: "saludo", input: {}, dependsOn: [], required: true });
+        subject: "saludo", input: { patientName: params.context.patientName ?? null, variationSeed: params.turnId },
+        dependsOn: [], required: true });
       if (request.type === "GENERAL_EDUCATION") tasks.push({ id: request.id, expertId: "CONVERSATION",
         action: "ANSWER_GENERAL", subject: request.topic, input: { answer: request.answer },
         dependsOn: [], required: true });
