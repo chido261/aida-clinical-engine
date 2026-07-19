@@ -22,6 +22,7 @@ export type CurrentTurnAnalysis = {
 export type BrainContext = {
   protocolId: ProtocolId;
   conversationId: string;
+  patientName?: string | null;
   selectedRecipeId?: string | null;
   availableRecipes?: Array<{ id: string; name: string }>;
   pendingClarification?: { type: string; requestedAtTurnId: string } | null;
