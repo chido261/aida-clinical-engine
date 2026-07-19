@@ -50,13 +50,11 @@ export async function POST(request: Request) {
     const execution = await engine.execute({ turnId: randomUUID(), message,
       context: { conversationId: userId, protocolId: protocolId(user.activePhase, user.activeProtocol),
         availableRecipes: options.map(option => ({ id: option.id, name: option.name })) } });
-    console.info("AIDA3_TURN_TIMINGS", { userId, turnId: execution.plan.turnId, ...execution.timings });
     if (execution.response.source === "FAILURE") {
       const diagnostics = execution.outcome.bundle.results
         .filter(result => result.status === "FAILED" || result.status === "BLOCKED")
         .map(result => ({ taskId: result.taskId, expertId: result.expertId,
           status: result.status, errorCode: result.errorCode, data: result.data }));
-      console.error("AIDA3_TURN_FAILED", { turnId: execution.plan.turnId, diagnostics });
       return NextResponse.json({ ok: false, error: "Chat3 no pudo completar todos los módulos.",
         ...(process.env.NODE_ENV === "production" ? {} : { diagnostics, tasks: execution.plan.tasks,
           timings: execution.timings }) }, { status: 422 });
@@ -65,7 +63,6 @@ export async function POST(request: Request) {
       ...(process.env.NODE_ENV === "production" ? {} : { turnId: execution.plan.turnId,
         tasks: execution.plan.tasks, outcome: execution.outcome.status, timings: execution.timings }) });
   } catch (error) {
-    console.error("API /api/chat3 ERROR:", error);
     return NextResponse.json({ ok: false, error: error instanceof Error ? error.message : "Error desconocido" }, { status: 500 });
   }
 }
