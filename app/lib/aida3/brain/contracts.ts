@@ -25,6 +25,7 @@ export type BrainContext = {
   selectedRecipeId?: string | null;
   availableRecipes?: Array<{ id: string; name: string }>;
   pendingClarification?: { type: string; requestedAtTurnId: string } | null;
+  recentConversation?: Array<{ role: "user" | "assistant"; content: string }>;
 };
 
 export interface CurrentTurnAnalyzer {
