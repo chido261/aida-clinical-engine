@@ -29,62 +29,6 @@
   letter-spacing: -0.02em;
 }
 
-.headerActions {
-  position: relative;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.mode,
-.menuButton {
-  border: 1px solid #e5e7eb;
-  background: #ffffff;
-  border-radius: 999px;
-  padding: 7px 11px;
-  font-size: 12px;
-  font-weight: 700;
-  color: #111827;
-}
-
-.menuButton {
-  cursor: pointer;
-}
-
-.menu {
-  position: absolute;
-  top: 42px;
-  right: 0;
-  width: 190px;
-  padding: 8px;
-  z-index: 20;
-  border: 1px solid #e5e7eb;
-  border-radius: 14px;
-  background: #ffffff;
-  box-shadow: 0 18px 45px rgba(0, 0, 0, 0.14);
-}
-
-.menu button {
-  width: 100%;
-  border: 0;
-  border-radius: 10px;
-  background: #ffffff;
-  padding: 10px;
-  text-align: left;
-  font: inherit;
-  font-size: 14px;
-  font-weight: 650;
-  cursor: pointer;
-}
-
-.menu button:hover {
-  background: #f3f4f6;
-}
-
-.menu button:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
 
 .messages {
   height: 70vh;
@@ -229,11 +173,6 @@
   cursor: not-allowed;
 }
 
-.note {
-  margin: 7px 4px 0 58px;
-  color: #7a8494;
-  font-size: 11px;
-}
 
 .disclaimer {
   margin: 10px 0 0;
@@ -247,10 +186,6 @@
     padding: 16px 10px 12px;
   }
 
-  .mode {
-    display: none;
-  }
-
   .messages {
     height: calc(100vh - 205px);
     min-height: 360px;
@@ -260,8 +195,7 @@
     max-width: 92%;
   }
 
-  .status,
-  .note {
+  .status {
     margin-left: 52px;
   }
 
