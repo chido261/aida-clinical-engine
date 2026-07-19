@@ -41,14 +41,23 @@ export async function POST(request: Request) {
     const body = await request.json() as Body;
     const messages = Array.isArray(body.messages) ? body.messages.filter(message =>
       message && ["user", "assistant", "system"].includes(message.role) && typeof message.content === "string") : [];
-    const message = [...messages].reverse().find(item => item.role === "user")?.content.trim() ?? "";
+    const currentUserIndex = messages.findLastIndex(item => item.role === "user");
+    const message = currentUserIndex >= 0 ? messages[currentUserIndex].content.trim() : "";
     if (!message) return NextResponse.json({ ok: false, error: "Mensaje requerido" }, { status: 400 });
+    const recentConversation = messages.slice(0, currentUserIndex)
+      .filter((item): item is ChatMessage & { role: "user" | "assistant" } => item.role !== "system")
+      .slice(-8)
+      .map(item => ({ role: item.role, content: item.content.trim().slice(0, 1_200) }))
+      .filter(item => item.content.length > 0);
     const userId = body.deviceId?.trim() || "chat3-local";
-    const user = await prisma.userState.upsert({ where: { id: userId }, create: { id: userId }, update: {},
-      select: { activePhase: true, activeProtocol: true } });
-    const options = await culinaryMemory.listOptions(userId);
+    const [user, options] = await Promise.all([
+      prisma.userState.upsert({ where: { id: userId }, create: { id: userId }, update: {},
+        select: { activePhase: true, activeProtocol: true } }),
+      culinaryMemory.listOptions(userId),
+    ]);
     const execution = await engine.execute({ turnId: randomUUID(), message,
       context: { conversationId: userId, protocolId: protocolId(user.activePhase, user.activeProtocol),
+        recentConversation,
         availableRecipes: options.map(option => ({ id: option.id, name: option.name })) } });
     if (execution.response.source === "FAILURE") {
       const diagnostics = execution.outcome.bundle.results
