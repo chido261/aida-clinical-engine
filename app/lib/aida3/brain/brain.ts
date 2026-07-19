@@ -44,6 +44,9 @@ export class Aida3Brain {
       if (request.type === "FOOD_VALIDATION") continue;
       if (request.type === "GREETING") tasks.push({ id: request.id, expertId: "CONVERSATION", action: "GREET",
         subject: "saludo", input: {}, dependsOn: [], required: true });
+      if (request.type === "GENERAL_EDUCATION") tasks.push({ id: request.id, expertId: "CONVERSATION",
+        action: "ANSWER_GENERAL", subject: request.topic, input: { answer: request.answer },
+        dependsOn: [], required: true });
       if (request.type === "PROTOCOL_STATUS") tasks.push({ id: request.id, expertId: "PROTOCOL", action: "GET_CURRENT_PROTOCOL",
         subject: "fase actual", input: { protocolId: params.context.protocolId }, dependsOn: [], required: true });
       if (request.type === "GLUCOSE_READING") tasks.push({ id: request.id, expertId: "GLUCOSE", action: "RECORD_READING",
