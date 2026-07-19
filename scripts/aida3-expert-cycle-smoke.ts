@@ -30,7 +30,7 @@ const registry = new Aida3ExpertRegistry()
   .register(new ChefExpert(meals, beverages, recipes, new InMemoryCulinaryMemory()));
 const orchestrator = new Aida3TurnOrchestrator(registry);
 const brain = new Aida3Brain();
-const context: BrainContext = { protocolId: "FASE_1", conversationId: "expert-cycle",
+const context: BrainContext = { protocolId: "FASE_1", conversationId: "expert-cycle", patientName: "David Rodriguez",
   availableRecipes: [{ id: "stale", name: "Receta anterior con aguacate" }] };
 
 async function run(analysis: CurrentTurnAnalysis) {
@@ -43,7 +43,8 @@ async function main() {
     requests: [{ id: "greeting", type: "GREETING" }] });
   assert.equal(greeting.status, "READY_FOR_HUMANIZER");
   assert.deepEqual(greeting.bundle.results.map(result => result.expertId), ["CONVERSATION"]);
-  assert.equal(greeting.bundle.results[0].patientSummary, "¡Hola! ¿En qué te ayudo?");
+  assert.equal(greeting.bundle.results[0].patientSummary,
+    "¡Hola, David! Estoy aquí para orientarte. ¿Qué te gustaría consultar?");
 
   const glucose = await run({ currentMessage: "Tengo 110 de glucosa", responseLength: "SHORT",
     requests: [{ id: "glucose", type: "GLUCOSE_READING", valueMgDl: 110, moment: null }] });
