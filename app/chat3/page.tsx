@@ -5,26 +5,10 @@ import { getDeviceId } from "@/app/lib/deviceId";
 import styles from "./page.module.css";
 
 type ChatMessage = { role: "user" | "assistant"; content: string };
-const STORAGE_KEY = "aida3-chat3-visible-messages";
 const WELCOME: ChatMessage = {
   role: "assistant",
   content: "Hola. Soy AIDA3. Esta conversación usa la nueva arquitectura modular.",
 };
-
-function loadMessages() {
-  try {
-    const value = localStorage.getItem(STORAGE_KEY);
-    if (!value) return [WELCOME];
-    const parsed = JSON.parse(value) as unknown;
-    if (!Array.isArray(parsed)) return [WELCOME];
-    const messages = parsed.filter((item): item is ChatMessage => Boolean(item && typeof item === "object" &&
-      ((item as ChatMessage).role === "user" || (item as ChatMessage).role === "assistant") &&
-      typeof (item as ChatMessage).content === "string"));
-    return messages.length ? messages : [WELCOME];
-  } catch {
-    return [WELCOME];
-  }
-}
 
 export default function Chat3Page() {
   const [deviceId, setDeviceId] = useState("");
@@ -33,17 +17,12 @@ export default function Chat3Page() {
   const [sending, setSending] = useState(false);
   const [elapsedMs, setElapsedMs] = useState<number | null>(null);
   const [waitingSeconds, setWaitingSeconds] = useState(0);
-  const [menuOpen, setMenuOpen] = useState(false);
   const bottom = useRef<HTMLDivElement | null>(null);
   const textarea = useRef<HTMLTextAreaElement | null>(null);
 
   useEffect(() => {
     setDeviceId(getDeviceId());
-    setMessages(loadMessages());
   }, []);
-  useEffect(() => {
-    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(messages)); } catch {}
-  }, [messages]);
   useEffect(() => {
     bottom.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, sending]);
@@ -61,6 +40,11 @@ export default function Chat3Page() {
     textarea.current.style.height = "auto";
     textarea.current.style.height = `${Math.min(textarea.current.scrollHeight, 120)}px`;
   }, [input]);
+  useEffect(() => {
+    if (sending) return;
+    const frame = window.requestAnimationFrame(() => textarea.current?.focus());
+    return () => window.cancelAnimationFrame(frame);
+  }, [sending]);
 
   const canSend = useMemo(() => Boolean(deviceId && input.trim() && !sending), [deviceId, input, sending]);
 
@@ -108,28 +92,11 @@ export default function Chat3Page() {
     }
   }
 
-  function clearVisibleConversation() {
-    setMessages([WELCOME]);
-    setElapsedMs(null);
-    setMenuOpen(false);
-    try { localStorage.removeItem(STORAGE_KEY); } catch {}
-  }
-
   return (
     <main className={styles.page}>
       <section className={styles.shell}>
         <header className={styles.header}>
           <h1 className={styles.title}>AIDA3</h1>
-          <div className={styles.headerActions}>
-            <span className={styles.mode}>Chat modular</span>
-            <button className={styles.menuButton} onClick={() => setMenuOpen(value => !value)}
-              aria-expanded={menuOpen}>Menú</button>
-            {menuOpen && (
-              <div className={styles.menu}>
-                <button onClick={clearVisibleConversation} disabled={sending}>Limpiar conversación</button>
-              </div>
-            )}
-          </div>
         </header>
 
         <div className={styles.messages} aria-live="polite">
@@ -165,7 +132,6 @@ export default function Chat3Page() {
             <button className={styles.send} disabled={!canSend} onClick={() => void send()}
               aria-label="Enviar mensaje">↑</button>
           </div>
-          <p className={styles.note}>Enter envía · Shift + Enter agrega una línea</p>
         </div>
 
         <p className={styles.disclaimer}>
