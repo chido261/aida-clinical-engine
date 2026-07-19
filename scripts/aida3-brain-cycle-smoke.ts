@@ -2,13 +2,15 @@ import assert from "node:assert/strict";
 import { Aida3Brain, type BrainContext, type CurrentTurnAnalysis } from "../app/lib/aida3";
 
 const brain = new Aida3Brain();
-const context: BrainContext = { protocolId: "FASE_1", conversationId: "brain-test",
+const context: BrainContext = { protocolId: "FASE_1", conversationId: "brain-test", patientName: "David Rodriguez",
   availableRecipes: [{ id: "old-option-1", name: "Receta anterior con aguacate" }] };
 
 const greeting: CurrentTurnAnalysis = { currentMessage: "Hola", responseLength: "SHORT",
   requests: [{ id: "greeting", type: "GREETING" }] };
 const greetingPlan = brain.compile({ turnId: "brain-greeting", message: "Hola", analysis: greeting, context }).plan;
 assert.deepEqual(greetingPlan.tasks.map(task => task.expertId), ["CONVERSATION"]);
+assert.equal(greetingPlan.tasks[0].input.patientName, "David Rodriguez");
+assert.equal(greetingPlan.tasks[0].input.variationSeed, "brain-greeting");
 
 const glucose: CurrentTurnAnalysis = { currentMessage: "Tengo 110 de glucosa", responseLength: "SHORT",
   requests: [{ id: "glucose", type: "GLUCOSE_READING", valueMgDl: 110, moment: null }] };
