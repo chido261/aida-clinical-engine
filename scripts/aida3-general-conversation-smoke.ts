@@ -58,6 +58,8 @@ async function main() {
     const serialized = JSON.stringify(input);
     assert.match(serialized, /recentConversation/);
     assert.match(serialized, /Evita repetir lo que ya se explicó/);
+    assert.match(serialized, /Nunca escribas una enumeración completa dentro de un solo párrafo/);
+    assert.match(serialized, /Entrega texto plano con saltos de línea/);
     assert.doesNotMatch(serialized, /conversationId/);
   }
   console.log("AIDA3 GENERAL CONVERSATION OK");
