@@ -21,6 +21,7 @@
     "test:aida3-expert-cycle": "tsc scripts/aida3-expert-cycle-smoke.ts --outDir .aida3-test-build --module commonjs --target es2022 --moduleResolution node --esModuleInterop --skipLibCheck && node .aida3-test-build/scripts/aida3-expert-cycle-smoke.js",
     "test:aida3-assembler": "tsc scripts/aida3-assembler-smoke.ts --outDir .aida3-test-build --module commonjs --target es2022 --moduleResolution node --esModuleInterop --skipLibCheck && node .aida3-test-build/scripts/aida3-assembler-smoke.js",
     "test:aida3-chat3-cycle": "tsc scripts/aida3-chat3-cycle-smoke.ts --outDir .aida3-test-build --module commonjs --target es2022 --moduleResolution node --esModuleInterop --skipLibCheck && node .aida3-test-build/scripts/aida3-chat3-cycle-smoke.js",
+    "test:aida3-general-conversation": "tsc scripts/aida3-general-conversation-smoke.ts --outDir .aida3-test-build --module commonjs --target es2022 --moduleResolution node --esModuleInterop --skipLibCheck && node .aida3-test-build/scripts/aida3-general-conversation-smoke.js",
     "db:backup": "node scripts/dbBackup.mjs",
     "db:restore": "node scripts/dbRestore.mjs",
     "db:generate": "prisma generate",
