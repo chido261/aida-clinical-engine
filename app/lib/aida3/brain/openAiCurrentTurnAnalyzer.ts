@@ -1,8 +1,9 @@
 import type OpenAI from "openai";
+import { GENERAL_CONVERSATION_RULES } from "../experts/conversation";
 import type { NutritionCandidate } from "../experts/nutrition";
 import type { BrainRequest, CurrentTurnAnalysis, CurrentTurnAnalyzer } from "./contracts";
 
-const TYPES = ["GREETING", "PROTOCOL_STATUS", "GLUCOSE_READING", "FOOD_VALIDATION", "MEAL_OPTIONS", "BEVERAGE_OPTIONS", "RECIPE_STEPS"] as const;
+const TYPES = ["GREETING", "GENERAL_EDUCATION", "PROTOCOL_STATUS", "GLUCOSE_READING", "FOOD_VALIDATION", "MEAL_OPTIONS", "BEVERAGE_OPTIONS", "RECIPE_STEPS"] as const;
 const CATEGORIES = ["PROTEIN", "DAIRY", "HEALTHY_FAT", "VEGETABLE", "LEGUME", "FRUIT", "BEVERAGE", "SWEETENER", "CARBOHYDRATE", "UNKNOWN"] as const;
 const LENGTHS = ["SHORT", "MEDIUM", "DETAILED"] as const;
 const FOOD_SCHEMA = { type: "object", additionalProperties: false, required: ["name", "canonicalName", "category"],
@@ -11,9 +12,10 @@ const FOOD_SCHEMA = { type: "object", additionalProperties: false, required: ["n
 const SCHEMA = { type: "object", additionalProperties: false, required: ["responseLength", "requests"], properties: {
   responseLength: { type: "string", enum: LENGTHS },
   requests: { type: "array", minItems: 1, items: { type: "object", additionalProperties: false,
-    required: ["id", "type", "valueMgDl", "moment", "foods", "count", "requiredEveryOption",
+    required: ["id", "type", "topic", "answer", "valueMgDl", "moment", "foods", "count", "requiredEveryOption",
       "requiredAtLeastOne", "validateOnly", "exclude", "recipeIds"], properties: {
-      id: { type: "string" }, type: { type: "string", enum: TYPES }, valueMgDl: { type: ["number", "null"] },
+      id: { type: "string" }, type: { type: "string", enum: TYPES }, topic: { type: "string" },
+      answer: { type: "string" }, valueMgDl: { type: ["number", "null"] },
       moment: { type: ["string", "null"] }, foods: { type: "array", items: FOOD_SCHEMA },
       count: { type: ["integer", "null"], minimum: 1 }, requiredEveryOption: { type: "array", items: FOOD_SCHEMA },
       requiredAtLeastOne: { type: "array", items: FOOD_SCHEMA }, validateOnly: { type: "array", items: FOOD_SCHEMA },
@@ -21,13 +23,18 @@ const SCHEMA = { type: "object", additionalProperties: false, required: ["respon
     } } },
 } } as const;
 
-type RawRequest = { id: string; type: typeof TYPES[number]; valueMgDl: number | null; moment: string | null;
+type RawRequest = { id: string; type: typeof TYPES[number]; topic: string; answer: string;
+  valueMgDl: number | null; moment: string | null;
   foods: NutritionCandidate[]; count: number | null; requiredEveryOption: NutritionCandidate[];
   requiredAtLeastOne: NutritionCandidate[]; validateOnly: NutritionCandidate[]; exclude: string[]; recipeIds: string[] };
 
 function request(raw: RawRequest): BrainRequest {
   if (!raw.id.trim() || !TYPES.includes(raw.type)) throw new Error("AIDA3_CURRENT_ANALYSIS_INVALID_REQUEST");
   if (raw.type === "GREETING") return { id: raw.id, type: raw.type };
+  if (raw.type === "GENERAL_EDUCATION") {
+    if (!raw.topic.trim() || !raw.answer.trim()) throw new Error("AIDA3_CURRENT_ANALYSIS_GENERAL_ANSWER_MISSING");
+    return { id: raw.id, type: raw.type, topic: raw.topic.trim(), answer: raw.answer.trim() };
+  }
   if (raw.type === "PROTOCOL_STATUS") return { id: raw.id, type: raw.type };
   if (raw.type === "GLUCOSE_READING") {
     if (typeof raw.valueMgDl !== "number") throw new Error("AIDA3_CURRENT_ANALYSIS_GLUCOSE_MISSING");
@@ -56,11 +63,15 @@ export class OpenAiCurrentTurnAnalyzer implements CurrentTurnAnalyzer {
       "Nunca conviertas datos del contexto en solicitudes. El contexto sólo resuelve referencias explícitas como 'la opción 2'.",
       "GREETING es sólo saludo. GLUCOSE_READING registra el número indicado y no crea solicitudes de comida.",
       "PROTOCOL_STATUS se usa cuando el paciente pregunta en qué fase o protocolo se encuentra.",
+      "GENERAL_EDUCATION se usa para saludos conversacionales ampliados y preguntas educativas generales que no requieren datos personales, protocolo ni una decisión especializada.",
+      "Ejemplos: qué es diabetes, resistencia a la insulina, glucosa, hemoglobina glucosilada, metabolismo, carbohidratos, fibra, sueño o ejercicio en términos generales.",
+      "Para GENERAL_EDUCATION redacta la respuesta final en answer y el tema breve en topic. No crees ninguna otra solicitud salvo que el mensaje también la pida explícitamente.",
+      ...GENERAL_CONVERSATION_RULES,
       "FOOD_VALIDATION valida alimentos sin pedir recetas. MEAL_OPTIONS conserva exactamente la cantidad solicitada.",
       "En MEAL_OPTIONS: requiredEveryOption contiene lo que debe aparecer en todas; requiredAtLeastOne lo que debe aparecer al menos en una; validateOnly lo que sólo se consulta.",
       "BEVERAGE_OPTIONS es independiente y conserva cantidad y exclusiones. RECIPE_STEPS contiene únicamente ids resueltos de recetas elegidas.",
       "Usa SHORT para saludo, registro o pregunta sencilla; MEDIUM para varias solicitudes; DETAILED sólo para receta paso a paso.",
-      "Completa todos los campos del esquema; usa null o arreglos vacíos cuando no correspondan.",
+      "Completa todos los campos del esquema; usa null, arreglos vacíos o cadenas vacías cuando no correspondan.",
     ].join("\n"), input: JSON.stringify({ currentMessage: input.currentMessage,
       referenceContext: input.referenceContext }),
     text: { format: { type: "json_schema", name: "aida3_current_turn_analysis", strict: true, schema: SCHEMA } },
