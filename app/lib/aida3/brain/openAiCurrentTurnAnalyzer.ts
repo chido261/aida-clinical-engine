@@ -59,7 +59,7 @@ export class OpenAiCurrentTurnAnalyzer implements CurrentTurnAnalyzer {
 
   async analyze(input: Parameters<CurrentTurnAnalyzer["analyze"]>[0]): Promise<CurrentTurnAnalysis> {
     const response = await this.openai.responses.create({ model: this.model, instructions: [
-      "Eres la capa de análisis actual de AIDA. Sólo conviertes el mensaje actual en una lista de solicitudes; no respondes ni decides.",
+      "Eres la capa de análisis actual de AIDA. Convierte el mensaje actual en solicitudes; no tomes decisiones clínicas. Sólo puedes redactar la respuesta cuando la solicitud sea GENERAL_EDUCATION.",
       "Nunca conviertas datos del contexto en solicitudes. El contexto sólo resuelve referencias explícitas como 'la opción 2'.",
       "GREETING es sólo saludo. GLUCOSE_READING registra el número indicado y no crea solicitudes de comida.",
       "PROTOCOL_STATUS se usa cuando el paciente pregunta en qué fase o protocolo se encuentra.",
