@@ -53,11 +53,12 @@ const registry = new Aida3ExpertRegistry().register(new ConversationExpert()).re
   .register(new ProtocolExpert()).register(new NutritionExpert()).register(new ChefExpert(meals, beverages, recipes, memory));
 const engine = new Aida3BrainTurnEngine(new OpenAiCurrentTurnAnalyzer(fakeOpenAi as never, "test-model"),
   new Aida3Brain(), new Aida3TurnOrchestrator(registry), new Aida3DeterministicResponseAssembler());
-const context: BrainContext = { protocolId: "FASE_1", conversationId: "chat3-cycle", availableRecipes: [] };
+const context: BrainContext = { protocolId: "FASE_1", conversationId: "chat3-cycle",
+  patientName: "David Rodriguez", availableRecipes: [] };
 
 async function main() {
   const greeting = await engine.execute({ turnId: "greeting-turn", message: "Hola", context });
-  assert.equal(greeting.response.text, "¡Hola! ¿En qué te ayudo?");
+  assert.equal(greeting.response.text, "¡Hola, David! Estoy aquí para orientarte. ¿Qué te gustaría consultar?");
   assert.equal(chefCalls, 0);
 
   const glucose = await engine.execute({ turnId: "glucose-turn", message: "Tengo 110 de glucosa", context });
@@ -83,8 +84,8 @@ async function main() {
   assert.equal(chefCalls, 3);
   assert.equal(analysisInputs.length, 5);
   const lastInput = JSON.parse(String(analysisInputs[4].input)) as Record<string, unknown>;
-  assert.deepEqual(Object.keys(lastInput).sort(), ["currentMessage", "referenceContext"]);
-  assert.equal("recentHistory" in (lastInput.referenceContext as Record<string, unknown>), false);
+  assert.deepEqual(Object.keys(lastInput).sort(), ["culinaryReferences", "currentMessage", "recentConversation"]);
+  assert.equal("conversationId" in lastInput, false);
 
   console.log("AIDA3 CHAT3 CYCLE OK");
   console.log(JSON.stringify({ greeting: greeting.response, glucose: glucose.response, phase: phase.response,
