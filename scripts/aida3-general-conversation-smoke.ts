@@ -25,7 +25,9 @@ const cases = [
 const empty = { valueMgDl: null, moment: null, foods: [], count: null, requiredEveryOption: [],
   requiredAtLeastOne: [], validateOnly: [], exclude: [], recipeIds: [] };
 let calls = 0;
-const fakeOpenAi = { responses: { create: async () => {
+const openAiInputs: unknown[] = [];
+const fakeOpenAi = { responses: { create: async (input: unknown) => {
+  openAiInputs.push(input);
   const [question, answer] = cases[calls++];
   return { output_text: JSON.stringify({ responseLength: answer.length < 100 ? "SHORT" : "MEDIUM",
     requests: [{ ...empty, id: `general-${calls}`, type: "GENERAL_EDUCATION",
@@ -35,7 +37,11 @@ const fakeOpenAi = { responses: { create: async () => {
 const registry = new Aida3ExpertRegistry().register(new ConversationExpert());
 const engine = new Aida3BrainTurnEngine(new OpenAiCurrentTurnAnalyzer(fakeOpenAi as never, "test-model"),
   new Aida3Brain(), new Aida3TurnOrchestrator(registry), new Aida3DeterministicResponseAssembler());
-const context: BrainContext = { protocolId: "FASE_1", conversationId: "general-test" };
+const context: BrainContext = { protocolId: "FASE_1", conversationId: "general-test",
+  recentConversation: [
+    { role: "user", content: "¿Qué es la diabetes?" },
+    { role: "assistant", content: "Es una condición relacionada con la regulación de la glucosa." },
+  ] };
 
 async function main() {
   for (const [index, [question, answer]] of cases.entries()) {
@@ -47,8 +53,16 @@ async function main() {
     assert.deepEqual(Object.keys(execution.plan.tasks[0].input), ["answer"]);
   }
   assert.equal(calls, cases.length);
+  assert.equal(openAiInputs.length, cases.length);
+  for (const input of openAiInputs) {
+    const serialized = JSON.stringify(input);
+    assert.match(serialized, /recentConversation/);
+    assert.match(serialized, /Evita repetir lo que ya se explicó/);
+    assert.doesNotMatch(serialized, /conversationId/);
+  }
   console.log("AIDA3 GENERAL CONVERSATION OK");
-  console.log(JSON.stringify({ questions: cases.length, analysisCalls: calls, specialistsCalled: 0 }, null, 2));
+  console.log(JSON.stringify({ questions: cases.length, analysisCalls: calls, contextualTurns: openAiInputs.length,
+    specialistsCalled: 0 }, null, 2));
 }
 
 main().catch(error => { console.error(error); process.exitCode = 1; });
