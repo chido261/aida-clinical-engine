@@ -8,6 +8,7 @@ export type BrainRequest =
   | { id: string; type: "PROTOCOL_STATUS" }
   | { id: string; type: "GLUCOSE_READING"; valueMgDl: number; moment: string | null }
   | { id: string; type: "FOOD_VALIDATION"; foods: NutritionCandidate[] }
+  | { id: string; type: "NUTRITION_CATALOG"; catalog: "ALLOWED" | "RESTRICTED" | "CONDITIONAL" }
   | { id: string; type: "MEAL_OPTIONS"; count: number; requiredEveryOption: NutritionCandidate[];
       requiredAtLeastOne: NutritionCandidate[]; validateOnly: NutritionCandidate[] }
   | { id: string; type: "BEVERAGE_OPTIONS"; count: number; exclude: string[] }
