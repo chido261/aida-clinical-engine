@@ -4,10 +4,15 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { getDeviceId } from "@/app/lib/deviceId";
 import styles from "./page.module.css";
 
-type ChatMessage = { role: "user" | "assistant"; content: string };
+type Source = { title: string; url: string };
+type ChatMessage = {
+  role: "user" | "assistant";
+  content: string;
+  sources?: Source[];
+};
 const WELCOME: ChatMessage = {
   role: "assistant",
-  content: "Hola. Soy AIDA3. Esta conversación usa la nueva arquitectura modular.",
+  content: "¡Hola! Soy AIDA y quiero ayudarte a comprender mejor tu glucosa y tomar buenas decisiones. ¿Cómo te gustaría que te llame? 💬",
 };
 
 export default function Chat3Page() {
@@ -64,26 +69,27 @@ export default function Chat3Page() {
       const response = await fetch("/api/chat3", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ deviceId, messages: nextMessages.slice(-12) }),
+        body: JSON.stringify({ messages: nextMessages.slice(-20) }),
         signal: controller.signal,
       });
       const data = await response.json() as {
         ok?: boolean;
         reply?: string;
         error?: string;
-        diagnostics?: Array<{ taskId: string; expertId: string; errorCode: string | null;
-          data?: { violations?: string[] } }>;
+        sources?: Source[];
       };
       if (!response.ok || !data.ok || !data.reply) {
-        const details = data.diagnostics?.map(item => `${item.taskId}/${item.expertId}: ${item.errorCode}${
-          item.data?.violations?.length ? ` [${item.data.violations.join(", ")}]` : ""}`).join("; ");
-        throw new Error([data.error || "Chat3 no pudo responder.", details].filter(Boolean).join(" "));
+        throw new Error(data.error || "AIDA no pudo responder.");
       }
-      setMessages(current => [...current, { role: "assistant", content: data.reply! }]);
+      setMessages(current => [...current, {
+        role: "assistant",
+        content: data.reply!,
+        sources: data.sources,
+      }]);
     } catch (error) {
       setMessages(current => [...current, {
         role: "assistant",
-        content: error instanceof Error ? `Error de Chat3: ${error.message}` : "Error de Chat3.",
+        content: error instanceof Error ? `No pude responder: ${error.message}` : "No pude responder en este momento.",
       }]);
     } finally {
       window.clearTimeout(timeout);
@@ -96,14 +102,24 @@ export default function Chat3Page() {
     <main className={styles.page}>
       <section className={styles.shell}>
         <header className={styles.header}>
-          <h1 className={styles.title}>AIDA3</h1>
+          <h1 className={styles.title}>AIDA</h1>
         </header>
 
         <div className={styles.messages} aria-live="polite">
           {messages.map((message, index) => (
             <div key={`${message.role}-${index}`} className={styles.messageRow}>
               <div className={`${styles.message} ${message.role === "user" ? styles.user : styles.assistant}`}>
-                {message.content}
+                <div>{message.content}</div>
+                {message.sources && message.sources.length > 0 && (
+                  <div className={styles.sources}>
+                    <span>Fuentes oficiales:</span>
+                    {message.sources.map(source => (
+                      <a key={source.url} href={source.url} target="_blank" rel="noreferrer">
+                        {source.title}
+                      </a>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
           ))}

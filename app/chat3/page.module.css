@@ -68,6 +68,25 @@
   color: #111827;
 }
 
+.sources {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid #e5e7eb;
+  font-size: 12px;
+}
+
+.sources span {
+  color: #6b7280;
+}
+
+.sources a {
+  color: #2563eb;
+  text-decoration: underline;
+}
+
 .thinking {
   margin-top: 6px;
   color: #6b7280;
