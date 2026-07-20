@@ -17,8 +17,13 @@ const DEFINITION: StructuredSpecialistDefinition = {
   outputSchema: {
     type: "object",
     additionalProperties: false,
-    required: ["patientSummary"],
-    properties: { patientSummary: { type: "string", minLength: 1 } },
+    required: ["patientSummary", "decisions"],
+    properties: {
+      patientSummary: { type: "string", minLength: 1 },
+      decisions: { type: "array", items: { type: "object", additionalProperties: false,
+        required: ["food", "status"], properties: { food: { type: "string" },
+          status: { type: "string", enum: ["ALLOWED", "CONDITIONAL", "NOT_ALLOWED", "UNKNOWN"] } } } },
+    },
   },
 };
 
@@ -26,9 +31,15 @@ export class OpenAiNutritionResponseWriter implements NutritionResponseWriter {
   constructor(private readonly specialist: StructuredSpecialistClient) {}
 
   async write(input: NutritionNarrativeInput): Promise<string> {
-    const output = await this.specialist.run<{ patientSummary: string }>(DEFINITION, input);
+    const output = await this.specialist.run<{ patientSummary: string;
+      decisions: Array<{ food: string; status: string }> }>(DEFINITION, input);
     const summary = output.patientSummary?.trim();
     if (!summary) throw new Error("AIDA3_NUTRITION_EMPTY_NARRATIVE");
+    if (!Array.isArray(output.decisions) || output.decisions.length !== input.foods.length ||
+      output.decisions.some((decision, index) => decision.food !== input.foods[index].food ||
+        decision.status !== input.foods[index].status)) {
+      throw new Error("AIDA3_NUTRITION_DECISION_CHANGED");
+    }
     return summary;
   }
 }
