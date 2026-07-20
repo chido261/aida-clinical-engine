@@ -35,3 +35,13 @@ export type NutritionFoodDecision = {
   reason: string;
   evidence: string | null;
 };
+
+export type NutritionNarrativeInput = {
+  originalMessage: string;
+  protocolName: string;
+  foods: NutritionFoodDecision[];
+};
+
+export interface NutritionResponseWriter {
+  write(input: NutritionNarrativeInput): Promise<string>;
+}
