@@ -5,6 +5,7 @@ import {
   NUTRITION_EXPERT_ID,
   VALIDATE_FOODS_ACTION,
   type NutritionCandidate,
+  type NutritionResponseWriter,
   type NutritionTaskInput,
 } from "./contracts";
 import { ProtocolFoodValidator } from "./protocolFoodValidator";
@@ -26,7 +27,8 @@ export class NutritionExpert implements Aida3Expert {
 
   constructor(
     private readonly protocols = new ProtocolRepository(),
-    private readonly validator = new ProtocolFoodValidator()
+    private readonly validator = new ProtocolFoodValidator(),
+    private readonly responseWriter?: NutritionResponseWriter
   ) {}
 
   async execute(context: Aida3ExpertContext): Promise<Aida3ExpertResult> {
@@ -44,10 +46,25 @@ export class NutritionExpert implements Aida3Expert {
     const decision = hasUnknown ? "REQUIRES_REVIEW" : hasRestricted ? "PARTIALLY_COMPATIBLE" :
       hasConditional ? "COMPATIBLE_WITH_CONDITIONS" : "COMPATIBLE";
 
+    let patientSummary = foods.map(food => `${food.food}: ${food.status}`).join("; ");
+    let narrativeSource = "DETERMINISTIC";
+    if (this.responseWriter) {
+      try {
+        patientSummary = await this.responseWriter.write({
+          originalMessage: context.plan.originalMessage,
+          protocolName: protocol.name,
+          foods,
+        });
+        narrativeSource = "OPENAI";
+      } catch {
+        narrativeSource = "DETERMINISTIC_FALLBACK";
+      }
+    }
+
     return {
       taskId: context.task.id, expertId: this.id, status: "COMPLETED", subject: context.task.subject,
-      decision, patientSummary: foods.map(food => `${food.food}: ${food.status}`).join("; "),
-      data: { protocolId: input.protocolId, foods }, missingUserFields: [], errorCode: null,
+      decision, patientSummary,
+      data: { protocolId: input.protocolId, foods, narrativeSource }, missingUserFields: [], errorCode: null,
     };
   }
 
