@@ -3,6 +3,7 @@ import { GENERAL_CONVERSATION_RULES } from "../experts/conversation";
 import type { NutritionCandidate } from "../experts/nutrition";
 import type { BrainRequest, CurrentTurnAnalysis, CurrentTurnAnalyzer } from "./contracts";
 
+const DOMAINS = ["CONVERSATION", "NUTRITION", "CHEF", "GLUCOSE", "PROTOCOL"] as const;
 const TYPES = ["GREETING", "GENERAL_EDUCATION", "PROTOCOL_STATUS", "GLUCOSE_READING", "FOOD_VALIDATION", "MEAL_OPTIONS", "BEVERAGE_OPTIONS", "RECIPE_STEPS"] as const;
 const CATEGORIES = ["PROTEIN", "DAIRY", "HEALTHY_FAT", "VEGETABLE", "LEGUME", "FRUIT", "BEVERAGE", "SWEETENER", "CARBOHYDRATE", "UNKNOWN"] as const;
 const LENGTHS = ["SHORT", "MEDIUM", "DETAILED"] as const;
@@ -12,9 +13,10 @@ const FOOD_SCHEMA = { type: "object", additionalProperties: false, required: ["n
 const SCHEMA = { type: "object", additionalProperties: false, required: ["responseLength", "requests"], properties: {
   responseLength: { type: "string", enum: LENGTHS },
   requests: { type: "array", minItems: 1, items: { type: "object", additionalProperties: false,
-    required: ["id", "type", "topic", "answer", "valueMgDl", "moment", "foods", "count", "requiredEveryOption",
+    required: ["id", "domain", "type", "topic", "answer", "valueMgDl", "moment", "foods", "count", "requiredEveryOption",
       "requiredAtLeastOne", "validateOnly", "exclude", "recipeIds"], properties: {
-      id: { type: "string" }, type: { type: "string", enum: TYPES }, topic: { type: "string" },
+      id: { type: "string" }, domain: { type: "string", enum: DOMAINS },
+      type: { type: "string", enum: TYPES }, topic: { type: "string" },
       answer: { type: "string" }, valueMgDl: { type: ["number", "null"] },
       moment: { type: ["string", "null"] }, foods: { type: "array", items: FOOD_SCHEMA },
       count: { type: ["integer", "null"], minimum: 1 }, requiredEveryOption: { type: "array", items: FOOD_SCHEMA },
@@ -23,13 +25,26 @@ const SCHEMA = { type: "object", additionalProperties: false, required: ["respon
     } } },
 } } as const;
 
-type RawRequest = { id: string; type: typeof TYPES[number]; topic: string; answer: string;
+type RawRequest = { id: string; domain?: typeof DOMAINS[number]; type: typeof TYPES[number]; topic: string; answer: string;
   valueMgDl: number | null; moment: string | null;
   foods: NutritionCandidate[]; count: number | null; requiredEveryOption: NutritionCandidate[];
   requiredAtLeastOne: NutritionCandidate[]; validateOnly: NutritionCandidate[]; exclude: string[]; recipeIds: string[] };
 
+function defaultDomain(type: RawRequest["type"]): typeof DOMAINS[number] {
+  if (type === "FOOD_VALIDATION") return "NUTRITION";
+  if (type === "MEAL_OPTIONS" || type === "BEVERAGE_OPTIONS" || type === "RECIPE_STEPS") return "CHEF";
+  if (type === "GLUCOSE_READING") return "GLUCOSE";
+  if (type === "PROTOCOL_STATUS") return "PROTOCOL";
+  return "CONVERSATION";
+}
+
 function request(raw: RawRequest): BrainRequest {
   if (!raw.id.trim() || !TYPES.includes(raw.type)) throw new Error("AIDA3_CURRENT_ANALYSIS_INVALID_REQUEST");
+  const domain = raw.domain ?? defaultDomain(raw.type);
+  if (raw.type === "GENERAL_EDUCATION" && domain === "NUTRITION" && raw.foods.length > 0) {
+    return { id: raw.id, type: "FOOD_VALIDATION", foods: raw.foods };
+  }
+  if (domain !== defaultDomain(raw.type)) throw new Error("AIDA3_CURRENT_ANALYSIS_DOMAIN_MISMATCH");
   if (raw.type === "GREETING") return { id: raw.id, type: raw.type };
   if (raw.type === "GENERAL_EDUCATION") {
     if (!raw.topic.trim() || !raw.answer.trim()) throw new Error("AIDA3_CURRENT_ANALYSIS_GENERAL_ANSWER_MISSING");
@@ -59,20 +74,20 @@ export class OpenAiCurrentTurnAnalyzer implements CurrentTurnAnalyzer {
 
   async analyze(input: Parameters<CurrentTurnAnalyzer["analyze"]>[0]): Promise<CurrentTurnAnalysis> {
     const response = await this.openai.responses.create({ model: this.model, instructions: [
-      "Eres la capa de análisis actual de AIDA. Convierte el mensaje actual en solicitudes; no tomes decisiones clínicas. Sólo puedes redactar la respuesta cuando la solicitud sea GENERAL_EDUCATION.",
+      "Eres exclusivamente el enrutador de AIDA. Primero asigna un domain y después un type a cada solicitud. No tomes decisiones clínicas. Sólo redacta answer cuando domain sea CONVERSATION y type sea GENERAL_EDUCATION.",
       "Nunca conviertas datos del contexto en solicitudes. El contexto sólo resuelve referencias explícitas como 'la opción 2'.",
       "GREETING es sólo saludo. GLUCOSE_READING registra el número indicado y no crea solicitudes de comida.",
       "PROTOCOL_STATUS se usa cuando el paciente pregunta en qué fase o protocolo se encuentra.",
-      "GENERAL_EDUCATION se usa para conversación cotidiana y preguntas educativas generales que no requieren datos personales, protocolo ni una decisión especializada.",
+      "CONVERSATION cubre conversación cotidiana y educación general que no requiere una decisión personal. NUTRITION cubre cualquier pregunta sobre si la persona puede comer, combinar, sustituir o validar un alimento.",
       "Ejemplos: qué es diabetes, resistencia a la insulina, glucosa, hemoglobina glucosilada, metabolismo, carbohidratos, fibra, sueño o ejercicio en términos generales.",
-      "Una pregunta sobre qué puede comer el paciente, su dosis, tratamiento, síntomas personales o fase actual no es educación general aunque mencione un concepto educativo.",
+      "Regla obligatoria: preguntas como ¿puedo comer atún?, ¿me conviene el pan? o ¿es válida esta comida? son domain NUTRITION y type FOOD_VALIDATION; nunca GENERAL_EDUCATION.",
       "Para GENERAL_EDUCATION redacta la respuesta final en answer y el tema breve en topic. Resuelve referencias usando sólo la conversación reciente. No crees otra solicitud salvo que el mensaje también la pida explícitamente.",
       ...GENERAL_CONVERSATION_RULES,
       "FOOD_VALIDATION valida alimentos sin pedir recetas. MEAL_OPTIONS conserva exactamente la cantidad solicitada.",
       "En MEAL_OPTIONS: requiredEveryOption contiene lo que debe aparecer en todas; requiredAtLeastOne lo que debe aparecer al menos en una; validateOnly lo que sólo se consulta.",
       "BEVERAGE_OPTIONS es independiente y conserva cantidad y exclusiones. RECIPE_STEPS contiene únicamente ids resueltos de recetas elegidas.",
       "Usa SHORT para saludo, registro o pregunta sencilla; MEDIUM para varias solicitudes; DETAILED sólo para receta paso a paso.",
-      "Completa todos los campos del esquema; usa null, arreglos vacíos o cadenas vacías cuando no correspondan.",
+      "Domain y type deben ser coherentes. Completa todos los campos del esquema; usa null, arreglos vacíos o cadenas vacías cuando no correspondan.",
     ].join("\n"), input: JSON.stringify({ currentMessage: input.currentMessage,
       recentConversation: input.referenceContext.recentConversation ?? [],
       culinaryReferences: { selectedRecipeId: input.referenceContext.selectedRecipeId ?? null,
