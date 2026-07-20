@@ -5,6 +5,7 @@ export * from "./core/planValidator";
 export * from "./core/resultAggregator";
 export * from "./core/turnOrchestrator";
 export * from "./core/workingMemory";
+export * from "./specialists";
 export * from "./protocols/contracts";
 export * from "./protocols/markdownProtocolParser";
 export * from "./protocols/protocolRepository";
