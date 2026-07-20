@@ -5,7 +5,7 @@ import { NextResponse } from "next/server";
 import OpenAI from "openai";
 import { prisma } from "@/app/lib/prisma";
 import {
-  Aida3Brain, Aida3BrainTurnEngine, Aida3DeterministicResponseAssembler, Aida3ExpertRegistry,
+  Aida3Brain, Aida3BrainTurnEngine, Aida3ExpertRegistry, Aida3SpecialistResponseAssembler,
   Aida3TurnOrchestrator, ChefExpert, ConversationExpert, GlucoseExpert, NutritionExpert,
   OpenAiChefTools, OpenAiCurrentTurnAnalyzer, OpenAiNutritionResponseWriter,
   OpenAiStructuredSpecialistClient, ProtocolExpert,
@@ -29,7 +29,7 @@ const registry = new Aida3ExpertRegistry()
     { generate: context => culinary.generateBeverages(context) },
     { explain: recipe => culinary.explain(recipe) }, culinaryMemory));
 const engine = new Aida3BrainTurnEngine(new OpenAiCurrentTurnAnalyzer(openai), new Aida3Brain(),
-  new Aida3TurnOrchestrator(registry), new Aida3DeterministicResponseAssembler());
+  new Aida3TurnOrchestrator(registry), new Aida3SpecialistResponseAssembler());
 
 function protocolId(activePhase?: string | null, activeProtocol?: string | null): ProtocolId {
   const value = `${activePhase ?? ""} ${activeProtocol ?? ""}`.toUpperCase().replace(/[\s-]+/g, "_");
