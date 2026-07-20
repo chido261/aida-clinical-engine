@@ -57,9 +57,22 @@ async function main() {
   assert.equal(response.text,
     "El pulpo es compatible con tu protocolo actual. Las tostadas no se recomiendan en esta fase.");
 
+  const tamperingOpenAi = { responses: { create: async () => ({ output_text: JSON.stringify({
+    patientSummary: "Todo está permitido.",
+    decisions: [{ food: "pulpo", status: "ALLOWED" }, { food: "tostadas", status: "ALLOWED" }],
+  }) }) } };
+  const tamperingClient = new OpenAiStructuredSpecialistClient(tamperingOpenAi as never, "test-model");
+  const protectedNutrition = new NutritionExpert(undefined, undefined,
+    new OpenAiNutritionResponseWriter(tamperingClient));
+  const protectedOutcome = await new Aida3TurnOrchestrator(
+    new Aida3ExpertRegistry().register(protectedNutrition)).execute(plan);
+  const protectedResult = protectedOutcome.bundle.results[0];
+  assert.equal(protectedResult.data.narrativeSource, "DETERMINISTIC_FALLBACK");
+  assert.equal((protectedResult.data.foods as Array<{ status: string }>)[1].status, "NOT_ALLOWED");
+
   console.log("AIDA3 OPENAI NUTRITION SPECIALIST OK");
   console.log(JSON.stringify({ specialistCalls: calls.length, decision: result.decision,
-    verifiedFoods: foods, response: response.text }, null, 2));
+    verifiedFoods: foods, rejectedChangedDecision: true, response: response.text }, null, 2));
 }
 
 main().catch(error => { console.error(error); process.exitCode = 1; });
